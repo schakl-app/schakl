@@ -10,13 +10,22 @@
    * is the view), so a narrowed dashboard is a link. Warnings, coverage and the fixed note are
    * the honesty strip (spec §8, §10): a sampled number, a `(not set)` share and a measurement
    * breakpoint are each a sentence beside the numbers, never a footnote nobody finds.
+   *
+   * **Each part is a section, drawn the way the per-source sections below it are**: a white
+   * card on the page's ground, figures as tinted `stat` tiles, lists and charts as outlined
+   * boxes inside it (docs/UX.md, the visual system). The first version drew every tile as a
+   * hairline box with no fill, directly on the page — tiles the colour of the background, under
+   * a 12 px uppercase muted heading, which is the quietest treatment the system has.
    */
   import ExternalLink from "@lucide/svelte/icons/external-link";
+  import ListFilter from "@lucide/svelte/icons/list-filter";
   import Settings2 from "@lucide/svelte/icons/settings-2";
   import X from "@lucide/svelte/icons/x";
 
   import { fmtDateTime, fmtDayMonthYear } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { BAND_HEADING, FIELD_LABEL } from "$lib/core/ui/headings";
+  import Spinner from "$lib/core/ui/Spinner.svelte";
 
   import { breakpointLabel, fmtUnit, unavailableReason } from "./format";
   import LeadWidget from "./LeadWidget.svelte";
@@ -53,8 +62,12 @@
   const others = (part: "leads" | "ads"): Widget[] =>
     (leads?.widgets ?? []).filter((w) => w.part === part && w.kind !== "scorecard");
   const hasFilters = $derived(Object.values(activeFilters).some((v) => v.length > 0));
-  const wide = new Set([
-    "requests_by_channel",
+  // A narrowed read is Google's latency (seconds), and the previous answer stays on screen
+  // while it runs. Without saying so, a click on a filter looked like a click that did nothing.
+  const updating = $derived(pending && leads !== null);
+
+  // The widgets that need the full width: many columns, or a time axis.
+  const WIDE = new Set([
     "service_by_channel",
     "requests_by_page",
     "ads_campaigns",
@@ -62,6 +75,68 @@
     "funnel",
     "ads_by_day",
   ]);
+
+  /**
+   * Two columns with no holes. Which widgets exist depends on the client's profile, so a fixed
+   * list of spans left a half-width widget alone in its row wherever a wide one followed it —
+   * a block-sized gap, three of them on one real dashboard. A half with no half beside it takes
+   * the row; computed over the ordered list, so nothing is reordered to fill a gap.
+   */
+  function arranged(list: Widget[]): { widget: Widget; wide: boolean }[] {
+    const out: { widget: Widget; wide: boolean }[] = [];
+    for (let i = 0; i < list.length; i++) {
+      const widget = list[i];
+      const next = list[i + 1];
+      if (WIDE.has(widget.key)) out.push({ widget, wide: true });
+      else if (next && !WIDE.has(next.key)) {
+        out.push({ widget, wide: false }, { widget: next, wide: false });
+        i++;
+      } else out.push({ widget, wide: true });
+    }
+    return out;
+  }
+
+  /**
+   * The filter controls, with what is *picked* read from the URL rather than from the payload:
+   * the payload describes the previous view until the new one lands, and a chip that lights up
+   * two seconds after it was pressed reads as a press that missed. A picked value the payload
+   * does not list yet (a page title clicked in a table) gets a chip of its own at once.
+   */
+  type Chip = { key: string; label: string; count: number; active: boolean };
+  type Group = { dimension: string; title: string; chips: Chip[] };
+  const groups = $derived.by((): Group[] => {
+    const out: Group[] = [];
+    const listed: string[] = [];
+    for (const filter of leads?.filters ?? []) {
+      listed.push(filter.dimension);
+      const picked = activeFilters[filter.dimension] ?? [];
+      const chips: Chip[] = filter.options.map((o) => ({
+        key: o.key,
+        label: o.label,
+        count: o.count,
+        active: picked.includes(o.key),
+      }));
+      for (const key of picked) {
+        if (!chips.some((c) => c.key === key))
+          chips.push({ key, label: key, count: 0, active: true });
+      }
+      if (chips.length === 0) continue;
+      out.push({
+        dimension: filter.dimension,
+        title: filter.title ?? t(`marketing.leads.dimension.${filter.dimension}`),
+        chips,
+      });
+    }
+    for (const [dimension, picked] of Object.entries(activeFilters)) {
+      if (listed.includes(dimension) || picked.length === 0) continue;
+      out.push({
+        dimension,
+        title: t(`marketing.leads.dimension.${dimension}`),
+        chips: picked.map((key) => ({ key, label: key, count: 0, active: true })),
+      });
+    }
+    return out;
+  });
 
   function warningText(code: string, details: Record<string, unknown>): string {
     const params: Record<string, string> = {};
@@ -103,7 +178,7 @@
     </div>
   {/if}
 {:else if leads}
-  <section class="space-y-5">
+  <section class="space-y-4" aria-busy={updating}>
     <!-- The honesty strip: what the numbers cannot say for themselves. -->
     {#if leads.warnings.length}
       <ul class="space-y-1.5">
@@ -113,7 +188,7 @@
               ? 'border-red-300 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200'
               : warning.severity === 'warning'
                 ? 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100'
-                : 'border-border bg-surface text-text-muted'}"
+                : 'border-border bg-surface-raised text-text-muted'}"
           >
             {warningText(warning.code, warning.details)}
             {#if warning.code === "before_breakpoint" && leads.window?.comparable_from}
@@ -130,84 +205,116 @@
       </ul>
     {/if}
 
-    <!-- Filters: every dimension the profile marked filterable, with the values this period saw. -->
-    {#if leads.filters.length}
-      <div class="flex flex-wrap items-center gap-2">
-        {#each leads.filters as filter (filter.dimension)}
-          <div class="flex flex-wrap items-center gap-1 rounded-lg border border-border px-2 py-1">
-            <span class="text-xs text-text-muted">
-              {filter.title ?? t(`marketing.leads.dimension.${filter.dimension}`)}
-            </span>
-            {#each filter.options as option (option.key)}
-              {@const active = filter.active.includes(option.key)}
-              <a
-                href={filterHref(filter.dimension, option.key)}
-                data-sveltekit-noscroll
-                class="rounded px-1.5 py-0.5 text-xs {active
-                  ? 'bg-brand text-white'
-                  : 'text-text hover:bg-surface'}"
-                aria-current={active ? "true" : undefined}
-              >
-                {option.label}
-                {#if option.count}<span class="opacity-70">·{fmtUnit(option.count, "count")}</span
-                  >{/if}
-              </a>
-            {/each}
-          </div>
-        {/each}
-        {#if hasFilters}
-          <a
-            href={clearFiltersHref}
-            data-sveltekit-noscroll
-            class="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-text-muted hover:text-text"
-          >
-            <X size={12} />
-            {t("marketing.leads.filter.clear")}
-          </a>
-        {/if}
-      </div>
-    {/if}
-
     {#if leads.ga4_available}
-      <div>
-        <div class="mb-2 flex items-center justify-between gap-2">
-          <h2 class="text-sm font-semibold uppercase tracking-wide text-text-muted">
-            {t("marketing.leads.part.leads")}
-          </h2>
-          {#if leads.ga4_deep_link}
-            <a
-              href={leads.ga4_deep_link}
-              target="_blank"
-              rel="noopener noreferrer"
-              class="flex items-center gap-1 text-xs text-text-muted hover:text-brand"
-            >
-              GA4 <ExternalLink size={12} />
-            </a>
-          {/if}
+      <section class="rounded-xl border border-border bg-surface-raised p-4 sm:p-5">
+        <div class="mb-3 flex items-center justify-between gap-2">
+          <h2 class={BAND_HEADING}>{t("marketing.leads.part.leads")}</h2>
+          <span class="flex items-center gap-3">
+            {#if updating}
+              <span class="flex items-center gap-1.5 text-xs text-text-muted" role="status">
+                <Spinner size={12} />
+                {t("marketing.leads.updating")}
+              </span>
+            {/if}
+            {#if leads.ga4_deep_link}
+              <a
+                href={leads.ga4_deep_link}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="flex items-center gap-1 text-xs text-text-muted hover:text-brand"
+              >
+                GA4 <ExternalLink size={12} />
+              </a>
+            {/if}
+          </span>
         </div>
-        {#if scorecards("leads").length}
-          <div class="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-            {#each scorecards("leads") as widget (widget.key)}
-              <LeadWidget {widget} />
-            {/each}
+
+        <!-- The filters belong to this part and sit inside it: they narrow what GA4 measured,
+             and the advertising figures below are never joined to them (docs/MARKETING.md). One
+             labelled row per dimension, every value the period saw, the picked ones filled and
+             carrying their own ✕ — so a second value can be added, or another switched to,
+             without clearing first. -->
+        {#if groups.length}
+          <div class="mb-4 rounded-lg bg-surface-tint p-3">
+            <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <p class="flex items-center gap-1.5 {FIELD_LABEL}">
+                <ListFilter size={13} aria-hidden="true" />
+                {t("marketing.leads.filter.title")}
+                <span class="hidden font-normal sm:inline"
+                  >· {t("marketing.leads.filter.hint")}</span
+                >
+              </p>
+              {#if hasFilters}
+                <a
+                  href={clearFiltersHref}
+                  data-sveltekit-noscroll
+                  class="flex items-center gap-1 text-xs font-medium text-brand hover:underline"
+                >
+                  <X size={12} aria-hidden="true" />
+                  {t("marketing.leads.filter.clear")}
+                </a>
+              {/if}
+            </div>
+            <dl class="space-y-1.5">
+              {#each groups as group (group.dimension)}
+                <div class="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:gap-3">
+                  <dt class="shrink-0 text-xs text-text-muted sm:w-32">{group.title}</dt>
+                  <dd class="flex flex-wrap gap-1.5">
+                    {#each group.chips as chip (chip.key)}
+                      <a
+                        href={filterHref(group.dimension, chip.key)}
+                        data-sveltekit-noscroll
+                        class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors {chip.active
+                          ? 'border-brand bg-brand font-medium text-white'
+                          : 'border-border bg-surface-raised text-text hover:border-brand hover:text-brand'}"
+                        aria-current={chip.active ? "true" : undefined}
+                        aria-label={chip.active
+                          ? t("marketing.leads.filter.remove", { value: chip.label })
+                          : undefined}
+                      >
+                        {chip.label}
+                        {#if chip.count}
+                          <span
+                            class="tabular-nums {chip.active ? 'opacity-80' : 'text-text-muted'}"
+                          >
+                            {fmtUnit(chip.count, "count")}
+                          </span>
+                        {/if}
+                        {#if chip.active}<X size={12} aria-hidden="true" />{/if}
+                      </a>
+                    {/each}
+                  </dd>
+                </div>
+              {/each}
+            </dl>
           </div>
         {/if}
-        <div class="grid gap-3 md:grid-cols-2">
-          {#each others("leads") as widget (widget.key)}
-            <div class={wide.has(widget.key) ? "md:col-span-2" : ""}>
-              <LeadWidget {widget} {activeFilters} {filterHref} breakpoints={leads.breakpoints} />
+
+        <div class="transition-opacity {updating ? 'opacity-50' : ''}">
+          {#if scorecards("leads").length}
+            <div
+              class="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fit,minmax(10rem,1fr))]"
+            >
+              {#each scorecards("leads") as widget (widget.key)}
+                <LeadWidget {widget} />
+              {/each}
             </div>
-          {/each}
+          {/if}
+          <div class="grid gap-3 md:grid-cols-2">
+            {#each arranged(others("leads")) as { widget, wide } (widget.key)}
+              <div class={wide ? "md:col-span-2" : ""}>
+                <LeadWidget {widget} {activeFilters} {filterHref} breakpoints={leads.breakpoints} />
+              </div>
+            {/each}
+          </div>
         </div>
-      </div>
+      </section>
     {/if}
 
     {#if leads.ads_available}
-      <div>
-        <div class="mb-2 flex items-center justify-between gap-2">
-          <h2 class="text-sm font-semibold uppercase tracking-wide text-text-muted">
-            {t("marketing.leads.part.ads")}
-          </h2>
+      <section class="rounded-xl border border-border bg-surface-raised p-4 sm:p-5">
+        <div class="mb-3 flex items-center justify-between gap-2">
+          <h2 class={BAND_HEADING}>{t("marketing.leads.part.ads")}</h2>
           {#if leads.ads_deep_link}
             <a
               href={leads.ads_deep_link}
@@ -220,20 +327,22 @@
           {/if}
         </div>
         {#if scorecards("ads").length}
-          <div class="mb-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div
+            class="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fit,minmax(10rem,1fr))]"
+          >
             {#each scorecards("ads") as widget (widget.key)}
               <LeadWidget {widget} />
             {/each}
           </div>
         {/if}
         <div class="grid gap-3 md:grid-cols-2">
-          {#each others("ads") as widget (widget.key)}
-            <div class={wide.has(widget.key) ? "md:col-span-2" : ""}>
+          {#each arranged(others("ads")) as { widget, wide } (widget.key)}
+            <div class={wide ? "md:col-span-2" : ""}>
               <LeadWidget {widget} />
             </div>
           {/each}
         </div>
-      </div>
+      </section>
     {/if}
 
     <!-- Coverage: the (not set) share per dimension, always visible (spec §10). -->
@@ -251,7 +360,7 @@
 
     <!-- The fixed note: the breakpoints, what a request is and is not, the tenant's sentence. -->
     <div
-      class="rounded-lg border border-border bg-surface px-3 py-2 text-xs leading-relaxed text-text-muted"
+      class="rounded-lg border border-border bg-surface-raised px-3 py-2 text-xs leading-relaxed text-text-muted"
     >
       {#each leads.breakpoints as bp (bp.date)}
         <p>

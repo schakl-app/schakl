@@ -119,6 +119,9 @@ PROXIABLE_TYPES = ("A", "AAAA", "CNAME")
 #: Reaching it is reported as a warning, never swallowed.
 PAGES_DOMAIN_SCAN_LIMIT = 100
 
+#: Writes whose 403 names the token permission it needed (``_translate(scope=…)``).
+_WRITE_SCOPES = frozenset({"dns", "redirect", "pages"})
+
 #: Cloudflare error codes worth their own message. Everything else falls back to the generic
 #: key — a wrong-but-specific message is worse than an honest generic one.
 _ERROR_CODES: dict[int, tuple[str, str, int]] = {
@@ -599,7 +602,7 @@ class CloudflareService:
             ) from exc
         return CloudflareClient(token)
 
-    def _translate(self, exc: CloudflareError) -> AppError:
+    def _translate(self, exc: CloudflareError, *, scope: str | None = None) -> AppError:
         """Cloudflare's failure → the standard envelope (§9: ``message`` is an i18n key).
 
         Cloudflare's own text is never put in the envelope — it is not translatable and §9 does
@@ -625,12 +628,24 @@ class CloudflareService:
         named by its code and never reaches here**, so "the 403 that really is broken" and "the
         403s that are merely degraded" can both be true without either having to qualify the
         other.
+
+        **A write names the permission it needed** (``scope``). The account's probes are all
+        reads — Pages projects list fine on a token with *Pages: Read* — so the first a tenant
+        learns of a read-only token is the refusal on the write, and "this token may not do
+        that" left them guessing which of a dozen token rows to tick. Linking a Pages project
+        and pushing a redirect both failed that way on a live install for weeks.
         """
         mapped = _ERROR_CODES.get(exc.code or -1)
         if mapped:
             code, key, status = mapped
             return AppError(code, key, status_code=status)
         if isinstance(exc, CloudflareAuthError):
+            if exc.status == 403 and scope in _WRITE_SCOPES:
+                return AppError(
+                    "cloudflare_scope_missing",
+                    f"errors.cloudflare_scope_missing_{scope}",
+                    status_code=409,
+                )
             if exc.status == 403:
                 # Not "your token is wrong" — "this token may not do *this*". The fix is one
                 # permission in Cloudflare's token editor, and it is unreachable from a sentence
@@ -1511,7 +1526,7 @@ class CloudflareService:
         try:
             created = await self._client(account).create_dns_record(zone.cf_zone_id, body)
         except CloudflareError as exc:
-            raise self._translate(exc) from exc
+            raise self._translate(exc, scope="dns") from exc
         await self._record_dns_activity(zone, "cloudflare.dns_record_created", payload)
         return self._record(created)
 
@@ -1525,7 +1540,7 @@ class CloudflareService:
                 zone.cf_zone_id, record_id, self._record_body(payload)
             )
         except CloudflareError as exc:
-            raise self._translate(exc) from exc
+            raise self._translate(exc, scope="dns") from exc
         await self._record_dns_activity(zone, "cloudflare.dns_record_updated", payload)
         return self._record(updated)
 
@@ -1535,7 +1550,7 @@ class CloudflareService:
         try:
             await self._client(account).delete_dns_record(zone.cf_zone_id, record_id)
         except CloudflareError as exc:
-            raise self._translate(exc) from exc
+            raise self._translate(exc, scope="dns") from exc
         if zone.domain_id is not None:
             await self.activity.record(
                 DOMAIN_ENTITY,
@@ -1676,7 +1691,7 @@ class CloudflareService:
             ruleset = await client.get_redirect_ruleset(zone.cf_zone_id)
         except CloudflareError as exc:
             await self._record_failure(account, exc)
-            raise self._translate(exc) from exc
+            raise self._translate(exc, scope="redirect") from exc
 
         if row is not None and rules.find_our_rule(ruleset, row.cf_rule_id) is not None:
             raise AppError(
@@ -1807,7 +1822,7 @@ class CloudflareService:
             # text without reddening the row (``_record_failure`` follows ``_flag_account``'s
             # rule): "not scoped for this call" is degraded, not broken.
             await self._record_failure(account, exc)
-            raise self._translate(exc) from exc
+            raise self._translate(exc, scope="redirect") from exc
 
         # Past this point the rule exists at Cloudflare, so nothing below may raise: a rollback
         # would lose the only record that it does. The placeholder's own scope is DNS, and its
@@ -1887,7 +1902,7 @@ class CloudflareService:
                 # A rule already gone at Cloudflare is the state we wanted; anything else stops
                 # us, so the local row never claims a removal that did not happen.
                 if exc.status != 404:
-                    raise self._translate(exc) from exc
+                    raise self._translate(exc, scope="redirect") from exc
 
         await self._forget_redirect_row(domain, row)
 
@@ -2013,7 +2028,7 @@ class CloudflareService:
             await client.update_redirect_rule(zone.cf_zone_id, ruleset_id, rule_id, body)
         except CloudflareError as exc:
             await self._record_failure(account, exc)
-            raise self._translate(exc) from exc
+            raise self._translate(exc, scope="redirect") from exc
 
         # Past here the rule at Cloudflare says the new thing, so nothing below may raise: a
         # rollback would leave the only record of it behind (`set_redirect`'s rule, same reason).
@@ -2092,7 +2107,7 @@ class CloudflareService:
             # below ever claims a removal that did not happen.
             if exc.status != 404:
                 await self._record_failure(account, exc)
-                raise self._translate(exc) from exc
+                raise self._translate(exc, scope="redirect") from exc
 
         row = (
             await self.ctx.session.execute(
@@ -3044,7 +3059,7 @@ class CloudflareService:
             if zone is not None and project.subdomain:
                 await self._ensure_pages_cname(client, zone, hostname, project.subdomain)
         except CloudflareError as exc:
-            raise self._translate(exc) from exc
+            raise self._translate(exc, scope="pages") from exc
 
         existing = (
             await self.ctx.session.execute(
@@ -3130,7 +3145,7 @@ class CloudflareService:
                 )
             except CloudflareError as exc:
                 if exc.status != 404:
-                    raise self._translate(exc) from exc
+                    raise self._translate(exc, scope="pages") from exc
         await self.activity.record(
             DOMAIN_ENTITY,
             link.domain_id,

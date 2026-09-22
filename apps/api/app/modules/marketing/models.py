@@ -28,6 +28,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -235,6 +236,13 @@ class MarketingCompanySettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMix
     #: ``modules/marketing/leads/profile.py``. **NULL = no leads dashboard**: every client meant
     #: that before the column existed, and nothing on any screen invents a profile for them.
     lead_profile: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    #: This client's **AI search overview** settings (docs/SERANKING.md) — a diff over
+    #: ``MarketingSettings.ai_search``, validated by ``marketing.aisearch.AiSearchSettings``:
+    #: whether the overview is read at all, which engines, which country database, and the two
+    #: things only a client has — the ``target`` (domain, host or URL) and the ``brand`` whose
+    #: mentions are counted. **NULL = follow the house default**, and so is every key the blob
+    #: leaves out; a target left out is derived from what the client already has linked.
+    ai_search: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
 
 class MarketingSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
@@ -259,6 +267,18 @@ class MarketingSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Bas
     #: client project, which is why it belongs here and not on the link: an agency holds one
     #: SE Ranking account and links each client's project out of it.
     seranking_api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: A **separate Data API key**, where the agency holds one (docs/SERANKING.md §2). SE Ranking
+    #: sells two APIs and issues a token for each: the project API (rankings, the project list)
+    #: and the Data API (AI Search, the subscription). One key often reaches both, and SE
+    #: Ranking's own MCP server takes two — so this is optional, NULL means *use the key above*,
+    #: and the check on the settings screen says which API each key actually reaches.
+    seranking_data_api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: The house **AI search overview** settings every client inherits (docs/SERANKING.md):
+    #: on or off, which engines (``all`` is SE Ranking's own cross-engine aggregate), the
+    #: country database and the scope. NULL = the code defaults in ``marketing.aisearch`` —
+    #: **off**, because every read costs the agency 800 of its own units and an upgrade must
+    #: not start spending them unasked.
+    ai_search: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     #: The house comparison every client's dashboard inherits (#312) — an
     #: ``app.core.periods.ComparePeriod`` value; NULL = the code default (``year``). An agency
     #: reports the same way for nearly all of its clients, so this is set once and overridden
@@ -287,3 +307,80 @@ class MarketingSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Bas
     #: reader who treats only Paid Search as ads misses most of the paid traffic. A client's
     #: profile may override it.
     channel_groups: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+
+class MarketingAiSearchSnapshot(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
+    """One month of SE Ranking's AI Search overview for one client (docs/SERANKING.md).
+
+    **A stored answer, not a cache**: the call behind it costs 800 units, the data is monthly,
+    and a report printed from it must reprint the same figures next year — so a row is written
+    once per (client, request, month) and read ever after. ``period_month`` is the month the
+    platform *asked about* (always the last complete one at the time); ``data_month`` is the
+    month SE Ranking's own answer says it covers, which is the same in the ordinary case and
+    earlier while the vendor has not published the month yet. Keeping both is what lets the
+    screen say "juli — augustus is nog niet beschikbaar" instead of relabelling July.
+
+    The request is part of the key (``target``/``source``/``scope``/``engine``/``brand``): a
+    changed brand is a different question, and answering it from the old row would print the
+    old brand's numbers under the new name. ``engine`` is ``all`` for SE Ranking's aggregate
+    and ``brand`` is ``''`` rather than NULL for "let SE Ranking decide" — NULLs are distinct
+    inside a unique constraint, so a nullable column there would permit the duplicates the
+    constraint exists to refuse.
+
+    A refusal is stored too (``status``), with no figures: it is what stops a page that is
+    opened forty times a day from asking a key that lacks Data API access forty times, and what
+    lets the screen name *which* refusal it was.
+    """
+
+    __tablename__ = "marketing_ai_search_snapshots"
+    __table_args__ = (
+        UniqueConstraint(
+            "org_id",
+            "company_id",
+            "target",
+            "source",
+            "scope",
+            "engine",
+            "brand",
+            "period_month",
+            name="uq_marketing_ai_search_snapshot_key",
+        ),
+        Index("ix_marketing_ai_search_company_month", "org_id", "company_id", "period_month"),
+    )
+
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    target: Mapped[str] = mapped_column(String(512), nullable=False)
+    #: The country database (alpha-2, SE Ranking's ``source``). Not a locale.
+    source: Mapped[str] = mapped_column(String(8), nullable=False)
+    scope: Mapped[str] = mapped_column(String(16), nullable=False)
+    engine: Mapped[str] = mapped_column(String(16), nullable=False)
+    brand: Mapped[str] = mapped_column(
+        String(255), nullable=False, default="", server_default=text("''")
+    )
+    #: First day of the month that was asked about.
+    period_month: Mapped[date] = mapped_column(Date, nullable=False)
+    #: First day of the month the answer covers, by SE Ranking's own time series. NULL on a
+    #: refusal, and on an answer that carried no series to read a month from.
+    data_month: Mapped[date | None] = mapped_column(Date, nullable=True)
+    #: ``ok`` or one of ``aisearch.REFUSALS`` (``denied`` / ``insufficient`` / ``failed``).
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    #: The four headline figures, ``{metric: {current, previous}}`` — already aligned to
+    #: ``data_month`` by ``aisearch.parse_overview``, never SE Ranking's raw ``summary``.
+    summary: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")
+    #: The monthly streams, ``{stream: [{month, value}]}``.
+    time_series: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
+    #: The brand names SE Ranking attributes to the target, read once beside the first
+    #: overview (100 units) so the screen can show *whose* mentions were counted.
+    discovered_brands: Mapped[list] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    #: Units this row cost, as SE Ranking prices the calls that made it.
+    units: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

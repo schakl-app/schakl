@@ -44,7 +44,13 @@ free date range, the sortable tables and the CSV export.
 1. Resolve the profile; `configured: false` for a client without one — a state the screen
    teaches from, not an error.
 2. Refuse a filter the profile cannot express (422 naming the dimensions it can) — a filter
-   silently dropped answers a different question with every row still valid.
+   silently dropped answers a different question with every row still valid. **A page filter is
+   a field a request event carries** (`LeadProfile.filter_dimensions`): it is AND-ed onto every
+   report, so `error_reason` — which only an error event has — is a dimension the error widgets
+   group by and never a filter. Drawn as one, a click on "validatiefout" answered zero requests
+   on every tile, emptied every other filter's options and raised a silent-zero warning about a
+   week that had requests in it. The widget says which it is (`LeadWidget.filterable`); the
+   screen draws a row as a link on that and on nothing else.
 3. Resolve the period on the org's calendar. **A period may now be a free span**:
    `2026-08-29..2026-09-03` is a token beside `30d`, `last_month` and `2026-Q3`
    (`app/core/periods.py`), clamped the same three ways, so a breakpoint can be the floor of a
@@ -54,7 +60,14 @@ free date range, the sortable tables and the CSV export.
    (labels are applied on the way out) and a changed role re-fetches because the request
    changed. One hour, which is enough for a report GA4 itself lags behind. Every Google
    round-trip runs inside `ctx.release_db()`.
-5. Compute the widgets, the coverage, the warnings and the filter controls.
+5. Compute the widgets, the coverage, the warnings and the filter controls. **What a filter
+   offers is what the period saw, not what the narrowed reports still contain**: under an active
+   filter the options are read off the *unfiltered* plan (`widgets.period_values`) — the view
+   the reader clicked from, so a Redis hit in every ordinary case, the same two batches on a
+   miss, and the narrowed options on a failure. Taken from the narrowed reports they collapsed
+   to the value just picked, so a second service could not be added and another could not be
+   switched to without clearing first. The silent-zero check is skipped under a filter for the
+   same reason the options are not: it is a statement about the measurement, not the view.
 
 A client-facing login (`ctx.is_portal`) gets the widgets, the coverage and the fixed note — and
 never the deep links, the unavailable list or the diagnostics about the agency's own setup.
@@ -86,15 +99,33 @@ the grouped view is its own bar widget.
 ## 5. The screen
 
 `MarketingLeadsSection` sits above the per-source sections on the client's Marketing tab, on
-`/marketing`, and on the client's portal homepage tile. Filters are chips over the values the
-period saw, and a click on a bar or a table row toggles that value — all through the URL
+`/marketing`, and on the client's portal homepage tile. **Each part is a section drawn the way
+the per-source sections are** — a white card on the page's ground, figures as tinted `stat`
+tiles, lists and charts as outlined boxes inside it (docs/UX.md, the visual system) — because
+the first version drew hairline boxes with no fill directly on the page: tiles the colour of
+the background. The two-column grid is **arranged, not declared**: which widgets exist depends
+on the profile, so a half-width widget with no half beside it takes the row rather than leaving
+a block-sized hole. Filters sit *inside* the Leads section (they narrow what GA4 measured; the
+advertising figures are never joined to them): one labelled row per dimension, a chip per value
+the period saw, the picked ones filled and carrying their own ✕. A click on a bar or a table row
+of a `filterable` widget toggles that value — all through the URL
 (`?f=service:autotransport`), so a narrowed dashboard is a link and the back button undoes a
-click. Tables sort and page locally (the API caps rows and says so) and export CSV; the funnel
+click. **What is picked is read from the URL, not from the payload**, and the section says
+"Bijwerken…" and dims while the narrowed read runs: the payload describes the previous view for
+the seconds Google takes, and a chip that lights up after the answer lands reads as a press
+that missed. Tables sort and page locally (the API caps rows and says so) and export CSV; the funnel
 draws dropout in amber from 35 % and red from 60 %, the thresholds the Looker build used, and
 nothing else on the page is red. The period picker gained a free span beside the months and
 quarters. The **profile editor** (`/companies/{id}/marketing/profile`, `marketing.link.manage`)
 picks event names, custom dimensions, key events and conversion actions from a live catalog of
 the client's own property and account (`GET …/leads/catalog`), so nothing is typed from memory.
+
+`MarketingAiSearchSection` sits **below** the per-source sections on both hosts: SE Ranking's AI
+Search overview for the client — brand mentions, links, average position and opportunity traffic
+in AI answers, last month against the month before (`docs/SERANKING.md`). It is about the
+*client*, not about a link, so it is drawn whether or not any source is linked and the website
+filter does not apply to it; like the leads it streams, because the first view of a month is a
+read from SE Ranking. Off until the agency switches it on, since every read spends its units.
 
 ## 6. Reuse: the report section
 

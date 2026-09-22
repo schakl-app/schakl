@@ -111,6 +111,15 @@ class ReportWindow:
     #: The **document's** language, not the caller's UI locale. A Dutch agency reporting to a
     #: German client sends German from a Dutch screen (docs/INVOICING.md's rule for documents).
     locale: str = "nl"
+    #: The section keys this run will actually print, or ``None`` for "any of them" (a caller
+    #: that is not a report run). A provider that gathers once for several sections reads it to
+    #: skip the questions no section will use: SE Ranking's AI Result Tracker answers **401**
+    #: for every project whose plan does not include it, so asking it for a document that has
+    #: no AI-search chapter put the same warning on every report for nothing.
+    sections: frozenset[str] | None = None
+
+    def wants(self, key: str) -> bool:
+        return self.sections is None or key in self.sections
 
 
 #: ``async (ctx, window) -> dict | None``. ``None`` means "this module has nothing for this

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime, time
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -248,6 +248,12 @@ class TimeonSyncRequest(BaseModel):
     #: one month somebody noticed was wrong. Absent means the account's own ``window_days``.
     window_from: date | None = None
     window_to: date | None = None
+    #: For this run only: which side is right about a **project** field the run cannot decide
+    #: for itself — one that differs on a pairing with no record of the two ever agreeing, or
+    #: one both sides changed. Absent means the connection's own ``conflict_policy``, and under
+    #: ``manual`` that means the field is reported and left alone. Hours are never affected:
+    #: their conflicts are stored decisions with a queue of their own.
+    prefer: Literal["schakl", "timeon"] | None = None
 
 
 class TimeonWorkspaceRead(BaseModel):

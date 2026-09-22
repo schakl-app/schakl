@@ -8939,6 +8939,101 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/marketing/companies/{company_id}/ai-search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Company Ai Search
+         * @description How visible this client's brand is in AI answers (ChatGPT, Perplexity, Gemini, Google's
+         *     AI Overviews and AI Mode) **last month, against the month before** — SE Ranking's AI Search
+         *     overview (docs/SERANKING.md): brand presence, link presence, average position and AI
+         *     opportunity traffic, plus the monthly series behind them.
+         *
+         *     Always the last complete month. Where it is not stored yet it is read from SE Ranking first
+         *     (800 units per engine choice, once per month) and stored; after that this is a database
+         *     read. ``state`` is ``off`` where the agency has not switched the overview on for this
+         *     client, ``no_target`` where no domain could be derived, ``no_key`` with no SE Ranking key.
+         */
+        get: operations["company_ai_search_api_v1_marketing_companies__company_id__ai_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/marketing/companies/{company_id}/ai-search/brand": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lookup Company Ai Search Brand
+         * @description The brand name(s) SE Ranking attributes to this client's target (100 units). Brand
+         *     presence counts *that* brand's mentions, so a wrong attribution is a wrong number — look it
+         *     up, and set the brand explicitly where SE Ranking's answer is not the client's trade name.
+         */
+        post: operations["lookup_company_ai_search_brand_api_v1_marketing_companies__company_id__ai_search_brand_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/marketing/companies/{company_id}/ai-search/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh Company Ai Search
+         * @description Ask SE Ranking again **now**, whatever is stored. Spends 800 units per configured engine
+         *     choice — which is why it is the manage permission and its own verb, never a parameter on
+         *     the read: after a changed key, a topped-up plan or a corrected brand.
+         */
+        post: operations["refresh_company_ai_search_api_v1_marketing_companies__company_id__ai_search_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/marketing/companies/{company_id}/ai-search/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Company Ai Search Settings
+         * @description This client's AI Search settings, as a diff over the house defaults in Instellingen →
+         *     Marketing: on/off, engines (``all`` is SE Ranking's cross-engine aggregate), the country
+         *     database, the scope, the target and the brand. **Posted whole** — a field left ``null``
+         *     follows the house default. Saving asks SE Ranking nothing; the next read does.
+         */
+        put: operations["set_company_ai_search_settings_api_v1_marketing_companies__company_id__ai_search_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/marketing/companies/{company_id}/drilldown": {
         parameters: {
             query?: never;
@@ -9202,6 +9297,31 @@ export interface paths {
          * @description Store the encrypted Google Ads developer token (an empty value keeps the stored one).
          */
         put: operations["save_settings_api_v1_marketing_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/marketing/settings/seranking/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check Seranking Key
+         * @description Which of SE Ranking's two APIs the stored key reaches — the project API (rankings) and
+         *     the **Data API** (AI Search) — with the Data API plan's units left, and what the AI Search
+         *     overview costs per month at the current settings. Free: neither probe is a charged call.
+         *
+         *     A GET on purpose: it changes nothing, and a read must keep answering on an expired licence
+         *     (the write gate reads the method), which is exactly when somebody is checking credentials.
+         */
+        get: operations["check_seranking_key_api_v1_marketing_settings_seranking_check_get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -15483,6 +15603,195 @@ export interface components {
             principals: components["schemas"]["InstancePrincipal"][];
         };
         /**
+         * AiSearchCompanySettingsWrite
+         * @description One client's diff over the house defaults, **posted whole**.
+         *
+         *     Unlike the org form, ``null`` here is a value: it is how the editor says "volg de
+         *     standaard" for that field, so the stored diff is rebuilt from exactly what was posted and
+         *     a field the form leaves blank stops overriding.
+         */
+        AiSearchCompanySettingsWrite: {
+            /** Brand */
+            brand?: string | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Engines */
+            engines?: ("all" | "ai-overview" | "ai-mode" | "chatgpt" | "perplexity" | "gemini")[] | null;
+            /** Scope */
+            scope?: ("base_domain" | "domain" | "url") | null;
+            /** Source */
+            source?: string | null;
+            /** Target */
+            target?: string | null;
+        };
+        /**
+         * AiSearchEngineBlock
+         * @description One engine choice's answer. ``all`` is SE Ranking's own cross-engine aggregate.
+         */
+        AiSearchEngineBlock: {
+            /** Compare Month */
+            compare_month?: string | null;
+            /** Data Month */
+            data_month?: string | null;
+            /**
+             * Engine
+             * @enum {string}
+             */
+            engine: "all" | "ai-overview" | "ai-mode" | "chatgpt" | "perplexity" | "gemini";
+            /** Fetched At */
+            fetched_at?: string | null;
+            /** Metrics */
+            metrics?: components["schemas"]["AiSearchMetric"][];
+            /**
+             * No Data
+             * @default false
+             */
+            no_data: boolean;
+            /**
+             * Period Month
+             * Format: date
+             */
+            period_month: string;
+            /**
+             * Realigned
+             * @default false
+             */
+            realigned: boolean;
+            /** Series */
+            series?: {
+                [key: string]: components["schemas"]["AiSearchPoint"][];
+            };
+            /** Status */
+            status: string;
+        };
+        /**
+         * AiSearchMetric
+         * @description One headline figure for the month, against the month before.
+         */
+        AiSearchMetric: {
+            /** Change Absolute */
+            change_absolute?: number | null;
+            /** Change Percent */
+            change_percent?: number | null;
+            /** Current */
+            current?: number | null;
+            /** Direction */
+            direction?: string | null;
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: "brand_presence" | "link_presence" | "average_position" | "ai_opportunity_traffic";
+            /** Previous */
+            previous?: number | null;
+            /** Verdict */
+            verdict?: string | null;
+        };
+        /**
+         * AiSearchOrgSettingsWrite
+         * @description The house defaults. A field left out keeps what is stored.
+         */
+        AiSearchOrgSettingsWrite: {
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Engines */
+            engines?: ("all" | "ai-overview" | "ai-mode" | "chatgpt" | "perplexity" | "gemini")[] | null;
+            /** Scope */
+            scope?: ("base_domain" | "domain" | "url") | null;
+            /** Source */
+            source?: string | null;
+        };
+        /** AiSearchOverview */
+        AiSearchOverview: {
+            /**
+             * Brand
+             * @default
+             */
+            brand: string;
+            /**
+             * Brand Fits
+             * @default true
+             */
+            brand_fits: boolean;
+            /**
+             * Brand Origin
+             * @default vendor
+             */
+            brand_origin: string;
+            /**
+             * Can Manage
+             * @default false
+             */
+            can_manage: boolean;
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Discovered Brands */
+            discovered_brands?: string[];
+            /** Engines */
+            engines?: components["schemas"]["AiSearchEngineBlock"][];
+            house?: components["schemas"]["AiSearchSettingsRead"] | null;
+            /** Notice */
+            notice?: string | null;
+            /** Own */
+            own?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Period Month
+             * Format: date
+             */
+            period_month: string;
+            settings: components["schemas"]["AiSearchSettingsRead"];
+            /** State */
+            state: string;
+            /** Target Origin */
+            target_origin?: string | null;
+            /** Units Left */
+            units_left?: number | null;
+        };
+        /** AiSearchPoint */
+        AiSearchPoint: {
+            /** Month */
+            month: string;
+            /** Value */
+            value: number;
+        };
+        /**
+         * AiSearchSettingsRead
+         * @description Settings with every inheritance already applied — what a read will actually ask.
+         */
+        AiSearchSettingsRead: {
+            /**
+             * Brand
+             * @default
+             */
+            brand: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Engines */
+            engines: ("all" | "ai-overview" | "ai-mode" | "chatgpt" | "perplexity" | "gemini")[];
+            /**
+             * Monthly Units
+             * @default 0
+             */
+            monthly_units: number;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "base_domain" | "domain" | "url";
+            /** Source */
+            source: string;
+            /**
+             * Target
+             * @default
+             */
+            target: string;
+        };
+        /**
          * AiVisibilityImportResult
          * @description What an import wrote: the span and the sum, so the response can be checked against the
          *     console's own total before anyone trusts the tile.
@@ -17117,6 +17426,27 @@ export interface components {
         Body_verify_verify_api_v1_auth_verify_post: {
             /** Token */
             token: string;
+        };
+        /** BrandLookup */
+        BrandLookup: {
+            /** Brands */
+            brands: string[];
+            /** Target */
+            target: string;
+            /** Units */
+            units: number;
+        };
+        /**
+         * BrandLookupRequest
+         * @description What to look the brand up *for*. Both optional: left out, the client's stored (or
+         *     derived) target and country are used — but the editor sends what is in its boxes, so a
+         *     manager correcting a domain looks up the domain they typed, not the one being replaced.
+         */
+        BrandLookupRequest: {
+            /** Source */
+            source?: string | null;
+            /** Target */
+            target?: string | null;
         };
         /**
          * BreakWindow
@@ -24702,6 +25032,11 @@ export interface components {
             dimension?: string | null;
             /** Dimension Title */
             dimension_title?: string | null;
+            /**
+             * Filterable
+             * @default false
+             */
+            filterable: boolean;
             /** Key */
             key: string;
             /**
@@ -26105,6 +26440,7 @@ export interface components {
              * @default false
              */
             ads_developer_token_configured: boolean;
+            ai_search?: components["schemas"]["AiSearchSettingsRead"] | null;
             /** Channel Groups */
             channel_groups?: {
                 [key: string]: string[];
@@ -26127,15 +26463,26 @@ export interface components {
              * @default false
              */
             seranking_api_key_configured: boolean;
+            /**
+             * Seranking Data Api Key Configured
+             * @default false
+             */
+            seranking_data_api_key_configured: boolean;
         };
         /** MarketingSettingsWrite */
         MarketingSettingsWrite: {
             /** Ads Developer Token */
             ads_developer_token?: string | null;
+            ai_search?: components["schemas"]["AiSearchOrgSettingsWrite"] | null;
             /** Channel Groups */
             channel_groups?: {
                 [key: string]: string[];
             } | null;
+            /**
+             * Clear Seranking Data Api Key
+             * @default false
+             */
+            clear_seranking_data_api_key: boolean;
             default_compare?: components["schemas"]["ComparePeriod"] | null;
             /** Portal Source Labels */
             portal_source_labels?: {
@@ -26145,6 +26492,8 @@ export interface components {
             report?: components["schemas"]["ReportSplitSettingsWrite"] | null;
             /** Seranking Api Key */
             seranking_api_key?: string | null;
+            /** Seranking Data Api Key */
+            seranking_data_api_key?: string | null;
         };
         /**
          * MarketingSource
@@ -31418,6 +31767,48 @@ export interface components {
             user_id?: string | null;
         };
         /**
+         * SeRankingCheck
+         * @description Which of SE Ranking's two APIs the stored key(s) reach (docs/SERANKING.md §2).
+         */
+        SeRankingCheck: {
+            /** Configured */
+            configured: boolean;
+            /** Data Api */
+            data_api: string;
+            /**
+             * Data Api Key
+             * @default shared
+             * @enum {string}
+             */
+            data_api_key: "own" | "shared";
+            /**
+             * Enabled Clients
+             * @default 0
+             */
+            enabled_clients: number;
+            /**
+             * Expires At
+             * @default
+             */
+            expires_at: string;
+            /**
+             * Monthly Units
+             * @default 0
+             */
+            monthly_units: number;
+            /** Project Api */
+            project_api: string;
+            /**
+             * Subscription Status
+             * @default
+             */
+            subscription_status: string;
+            /** Units Left */
+            units_left?: number | null;
+            /** Units Limit */
+            units_limit?: number | null;
+        };
+        /**
          * SectionCatalogEntry
          * @description One section a template or a client may order or switch off — the registry, made visible.
          */
@@ -35143,6 +35534,8 @@ export interface components {
             dry_run: boolean;
             /** @default hours */
             kind: components["schemas"]["TimeonSyncKind"];
+            /** Prefer */
+            prefer?: ("schakl" | "timeon") | null;
             /** Window From */
             window_from?: string | null;
             /** Window To */
@@ -55078,6 +55471,138 @@ export interface operations {
             };
         };
     };
+    company_ai_search_api_v1_marketing_companies__company_id__ai_search_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiSearchOverview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    lookup_company_ai_search_brand_api_v1_marketing_companies__company_id__ai_search_brand_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["BrandLookupRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandLookup"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_company_ai_search_api_v1_marketing_companies__company_id__ai_search_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiSearchOverview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_company_ai_search_settings_api_v1_marketing_companies__company_id__ai_search_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AiSearchCompanySettingsWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AiSearchOverview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     drilldown_api_v1_marketing_companies__company_id__drilldown_get: {
         parameters: {
             query: {
@@ -55561,6 +56086,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_seranking_key_api_v1_marketing_settings_seranking_check_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeRankingCheck"];
                 };
             };
         };

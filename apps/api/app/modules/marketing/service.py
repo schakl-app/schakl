@@ -62,6 +62,9 @@ from app.i18n import resolve_locale, translate
 from app.integrations.google import client as google_client
 from app.integrations.google.models import ConnectionStatus, GoogleConnection
 from app.modules.companies.models import Company
+from app.modules.marketing.aisearch import AiSearchSettings
+from app.modules.marketing.aisearch import parse as parse_ai_search
+from app.modules.marketing.aisearch.schemas import AiSearchSettingsRead
 from app.modules.marketing.aiv_import import ParsedAiExport
 from app.modules.marketing.layout import (
     GA4_KEY_EVENT_DRILLDOWN,
@@ -357,6 +360,28 @@ async def resolve_seranking_key(session: AsyncSession, org_id: uuid.UUID) -> str
         except ValueError:  # key rotated: the stored secret is unreadable, so it is not there
             return None
     return None
+
+
+async def resolve_seranking_data_key(
+    session: AsyncSession, org_id: uuid.UUID
+) -> tuple[str | None, bool]:
+    """The key for SE Ranking's **Data API**, and whether it is the agency's separate one.
+
+    SE Ranking issues a token per API (docs/SERANKING.md §2). Most agencies hold one that
+    reaches both, so the separate key is optional and its absence means *use the shared one* —
+    the ``NULL`` = inherit idiom, applied to a credential. The flag travels with it because the
+    two are fixed by different acts: a refused shared key may simply lack Data API access,
+    while a refused separate key is a wrong or expired key.
+    """
+    row = await session.scalar(
+        select(MarketingSettings).where(MarketingSettings.org_id == org_id)
+    )
+    if row is not None and row.seranking_data_api_key_encrypted:
+        try:
+            return decrypt(row.seranking_data_api_key_encrypted), True
+        except ValueError:  # rotated instance key: unreadable, so it is not there
+            pass
+    return await resolve_seranking_key(session, org_id), False
 
 
 class SourceNotConfigured(RuntimeError):
@@ -2350,6 +2375,10 @@ PORTAL_NEUTRAL_SOURCES = frozenset(
 )
 
 
+def _ai_search_read(resolved: AiSearchSettings) -> AiSearchSettingsRead:
+    return AiSearchSettingsRead(**resolved.as_dict(), monthly_units=resolved.monthly_units)
+
+
 class MarketingSettingsService:
     """Org-level marketing settings (#134): the encrypted Google Ads developer token.
 
@@ -2370,6 +2399,10 @@ class MarketingSettingsService:
             ads_developer_token_configured=bool(row and row.ads_developer_token_encrypted),
             env_ads_token_configured=bool(settings.google_ads_developer_token),
             seranking_api_key_configured=bool(row and row.seranking_api_key_encrypted),
+            seranking_data_api_key_configured=bool(
+                row and row.seranking_data_api_key_encrypted
+            ),
+            ai_search=_ai_search_read(parse_ai_search(row.ai_search if row else None)),
             # Always resolved: the settings select has two options and no third "unset" state.
             default_compare=resolve_compare(row.default_compare if row else None),
             # Likewise resolved (#373): a screen showing the house rule shows what a run does,
@@ -2417,16 +2450,36 @@ class MarketingSettingsService:
         seranking = self._rotated(
             row.seranking_api_key_encrypted if row else None, data.seranking_api_key
         )
+        data_key = (
+            None
+            if data.clear_seranking_data_api_key
+            else self._rotated(
+                row.seranking_data_api_key_encrypted if row else None,
+                data.seranking_data_api_key,
+            )
+        )
         if row is None:
             row = MarketingSettings(
                 org_id=self.ctx.org.id,
                 ads_developer_token_encrypted=ads,
                 seranking_api_key_encrypted=seranking,
+                seranking_data_api_key_encrypted=data_key,
             )
             self.ctx.session.add(row)
         else:
             row.ads_developer_token_encrypted = ads
             row.seranking_api_key_encrypted = seranking
+            row.seranking_data_api_key_encrypted = data_key
+        if data.ai_search is not None:
+            # Merged over what is stored, the ``rankings`` rule: this screen saves every block
+            # at once, and a payload naming only ``enabled`` must not reset the engines.
+            row.ai_search = parse_ai_search(
+                data.ai_search.model_dump(exclude_none=True),
+                base=parse_ai_search(row.ai_search),
+            ).as_dict()
+            # Client-only fields have no house value; never store a blank one as if they did.
+            row.ai_search.pop("target", None)
+            row.ai_search.pop("brand", None)
         # Omitted keeps the stored value, like both secrets above — this screen saves every
         # field at once, so a form that could only submit all three would make setting the
         # comparison require retyping a developer token nobody can read back.

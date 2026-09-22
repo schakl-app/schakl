@@ -45,6 +45,9 @@ export interface LeadWidget {
   reports: string[];
   dimension?: string | null;
   dimension_title?: string | null;
+  /** Whether a row of this widget is a page filter — the API's statement (a channel and
+   *  an error reason group rows and narrow nothing). */
+  filterable?: boolean;
   value?: number | null;
   secondary?: number | null;
   secondary_key?: string | null;

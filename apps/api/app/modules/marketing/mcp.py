@@ -272,6 +272,49 @@ async def _summary(ctx: RequestContext, args: dict[str, Any]) -> ToolResult:
     )
 
 
+async def _ai_search(ctx: RequestContext, args: dict[str, Any]) -> ToolResult:
+    """SE Ranking's AI Search overview for one client — last month against the month before.
+
+    The same read the dashboard makes (``AiSearchService.overview``), so an answer in the
+    assistant and the block on the screen cannot disagree, and a month somebody already opened
+    costs nothing here. ``change_percent`` is ``None`` where there is no month before it: SE
+    Ranking's own API reports that case as +100 %, which a model would duly call growth.
+    """
+    from app.modules.marketing.aisearch.service import AiSearchService
+
+    company_id = _uuid(args.get("company_id"))
+    overview = await AiSearchService(ctx).overview(company_id)
+    return ToolResult(
+        data={
+            "state": overview.state,
+            "brand": overview.brand or None,
+            "target": overview.settings.target or None,
+            "country_database": overview.settings.source,
+            "engines": [
+                {
+                    "engine": block.engine,
+                    "status": block.status,
+                    "month": block.data_month.isoformat() if block.data_month else None,
+                    "compared_with_month": (
+                        block.compare_month.isoformat() if block.compare_month else None
+                    ),
+                    "metrics": {
+                        metric.key: {
+                            "current": metric.current,
+                            "previous": metric.previous,
+                            "change_percent": metric.change_percent,
+                            "lower_is_better": metric.key == "average_position",
+                        }
+                        for metric in block.metrics
+                    },
+                }
+                for block in overview.engines
+            ],
+        },
+        sources=(Source(type="company", id=str(company_id), label=overview.brand or ""),),
+    )
+
+
 async def _overview(ctx: RequestContext, args: dict[str, Any]) -> ToolResult:
     """Every linked client on one grid, ranked server-side."""
     sort = args.get("sort")
@@ -408,6 +451,27 @@ MARKETING_MCP_TOOLS: list[AIToolSpec] = [
             "additionalProperties": False,
         },
         handler=_summary,
+        permission=_READ,
+    ),
+    AIToolSpec(
+        name="marketing.ai_search",
+        description=(
+            "How visible one client's brand is inside AI answers (ChatGPT, Perplexity, Gemini, "
+            "Google's AI Overviews and AI Mode), for the last complete month against the month "
+            "before it — SE Ranking's AI Search overview. brand_presence and link_presence are "
+            "counts of AI answers that mention the brand / link to the site; average_position "
+            "is the link's place among the cited sources (lower is better); "
+            "ai_opportunity_traffic is the monthly search volume behind those answers, NOT "
+            "visitors. state is 'off' where the agency has not switched this on for the client. "
+            "Engine 'all' is SE Ranking's own combined figure, never a sum of the others."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {"company_id": {"type": "string", "format": "uuid"}},
+            "required": ["company_id"],
+            "additionalProperties": False,
+        },
+        handler=_ai_search,
         permission=_READ,
     ),
     AIToolSpec(

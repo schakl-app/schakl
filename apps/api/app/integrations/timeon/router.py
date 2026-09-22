@@ -180,6 +180,7 @@ async def run_sync(
         window_from=payload.window_from,
         window_to=payload.window_to,
         actor_user_id=None if ctx.is_system else ctx.user.id,
+        prefer=payload.prefer,
     )
     return (await present_runs(ctx, [run]))[0]
 

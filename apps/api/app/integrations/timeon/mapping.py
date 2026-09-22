@@ -210,7 +210,7 @@ def neutral_from_entry(entry: Any, *, resolver: Resolver, has_remote_start: bool
     }
 
 
-def fingerprint(neutral: dict[str, Any]) -> str:
+def fingerprint(neutral: dict[str, Any], fields: tuple[str, ...] = COMPARED_FIELDS) -> str:
     """A stable digest of a neutral shape.
 
     ``sort_keys`` because a dict's order is not part of what it means, and because a JSONB
@@ -218,12 +218,16 @@ def fingerprint(neutral: dict[str, Any]) -> str:
     bytes, which is how a carefully ordered payload came back scrambled).
     """
     payload = json.dumps(
-        {k: neutral.get(k) for k in COMPARED_FIELDS}, sort_keys=True, default=str
+        {k: neutral.get(k) for k in fields}, sort_keys=True, default=str
     )
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
-def differences(local: dict[str, Any], remote: dict[str, Any]) -> dict[str, dict[str, Any]]:
+def differences(
+    local: dict[str, Any],
+    remote: dict[str, Any],
+    fields: tuple[str, ...] = COMPARED_FIELDS,
+) -> dict[str, dict[str, Any]]:
     """Only the compared fields that actually differ, in schakl's vocabulary on both sides.
 
     Empty when the two agree — and *agreement is this function*, never equality of the two
@@ -248,7 +252,7 @@ def differences(local: dict[str, Any], remote: dict[str, Any]) -> dict[str, dict
     agree").
     """
     out: dict[str, dict[str, Any]] = {}
-    for field in COMPARED_FIELDS:
+    for field in fields:
         left, right = local.get(field), remote.get(field)
         if left == right:
             continue

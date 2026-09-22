@@ -287,6 +287,7 @@ class _Ctx:
         self.end = end
         self.locale = locale
         self.channel_groups = channel_groups
+        self.filtered = False
         self._role_cache: dict[str, frozenset[str]] = {}
 
     def roles_of(self, event_name: str) -> frozenset[str]:
@@ -328,11 +329,20 @@ def compute(
     locale: str,
     channel_groups: dict[str, list[str]],
     has_ads: bool,
+    filtered: bool = False,
 ) -> Computed:
-    """Every GA4 widget the profile allows, from the reports the plan fetched."""
+    """Every GA4 widget the profile allows, from the reports the plan fetched.
+
+    ``filtered`` says the reports were narrowed by the reader. The silent-zero check is then
+    skipped: it is a statement about the *measurement* ("traffic and no request for a week"),
+    and a reader who narrowed the page to a service with two requests a month has not found a
+    broken tag.
+    """
     ctx = _Ctx(profile, reports, start=start, end=end, locale=locale, channel_groups=channel_groups)
+    ctx.filtered = filtered
     out = Computed()
     hidden = set(profile.hidden_widgets)
+    filter_dimensions = set(profile.filter_dimensions())
     for definition in WIDGETS:
         if definition.source != "ga4":
             # The advertising half is computed in ads.py; what this pass owes it is the
@@ -356,6 +366,7 @@ def compute(
             continue
         widget = _BUILDERS[definition.key](ctx, definition)
         if widget is not None:
+            widget.filterable = widget.dimension in filter_dimensions
             out.widgets.append(widget)
     _quality(ctx, out)
     _coverage(ctx, out)
@@ -796,7 +807,8 @@ def _quality(ctx: _Ctx, out: Computed) -> None:
     # failure a dashboard of zeros cannot distinguish from a quiet week.
     daily, traffic = ctx.report(g.R_DAILY), ctx.report(g.R_TRAFFIC)
     if (
-        daily is not None
+        not ctx.filtered
+        and daily is not None
         and traffic is not None
         and g.SESSIONS in traffic.metrics
         and g.EVENT_COUNT in daily.metrics
@@ -847,6 +859,27 @@ def _coverage(ctx: _Ctx, out: Computed) -> None:
                 share=round(not_set / total, 4),
             )
         )
+
+
+def period_values(
+    profile: LeadProfile,
+    reports: dict[str, g.ParsedReport],
+    *,
+    start: date,
+    end: date,
+    locale: str,
+) -> dict[str, dict[str, float]]:
+    """The filter controls' options, read off a set of reports — the *unfiltered* ones.
+
+    Options taken from the narrowed reports collapse to the value just picked: with
+    ``service:autotransport`` on, Dienst offered Autotransport and nothing else, so a second
+    service could not be added and another could not be switched to without clearing first.
+    What a filter offers is what the period saw; what it shows is what the reader picked.
+    """
+    ctx = _Ctx(profile, reports, start=start, end=end, locale=locale, channel_groups={})
+    out = Computed()
+    _seen_values(ctx, out)
+    return out.seen_values
 
 
 def _seen_values(ctx: _Ctx, out: Computed) -> None:

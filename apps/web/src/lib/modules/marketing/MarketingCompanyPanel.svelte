@@ -48,8 +48,9 @@
   const tabHref = $derived(`/companies/${companyId}/marketing`);
   // One consent for GA4 + Search Console + Ads together, landing back on this client's page.
   const connect = $derived(connectHref(page.url.pathname + page.url.search));
-  // Who a linked source syncs through: "via jou" for your own grant, the colleague's name
-  // otherwise. Nobody should have to guess whose account is keeping a client's numbers alive.
+  // Whose grant a linked source synced through: "via jou" for your own, the colleague's name
+  // otherwise. Drawn only beside a broken connection — on a working source it was a name on
+  // every block that nobody needed, and on a broken one it is who to ask.
   const via = (owner: { name: string; email: string; is_me: boolean } | null | undefined) =>
     owner ? t("marketing.via", { who: owner.is_me ? t("marketing.via_me") : owner.name }) : "";
 
@@ -117,11 +118,6 @@
               <span class="text-text">{src.display_name}</span>
               {#if src.website_name}
                 <span class="text-xs text-text-muted">· {src.website_name}</span>
-              {/if}
-              {#if src.connection_owner}
-                <span class="text-xs text-text-muted" title={src.connection_owner.email}>
-                  · {via(src.connection_owner)}
-                </span>
               {/if}
               <form method="POST" action="?/marketingUnlink" use:enhance class="flex">
                 <input type="hidden" name="link_id" value={src.link_id} />
@@ -223,11 +219,6 @@
               >
                 {t(`marketing.health.${src.health}`)}
               </span>
-              {#if src.connection_owner}
-                <span class="text-xs text-text-muted" title={src.connection_owner.email}>
-                  {via(src.connection_owner)}
-                </span>
-              {/if}
             </div>
             {#if src.deep_link}
               <a
@@ -245,7 +236,14 @@
           {#if src.health === "pending"}
             <p class="text-sm text-text-muted">{t("marketing.pending_hint")}</p>
           {:else if src.health === "disconnected"}
-            <p class="text-sm text-red-600 dark:text-red-400">{t("marketing.disconnected")}</p>
+            <p class="text-sm text-red-600 dark:text-red-400">
+              {t("marketing.disconnected")}
+              {#if src.connection_owner}
+                <span class="text-text-muted" title={src.connection_owner.email}>
+                  {via(src.connection_owner)}
+                </span>
+              {/if}
+            </p>
           {:else}
             {#if src.health === "error" && src.last_error}
               <!-- The provider's own sentence, already scrubbed, printed rather than only

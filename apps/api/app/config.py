@@ -233,6 +233,12 @@ class Settings(BaseSettings):
     google_ads_api_host: str = "https://googleads.googleapis.com"
     google_analytics_admin_base_url: str = "https://analyticsadmin.googleapis.com/v1beta"
     google_analytics_data_base_url: str = "https://analyticsdata.googleapis.com/v1beta"
+    # SE Ranking's two hosts (docs/SERANKING.md): the project/rankings API and the Data API
+    # (site audit, AI Result Tracker, AI Search). Settings rather than constants for the reason
+    # the Microsoft pair below are — a test stack or a proxy points them elsewhere without a
+    # code change, and nothing else in the product is allowed to spell either host.
+    seranking_api4_url: str = "https://api4.seranking.com"
+    seranking_api_v1_url: str = "https://api.seranking.com/v1"
 
     # --- Microsoft 365 OAuth (docs/MICROSOFT.md) ---
     # The instance-wide fallback for an Entra app registration, exactly as the Google pair above:

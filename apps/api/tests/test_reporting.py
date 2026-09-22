@@ -211,6 +211,120 @@ def test_a_banned_phrase_is_checked_not_merely_requested() -> None:
     assert narrative.banned_phrases_used("Het beeld is rustig.", banned) == []
 
 
+def test_a_quoted_figure_loses_its_quotation_marks() -> None:
+    """The first month of real reports read *er waren "6.938" vertoningen*: the prompt said
+    "quote the figures as they stand", and a model read that as punctuation."""
+    text = 'er waren "6.938" vertoningen en \'+14,0%\' meer, en "€ 366" aan kosten.'
+    assert narrative.unquote_figures(text) == (
+        "er waren 6.938 vertoningen en +14,0% meer, en € 366 aan kosten."
+    )
+    # A quoted phrase that is not a figure is the writer's own, and stays.
+    assert narrative.unquote_figures('de term "tuinhuis zeeland"') == 'de term "tuinhuis zeeland"'
+
+
+def test_a_passage_that_repeats_the_table_is_counted() -> None:
+    table_again = (
+        "Er waren 6.938 vertoningen en 1.385 kliks, tegenover 5.596 en 1.052 in augustus 2025; "
+        "de kosten stegen naar € 366 (+63,3%)."
+    )
+    assert narrative.figure_count(table_again) == 6
+    # A year and a single digit are words in a sentence, not the table repeated.
+    assert narrative.figure_count("In augustus 2026 brachten 3 kanalen het meeste verkeer.") == 0
+
+
+class _FakeAI:
+    def __init__(self, text: str, *, truncated: bool = False) -> None:
+        self.text, self.truncated = text, truncated
+
+    async def complete(self, *_args, **_kwargs):
+        return self.text, []
+
+    async def flush_usage(self, _feature: str) -> None:
+        return None
+
+
+async def _narrate(service: _FakeAI) -> tuple[dict[str, str], list[dict[str, str]]]:
+    return await narrative.write_narrative(
+        service,  # type: ignore[arg-type]
+        presented={},
+        profile=None,
+        tone=None,
+        sections=[("marketing.traffic_channels", "how visitors arrived")],
+        locale="nl",
+        brand="Bureau",
+        period_label="augustus 2026",
+        compare_label="augustus 2025",
+        internal=False,
+    )
+
+
+async def test_a_reasoning_model_that_ran_out_of_room_says_so() -> None:
+    """Klok'uus, August 2026: ``gpt-5-mini`` spent its whole 4096-token completion budget on
+    hidden reasoning and answered an empty string. "No usable narrative" sent nobody anywhere;
+    a truncation is its own warning, and the ceiling is now high enough not to hit it."""
+    assert narrative.MAX_OUTPUT_TOKENS >= 16_000
+    _, warnings = await _narrate(_FakeAI("", truncated=True))
+    assert [w["code"] for w in warnings] == ["reporting.warning.ai_truncated"]
+    _, warnings = await _narrate(_FakeAI("sorry"))
+    assert [w["code"] for w in warnings] == ["reporting.warning.ai_empty"]
+
+
+async def test_prose_that_lists_the_table_is_flagged_and_unquoted() -> None:
+    reply = (
+        '{"summary": "Het beeld is rustig.", "marketing.traffic_channels": '
+        '"Direct gaf \\"83\\" sessies, zoeken 72, social 37 en verwijzend 12, samen 204."}'
+    )
+    written, warnings = await _narrate(_FakeAI(reply))
+    assert '"83"' not in written["marketing.traffic_channels"]
+    assert {"code": "reporting.warning.many_figures", "detail": "marketing.traffic_channels"} in (
+        warnings
+    )
+    assert not [w for w in warnings if w["detail"] == "summary"]
+
+
+def test_the_client_prompt_says_the_tables_already_carry_the_figures() -> None:
+    from app.modules.reporting import prompts
+
+    client = prompts.client_system(
+        locale="nl", brand="B", period_label="p", compare_label=None, tone=None, sections=[]
+    )
+    internal = prompts.internal_system(
+        locale="nl", brand="B", period_label="p", compare_label=None, sections=[]
+    )
+    assert "at most two figures" in client
+    assert "Quote those strings" not in client
+    assert "at most two figures" not in internal
+
+
+async def test_a_run_tells_its_providers_which_sections_it_will_print(monkeypatch) -> None:
+    """The gatherer behind the SE Ranking sections read the AI Result Tracker for every report —
+    and that tracker answers 401 for every project whose plan lacks it — so a document with no
+    AI-search chapter carried an SE Ranking warning on every run. A provider now knows what the
+    run will print."""
+    from app.registry import ReportSectionSpec, ReportWindow
+
+    seen: list[frozenset[str] | None] = []
+
+    async def provider(_ctx, window):
+        seen.append(window.sections)
+        return None
+
+    specs = [
+        ReportSectionSpec(key="a.one", title_key="x", provider=provider),
+        ReportSectionSpec(key="a.two", title_key="x", provider=provider),
+    ]
+    monkeypatch.setattr(generate, "enabled_sections", lambda *_a, **_k: specs)
+    ctx = type("Ctx", (), {"can": lambda self, _key: True})()
+    window = ReportWindow(
+        company_id=uuid.uuid4(), start=date(2026, 8, 1), end=date(2026, 8, 31),
+        compare_start=None, compare_end=None,
+    )
+    await generate.gather_sections(ctx, window, "client", None)  # type: ignore[arg-type]
+    assert seen == [frozenset({"a.one", "a.two"})] * 2
+    # A window nobody narrowed still wants everything: a caller that is not a report run.
+    assert window.wants("marketing.ai_search")
+
+
 def test_the_seeded_tone_is_data_a_tenant_can_change() -> None:
     """The editorial policy is the agency's, not the product's — it ships as a record."""
     assert "advies" in seeds.DEFAULT_BANNED_PHRASES

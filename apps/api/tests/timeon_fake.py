@@ -53,6 +53,11 @@ class FakeTimeon:
         self.users: list[dict[str, Any]] = []
         self.customers: list[dict[str, Any]] = []
         self.projects: list[dict[str, Any]] = []
+        #: ``budgetID -> Budget``. **A resource of its own**, as on the live API: the ``budget``
+        #: object on a project list row is a computed summary of one of these, and a fake that
+        #: kept the budget *on* the project would let a push that never calls ``/api/budget``
+        #: pass.
+        self.budgets: dict[int, dict[str, Any]] = {}
         #: ``hourID -> row``. Live rows only; a deleted one leaves the dict, which is exactly
         #: how the real API behaves from a reader's point of view.
         self.hours: dict[int, dict[str, Any]] = {}
@@ -90,6 +95,8 @@ class FakeTimeon:
         status_id: int = 1,
         billable: bool = True,
         budget_seconds: int | None = None,
+        budget_euros: float | None = None,
+        **extra: Any,
     ) -> dict[str, Any]:
         row: dict[str, Any] = {
             "projectID": project_id,
@@ -97,11 +104,47 @@ class FakeTimeon:
             "name": name,
             "statusID": status_id,
             "defaultBillable": billable,
+            **extra,
         }
-        if budget_seconds is not None:
-            row["budget"] = {"budget": budget_seconds}
         self.projects.append(row)
+        if budget_seconds is not None:
+            self.set_budget(project_id, unit=1, value=budget_seconds)
+        elif budget_euros is not None:
+            self.set_budget(project_id, unit=2, value=budget_euros)
         return row
+
+    def set_budget(self, project_id: int, *, unit: int, value: float, **extra: Any) -> dict:
+        """Give a project a budget, the way Timeon's own screen would (``unit`` 1 = hours, stated
+        in **seconds**; 2 = euros)."""
+        current = self.budget_of(project_id)
+        budget_id = current["budgetID"] if current else 9000 + len(self.budgets) + 1
+        self.budgets[budget_id] = {
+            "budgetID": budget_id,
+            "organisationID": ORG_ID,
+            "projectID": project_id,
+            "taskID": None,
+            "periodType": 0,
+            "unitType": unit,
+            "visibility": 0,
+            "value": value,
+            "useApproved": False,
+            "useBillable": False,
+            "useDistance": False,
+            "useExpenses": False,
+            "useProducts": False,
+            "visualInHour": False,
+            "canOverspent": True,
+            **extra,
+        }
+        return self.budgets[budget_id]
+
+    def budget_of(self, project_id: int) -> dict[str, Any] | None:
+        return next(
+            (b for b in self.budgets.values() if b.get("projectID") == project_id), None
+        )
+
+    def project(self, project_id: int) -> dict[str, Any] | None:
+        return next((p for p in self.projects if p["projectID"] == project_id), None)
 
     def add_hour(
         self,
@@ -182,6 +225,10 @@ class FakeTimeon:
             self.expire_token_after = None
             return httpx.Response(401, json={"message": "token expired"})
 
+        dynamic = self._dynamic(request.method, path, body)
+        if dynamic is not None:
+            return dynamic
+
         handler = {
             "/api/organisation": self._organisation,
             "/api/user/search": self._user_search,
@@ -256,7 +303,45 @@ class FakeTimeon:
         return self._paged(list(self.customers), body)
 
     def _project_list(self, body: dict[str, Any]) -> httpx.Response:
-        return self._paged(list(self.projects), body)
+        """Each row carries the computed ``budget`` summary only when it was asked for."""
+        rows = []
+        for project in self.projects:
+            row = dict(project)
+            budget = self.budget_of(project["projectID"])
+            if body.get("calculateBudget") and budget is not None:
+                row["budget"] = {
+                    "budgetID": budget["budgetID"],
+                    "unitType": budget["unitType"],
+                    "budget": budget["value"],
+                }
+            rows.append(row)
+        return self._paged(rows, body)
+
+    def _dynamic(self, method: str, path: str, body: dict[str, Any]) -> httpx.Response | None:
+        """The routes with an id in the path, and the ones whose verb is not POST."""
+        parts = path.strip("/").split("/")
+        if method == "PATCH" and path == "/api/project/status":
+            row = self.project(int(body.get("projectID") or 0))
+            if row is None:
+                return _refused("project not found")
+            row["statusID"] = body.get("statusID")
+            return _ok(row)
+        if method == "POST" and path == "/api/project/getnextnumber":
+            return _ok(str(len(self.projects) + 1).zfill(4))
+        if method == "GET" and parts[:2] == ["api", "project"] and len(parts) == 3:
+            row = self.project(int(parts[2])) if parts[2].isdigit() else None
+            return _ok(dict(row)) if row is not None else _refused("project not found")
+        if method == "GET" and parts[:3] == ["api", "budget", "project"] and len(parts) == 4:
+            return _ok(self.budget_of(int(parts[3])))
+        if method == "POST" and path == "/api/budget":
+            budget_id = int(body.get("budgetID") or 0) or 9000 + len(self.budgets) + 1
+            if body.get("unitType") not in (1, 2) or body.get("projectID") is None:
+                return _refused("invalid budget")
+            self.budgets[budget_id] = {**body, "budgetID": budget_id}
+            return _ok(self.budgets[budget_id])
+        if method == "DELETE" and parts[:2] == ["api", "budget"] and len(parts) == 3:
+            return _ok(self.budgets.pop(int(parts[2]), None) is not None)
+        return None
 
     def _hour_list(self, body: dict[str, Any]) -> httpx.Response:
         """Grouped by day, with a ``summary.totalItems`` the client checks against.
@@ -366,18 +451,33 @@ class FakeTimeon:
         return self._approve(body, False)
 
     def _project_create(self, body: dict[str, Any]) -> httpx.Response:
+        if not body.get("customerID") or not (body.get("name") or "").strip():
+            return _refused("name and customer are required")
         row = self.add_project(
             max([p["projectID"] for p in self.projects], default=2_100_000) + 1,
-            int(body.get("customerID") or 0),
-            body.get("name") or "",
+            int(body["customerID"]),
+            body["name"],
             status_id=int(body.get("statusID") or 1),
             billable=bool(body.get("defaultBillable")),
+            **{
+                key: body.get(key)
+                for key in ("projectNumber", "externalID", "dateFrom", "dateTo", "projectTypeID")
+                if body.get(key) is not None
+            },
         )
         return _ok(row)
 
+    #: What ``project/save`` writes. **Wholesale**, like ``hour/save``: a key the body leaves out
+    #: is blanked, which is the behaviour a push has to survive and a patching fake would hide.
+    _SAVED = ("customerID", "name", "remark", "projectNumber", "poNumber", "statusID",
+              "defaultBillable", "dateFrom", "dateTo", "internalRemark")
+
     def _project_save(self, body: dict[str, Any]) -> httpx.Response:
-        for row in self.projects:
-            if row["projectID"] == body.get("projectID"):
-                row.update({k: v for k, v in body.items() if v is not None})
-                return _ok(row)
-        return _refused("project not found")
+        row = self.project(int(body.get("projectID") or 0))
+        if row is None:
+            return _refused("project not found")
+        if not (body.get("name") or "").strip():
+            return _refused("name is required")
+        for key in self._SAVED:
+            row[key] = body.get(key)
+        return _ok(row)

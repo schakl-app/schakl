@@ -1723,6 +1723,27 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   gate: the per-account loop's `rollback` — which existed so one connection's failure would not
   stop the next — also **discarded the hours the previous connection had just synced**, so the
   loop commits per account and re-binds the transaction-local RLS GUC after each one.
+- **A direction the settings offer is a direction the engine owes, and a client method with no
+  caller is the tell** (`timeon` projects, `docs/TIMEON.md` §5a). `projects_direction` offered
+  `push` and `two_way`, the plan on the screen said *"Projectwijzigingen gaan naar Timeon"*, and
+  nothing wrote a project to Timeon for a month: `_pair_projects` walked **Timeon's** list only,
+  `create_project` / `save_project` had no caller, and the direction was read solely to decide
+  whether a Timeon project might be created *here*. It was noticed sideways — hours on a new
+  schakl project arrived over there on no project. Four rules generalise. **Walk both lists**: a
+  sync that iterates one side can only ever discover the other side's absences. **A stored
+  pairing outranks the key it was made with** — matching on `(client, name)` every run turned a
+  rename into "unknown project" and, with create-missing on, into a duplicate. **Merge per field,
+  against a record of what was last agreed** (`observed.base` on the link): a budget raised here
+  and a project closed there are two changes by two people, and where no record exists nobody can
+  know who moved, so a two-way `manual` connection *reports and asks* (`prefer` on the run, never
+  a setting) rather than guessing. And **an enum the vendor's document leaves as bare integers is
+  read out of the vendor's own client** — Timeon's web app is what says `unitType 1` is hours in
+  seconds, `2` euros, `periodType` always `0` (so a budget that resets is unsayable, a sentinel,
+  and one warning), that a budget is its own resource, and that a save replaces. Its sibling is
+  the screen's: both buttons on `/timeon` posted `kind: "hours"`, the one kind that may not
+  create, so no manual press ever made a project in either direction — a default that quietly
+  narrows what a button does is the same fault as the engine's, one layer up. And a create is
+  **never retried**: a 502 may have happened, and the second attempt is a second project.
 - **A notification that names something inside a record has to open *that*, and the record has to
   be able to unfold it** (#312 follow-up, `docs/UX.md`). Task comments were shipped for the
   three-comment task: one flat column, oldest-first, no count, no fold, and a `task.commented`
@@ -1943,7 +1964,15 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   request for a week), a profile dimension the property never registered, and the fixed note
   with every breakpoint — each a sentence beside the numbers, never a footnote. Cross-filtering
   is the URL (`?f=service:x`), the second client (APEX) is configuration only and a test says so,
-  and the report reuses the same service as a `marketing.leads` section.
+  and the report reuses the same service as a `marketing.leads` section. Its first real use
+  found the filter half wrong in two ways, and both are the API's to state. **A page filter is
+  a field a request event carries** (`LeadProfile.filter_dimensions`, `LeadWidget.filterable`):
+  it is AND-ed onto every report, so an error reason — which only an error event has — is
+  grouped by and never filtered on; drawn as a link, one click zeroed every tile, emptied the
+  other filters and raised a silent-zero warning over a week with requests in it. And **what a
+  filter offers is what the period saw, not what the narrowed reports still contain**
+  (`widgets.period_values`, read off the unfiltered plan the reader clicked from — a cache
+  hit), or picking one service removes every other from the control.
 - **A second provider is what tells you which rules were the vendor's** (`microsoft`,
   `docs/MICROSOFT.md`). Microsoft 365 answers the Google integration's three data problems a
   second time — Outlook calendar, OneDrive, Outlook mail — on the same seams (the calendar
@@ -1970,6 +1999,60 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   decisions about running both at once are stated rather than left: a colleague who connected
   both calendars gets a planned block in both, and the client hub draws a Drive panel beside a
   OneDrive panel.
+- **A paid read is claimed before it is made, and the month on the screen is the month the
+  answer covers** (SE Ranking's AI Search overview, `docs/SERANKING.md`). The ask was the Data
+  API's AI Search overview — brand presence, link presence, average position and AI opportunity
+  traffic in AI answers — on the dashboard and in the report, always last month against the
+  month before, fetched where it is missing. Five rules generalise. **A vendor's "all" may be a
+  different endpoint, not a missing parameter**: the adapter first sent `by-engine` with
+  `engine` left off, which the public reference marks *required*; the cross-engine aggregate
+  is its own path (`…/aggregated/…`, found in SE Ranking's own MCP server's source), and it is
+  the vendor's figure, never the five engines summed. Found by reading, which is §11's rule
+  doing its job before a live key existed to refuse it. **A call that costs money is claimed in
+  the database first** (docs/PAYMENTS.md, one integration over): 800 units a read, a streamed
+  page, two colleagues and a report worker — so the row is inserted as `fetching` under the
+  unique key or taken with a conditional `UPDATE`, and a refusal is *stored* and re-asked on
+  its own clock, while a refused re-read **keeps the month already stored** and reports itself
+  on that one response. **A summary that names no month is dated from the series beside it**:
+  `current`/`previous` are whatever the vendor's two newest months are, so a month not
+  published yet is served *as the month it is*, a month still running is realigned from the
+  series (and the two figures with no series lose their comparison rather than borrow one),
+  and the vendor's own `change_percent` is never read — its sign differs per metric, and it
+  reports a first snapshot as +100 %. **One credential may be two**: SE Ranking issues a token
+  per API, so the second key is optional (`NULL` = use the first) and the check asks each API
+  with the key that would actually be used for it — "rankings work, Data API refused" is a
+  sentence with a different fix from "the key is wrong" (§10's SnelStart rule). And **a
+  feature that spends the tenant's money is off until they switch it on, with the price on the
+  control** (#305): off in code, a house default, a per-client diff in both directions, and
+  800 × engines printed on the settings screen, in the client's editor and on the refresh
+  button. Three things only a browser found: an `$effect` that **read the `$state` it wrote**
+  re-ran for ever and froze the tab (a deep-proxied assignment is always a change —
+  `$state.raw`, and an effect reads nothing it writes); the report drew a section's own
+  compare span **only inside the rankings branch**, so month-over-month badges stood under the
+  cover's "vergeleken met augustus 2025"; and a KPI tile's badge took its verdict from the key
+  `"delta"` rather than from its metric, so **every lower-is-better tile printed its
+  improvement in red** — the rankings tile included, for as long as it has existed. A second
+  pass, as a client and through a generated report, found two more of the same family. **A
+  rule stated for a block must hold for the state above it**: `_block` left a refusal out for a
+  portal reader while `no_key` / `no_target` still reached them as sentences naming the
+  supplier and a settings screen they cannot open — to a client those states, and a `ready`
+  answer with every block left out, are now `off`, which draws nothing (#446). And **a caption
+  follows the tiles above it**: where this chapter is all a client has it leads the cover, and
+  month-over-month badges stood over the cover's "vergeleken met augustus 2025" — the very
+  mismatch the chapter's own caption was written to prevent, one page earlier
+  (`cover_compare_label`). One live read through SE Ranking's own connector confirmed the
+  aggregate path and that both presence figures are counts; its contract also says `scope` is
+  ignored on this endpoint, which `docs/SERANKING.md` §10 now lists as a thing to measure. The
+  first run of the adapter's own calls against a live key (§10's checklist) found the
+  documented shape and the real one disagree in four places, and the lesson is the OXXA one:
+  **a parse written from a document is a hypothesis until a real body has been fed to it**.
+  `previous` is null on every live answer, so the ordinary case compared *nothing* — link
+  presence and position now take the month before from the series and the two figures without
+  one from the month this instance stored; an engine with no series answers
+  `average_position: 0`, which is *no position* and would have printed as better than first;
+  and a site SE Ranking does not know (or an engine it does not track for NL — all but AI
+  Overviews) is `200` + `no_index` with every figure null, now the `no_data` state rather than
+  four dashes that read as "invisible in AI". The fixtures are the live bodies, trimmed.
 - **A row is private to its mailbox, not to its owner, and a link is a roster the moment two of
   them are ordinary** (`docs/GOOGLE.md` §6, `interactions/models.py`). Two asks on one screen. An
   email addressed to two colleagues arrives in two mailboxes, of which exactly one logs it

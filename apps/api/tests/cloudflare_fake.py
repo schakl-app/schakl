@@ -76,6 +76,10 @@ class FakeCloudflare:
         self.registrar: dict[str, list[dict]] = {}
         #: Path fragments this token is not allowed to touch → 403.
         self.deny: set[str] = set()
+        #: Path fragments this token may *read* but not write → 403 on anything but GET. The
+        #: shape of a real agency token: "Cloudflare Pages: Read" lists every project and the
+        #: account probes all pass, so only the first link or unlink finds out.
+        self.deny_writes: set[str] = set()
         #: Path fragments whose endpoint is **single page**: it answers the whole list at once
         #: and refuses ``page``/``per_page`` with a 400. Registrar is one in real life, so it is
         #: one here by default — a fake that paged everything is a fake in which the failure
@@ -321,6 +325,10 @@ class FakeCloudflare:
         for fragment in self.deny:
             if fragment in path:
                 return _err(403, "Actor is not authorized to perform this action", 10000)
+        if request.method != "GET":
+            for fragment in self.deny_writes:
+                if fragment in path:
+                    return _err(403, "Actor is not authorized to perform this action", 10000)
         for fragment, (status, message, code) in self.fail.items():
             if fragment in path:
                 return _err(status, message, code)
@@ -451,6 +459,11 @@ class FakeCloudflare:
                     return _err(404, "Ruleset not found", 10000)
                 return _ok(ruleset)
             if method == "PUT":
+                # What the live API answers since 2026: the entrypoint takes its phase from the
+                # path and refuses ``kind``/``phase`` in the body.
+                unknown = sorted(set(body) - {"name", "description", "rules"})
+                if unknown:
+                    return _err(400, f'invalid JSON: unknown field "{unknown[0]}"')
                 created = {
                     "id": "rs-created",
                     "name": body.get("name", "default"),

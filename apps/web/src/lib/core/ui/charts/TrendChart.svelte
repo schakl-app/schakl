@@ -21,6 +21,7 @@
     label,
     format,
     markers = [],
+    dateLabel = fmtDayMonth,
   }: {
     dates: string[];
     values: number[];
@@ -32,6 +33,12 @@
      * wearing one line, and the mark is what says so.
      */
     markers?: { date: string; label: string }[];
+    /**
+     * How a point on the x-axis is named. A day by default; a **monthly** series passes its own
+     * (`fmtMonthYear`), because "1 aug" under a point that stands for the whole of August is a
+     * date nobody measured anything on.
+     */
+    dateLabel?: (iso: string) => string;
   } = $props();
 
   const marks = $derived(
@@ -113,10 +120,10 @@
       <polyline points={line} fill="none" stroke={color} stroke-width="2" stroke-linejoin="round" />
       {#if dates.length}
         <text x={PAD.left} y={H - 6} text-anchor="start" class="fill-text-muted text-[10px]">
-          {fmtDayMonth(dates[0])}
+          {dateLabel(dates[0])}
         </text>
         <text x={W - PAD.right} y={H - 6} text-anchor="end" class="fill-text-muted text-[10px]">
-          {fmtDayMonth(dates[dates.length - 1])}
+          {dateLabel(dates[dates.length - 1])}
         </text>
       {/if}
       {#each marks as mark (mark.date)}
@@ -152,7 +159,7 @@
       style="left: {(hover.x / W) * 100}%; top: {(hover.y / H) * 100}%"
     >
       <p class="font-semibold text-text tabular-nums">{format(values[hover.i])}</p>
-      <p class="text-text-muted">{fmtDayMonth(dates[hover.i])}</p>
+      <p class="text-text-muted">{dateLabel(dates[hover.i])}</p>
     </div>
   {/if}
 </figure>

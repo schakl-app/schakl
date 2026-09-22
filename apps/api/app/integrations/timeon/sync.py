@@ -63,6 +63,7 @@ from app.core.tenancy import RequestContext
 from app.core.timezone import org_today
 from app.integrations.timeon.client import TimeonClient, TimeonError
 from app.integrations.timeon.mapping import (
+    UNRESOLVED,
     Resolver,
     differences,
     fingerprint,
@@ -90,6 +91,20 @@ from app.integrations.timeon.models import (
     TimeonSyncKind,
     TimeonSyncRun,
 )
+from app.integrations.timeon.project_mapping import (
+    PROJECT_FIELDS,
+    STATUS_CLOSED,
+    STATUS_OPEN,
+    budget_payload,
+    budget_values,
+    is_closed,
+    local_budget,
+    neutral_from_project,
+    neutral_from_project_row,
+    project_create_payload,
+    project_update_payload,
+    remote_budget,
+)
 from app.integrations.timeon.service import client_for
 from app.modules.companies.models import Company
 from app.modules.projects.models import Project, ProjectStatus
@@ -101,6 +116,20 @@ logger = logging.getLogger("schakl.timeon")
 #: write one entry per row in the organisation into a JSONB column nobody reads past the
 #: fortieth — and the counts stay exact either way, which is the half that matters.
 MAX_REPORTED = 60
+
+
+def _shown(token: str) -> str:
+    """A budget token (``h:84.50`` / ``e:1500.00``) or a name, as something a person reads.
+
+    Language-free on purpose — ``84:30`` and ``€ 1500.00`` — because it lands in a warning's
+    detail beside a translated sentence, and a unit word here would be English on a Dutch page.
+    """
+    if token.startswith("h:"):
+        minutes = round(float(token[2:]) * 60)
+        return f"{minutes // 60}:{minutes % 60:02d}"
+    if token.startswith("e:"):
+        return f"€ {token[2:]}"
+    return token or "—"
 
 
 class RunReport:
@@ -157,6 +186,9 @@ class TimeonSyncService:
         #: The reference phase records what it worked out here, and :meth:`resolver` merges it
         #: over the stored links, so both modes resolve identically.
         self._pairs: dict[str, dict[str, uuid.UUID]] = {}
+        #: ``"schakl"`` / ``"timeon"`` for this run only: which side is right about a project
+        #: field the run cannot decide for itself. See :meth:`_project_winner`.
+        self.prefer: str | None = None
 
     # ------------------------------------------------------------------ entry point
     async def run(
@@ -167,6 +199,7 @@ class TimeonSyncService:
         window_from: date | None = None,
         window_to: date | None = None,
         actor_user_id: uuid.UUID | None = None,
+        prefer: str | None = None,
     ) -> TimeonSyncRun:
         """Do one run and return its record.
 
@@ -175,6 +208,7 @@ class TimeonSyncService:
         the state an integration is least able to explain afterwards. (``require_context`` rolls
         back on an exception, so the route catches; see :meth:`_finish`.)
         """
+        self.prefer = prefer
         start, end = await self._window(window_from, window_to)
         run = await self.ctx.repo(TimeonSyncRun).create(
             account_id=self.account.id,
@@ -373,78 +407,444 @@ class TimeonSyncService:
             )
 
     async def _pair_projects(self, *, dry_run: bool, create: bool) -> None:
-        """Timeon project ↔ schakl project, on ``(client, name)``.
+        """Timeon project ↔ schakl project: pair, create what is missing, keep four fields in step.
 
-        Names are only safe *within* a client, which is why the client pairing runs first. An
-        unpaired Timeon project is a warning by default; with ``create_missing_projects`` on and
-        the direction allowing a pull, one is created — carrying its budget (Timeon states it in
-        **seconds**) and its archived status, because a project closed there and open here is a
-        difference somebody has to notice.
+        Three things happen here and until ``docs/TIMEON.md`` §5a only the first did — this method
+        walked **Timeon's** list and nothing else, so a project made in schakl was never seen,
+        ``projects_direction = push`` wrote nothing at all, and an hour booked on such a project
+        went over with no project attached.
+
+        **A stored pairing outranks the name.** The name is how two projects are *recognised*
+        the first time and nothing more: matching on it every run meant renaming a project on
+        either side read as "unknown project", and with ``create_missing_projects`` on the run
+        made a second copy of it and re-pointed the link at the copy.
+
+        **Names are only safe within a client**, which is why the client pairing runs first.
         """
         remote = await self.client.projects()
         customer_links = await self._existing_links(TimeonLinkKind.CUSTOMER)
         company_by_customer = {
             ext: link.local_id for ext, link in customer_links.items() if link.local_id
         }
+        company_by_customer.update(self._pairs.get(TimeonLinkKind.CUSTOMER.value, {}))
+        customer_by_company = {local: ext for ext, local in company_by_customer.items()}
         projects = (
             (await self.ctx.session.execute(self.ctx.repo(Project).scoped_select()))
             .scalars()
             .all()
         )
+        by_id = {p.id: p for p in projects}
         by_key = {(p.company_id, (p.name or "").strip().lower()): p for p in projects}
         links = await self._existing_links(TimeonLinkKind.PROJECT)
-        pull = self._direction(self.account.projects_direction) in ("pull", "two_way")
+        direction = self._direction(self.account.projects_direction)
+        pull = direction in ("pull", "two_way")
+        push = direction in ("push", "two_way")
+        #: schakl projects some Timeon project already answers for. Seeded from the stored
+        #: links, so a name match can never hand one project to two rows over there.
+        claimed = {link.local_id for link in links.values() if link.local_id in by_id}
 
-        for project in remote:
-            ext = str(project.get("projectID"))
+        for row in remote:
+            ext = str(row.get("projectID"))
             self.report.counts["projects_read"] += 1
-            company_id = company_by_customer.get(str(project.get("customerID")))
-            if company_id is None:
-                self.report.warn("project_no_client", name=project.get("name"), external_id=ext)
+            link = links.get(ext)
+            company_id = company_by_customer.get(str(row.get("customerID")))
+            match = by_id.get(link.local_id) if link is not None and link.local_id else None
+            created = False
+            if match is None and link is not None and link.local_id is not None:
+                # Paired once, and the schakl half is gone. Deleting a project here is somebody's
+                # decision; answering it by making the project again is the sync overruling them.
+                self.report.warn("project_gone_here", name=row.get("name"), external_id=ext)
                 continue
-            match = by_key.get((company_id, (project.get("name") or "").strip().lower()))
+            if match is None:
+                if company_id is None:
+                    self.report.warn("project_no_client", name=row.get("name"), external_id=ext)
+                    continue
+                candidate = by_key.get((company_id, (row.get("name") or "").strip().lower()))
+                if candidate is not None and candidate.id not in claimed:
+                    match = candidate
             if match is None:
                 if not (create and pull and self.account.create_missing_projects):
-                    self.report.warn(
-                        "project_unmapped", name=project.get("name"), external_id=ext
-                    )
+                    self.report.warn("project_unmapped", name=row.get("name"), external_id=ext)
                     continue
+                self.report.counts["projects_created"] += 1
                 if dry_run:
                     self.report.counts["projects_would_create"] += 1
                     continue
-                match = await self._create_project(project, company_id)
+                match = await self._create_project(row, company_id)
                 by_key[(company_id, (match.name or "").strip().lower())] = match
-                self.report.counts["projects_created"] += 1
-            await self._upsert_link(
+                created = True
+            claimed.add(match.id)
+            link = await self._upsert_link(
                 TimeonLinkKind.PROJECT,
                 external_id=ext,
                 local_id=match.id,
-                company_id=company_id,
-                external_name=project.get("name"),
+                company_id=company_id or match.company_id,
+                external_name=row.get("name"),
                 dry_run=dry_run,
-                existing=links.get(ext),
+                existing=link,
+            )
+            if not create:
+                # An hours run (or "alleen koppelen") pairs and stops: it promised to write
+                # nothing about projects, and that includes the record of what they agree on.
+                continue
+            if direction != SyncDirection.OFF.value and not created:
+                await self._reconcile_project(
+                    match, row, link, pull=pull, push=push, dry_run=dry_run
+                )
+            elif created and link is not None:
+                local = neutral_from_project(match)
+                await self._stamp_project(link, local, dict(local), PROJECT_FIELDS)
+
+        if push and create and self.account.create_missing_projects:
+            await self._push_new_projects(
+                [p for p in projects if p.id not in claimed],
+                customer_by_company,
+                dry_run=dry_run,
             )
 
     async def _create_project(self, project: dict[str, Any], company_id: uuid.UUID) -> Project:
         from app.modules.projects.schemas import ProjectCreate
         from app.modules.projects.service import ProjectService
 
-        budget = (project.get("budget") or {}).get("budget")
         return await ProjectService(self.ctx).create(
             ProjectCreate(
                 company_id=company_id,
                 name=project.get("name") or "Timeon",
                 status=(
                     ProjectStatus.ARCHIVED
-                    if project.get("statusID") == 2
+                    if project.get("statusID") == STATUS_CLOSED
                     else ProjectStatus.ACTIVE
                 ),
                 billable_default=bool(project.get("defaultBillable")),
-                # Timeon states a budget in seconds (302400 = 84:00).
-                budget_hours=round(budget / 3600.0, 2) if budget else None,
+                # One budget there is one budget here, in the unit it was stated in: an hour
+                # budget arrives in **seconds**, a euro budget in euros — and reading the second
+                # as the first turned € 1500 into 0,42 hours.
                 budget_period="total",
+                **budget_values(remote_budget(project)),
             )
         )
+
+    async def _push_new_projects(
+        self,
+        unpaired: list[Project],
+        customer_by_company: dict[uuid.UUID, str],
+        *,
+        dry_run: bool,
+    ) -> None:
+        """schakl projects Timeon has never seen. Create each there, with its budget.
+
+        Only **open, named** ones: a project closed here that never existed there is history
+        nobody will book on again, and a create-then-edit placeholder (#230) is a row nobody has
+        named yet. A client Timeon does not know is reported rather than invented — clients are
+        paired on their number and never created by this integration in either direction.
+
+        A create that is interrupted after Timeon made the project is safe to meet again: the
+        next run finds a project of that name under that client and *pairs* it.
+        """
+        for project in sorted(unpaired, key=lambda p: (p.created_at, str(p.id))):
+            if is_closed(project) or project.unnamed or project.company_id is None:
+                continue
+            customer_ext = customer_by_company.get(project.company_id)
+            if customer_ext is None:
+                self.report.warn("project_no_customer", name=project.name)
+                continue
+            if local_budget(project) == UNRESOLVED:
+                self.report.warn("project_budget_period", name=project.name)
+            self.report.counts["projects_pushed_new"] += 1
+            if dry_run:
+                continue
+            try:
+                ext = await self._create_remote_project(project, customer_ext)
+            except TimeonError as exc:
+                self.report.counts["projects_pushed_new"] -= 1
+                self.report.error(
+                    "project_push_failed", name=project.name, detail=str(exc)[:200]
+                )
+                continue
+            local = neutral_from_project(project)
+            agreed = [f for f in PROJECT_FIELDS if f != "budget"]
+            try:
+                await self._push_budget(project, ext)
+                agreed.append("budget")
+            except TimeonError as exc:
+                # The project exists over there and is worth pairing; only its budget is not
+                # said yet, so only the budget is left out of what the two sides agree on.
+                self.report.error(
+                    "project_budget_failed", name=project.name, detail=str(exc)[:200]
+                )
+            link = await self._upsert_link(
+                TimeonLinkKind.PROJECT,
+                external_id=ext,
+                local_id=project.id,
+                company_id=project.company_id,
+                external_name=project.name,
+                dry_run=False,
+                existing=None,
+                origin=TimeonLinkOrigin.SCHAKL,
+            )
+            if link is not None:
+                await self._stamp_project(link, local, dict(local), tuple(agreed), pushed=True)
+
+    async def _create_remote_project(self, project: Project, customer_ext: str) -> str:
+        """Make the project in Timeon and answer its id.
+
+        The number is asked for first because Timeon's own dialog does, and a failure to get one
+        costs the number, never the project. What ``project/create`` answers is not written down
+        anywhere, so an answer carrying no id is followed by a look at the list rather than by a
+        second create.
+        """
+        try:
+            number = await self.client.next_project_number()
+        except TimeonError:
+            number = None
+        created = await self.client.create_project(
+            project_create_payload(project, customer_ext=customer_ext, project_number=number)
+        )
+        ext = created.get("projectID")
+        if not ext:
+            wanted = (project.name or "").strip().lower()
+            for row in await self.client.projects(with_budget=False):
+                if (
+                    str(row.get("customerID")) == customer_ext
+                    and (row.get("name") or "").strip().lower() == wanted
+                ):
+                    ext = row.get("projectID")
+        if not ext:
+            raise TimeonError(
+                "Timeon created the project and did not say which", path="/api/project/create"
+            )
+        return str(ext)
+
+    async def _push_budget(self, project: Project, ext: str) -> None:
+        """Say schakl's budget in Timeon: write it, or take away the one that is there."""
+        token = local_budget(project)
+        if token == UNRESOLVED:
+            return
+        current = await self.client.project_budget(int(ext))
+        if not token:
+            if current is not None:
+                await self.client.delete_budget(int(current["budgetID"]))
+            return
+        payload = budget_payload(
+            project,
+            project_ext=ext,
+            organisation_id=self.account.organisation_id,
+            current=current,
+        )
+        if payload is not None:
+            await self.client.save_budget(payload)
+
+    def _project_winner(
+        self,
+        field: str,
+        local: dict[str, Any],
+        remote: dict[str, Any],
+        base: dict[str, Any],
+        *,
+        pull: bool,
+        push: bool,
+    ) -> str:
+        """Which side one differing field should follow: ``push``, ``pull``, ``drift`` or ``ask``.
+
+        Per **field**, not per project: a budget raised here and a project closed there are two
+        changes by two people, and deciding them together would undo one of them. The record of
+        what the two sides last agreed on is what answers "who moved"; without one — every
+        pairing made before this existed — nobody can know, so a one-way direction answers for
+        itself and a two-way one asks.
+        """
+        known = field in (base.get("local") or {}) and field in (base.get("remote") or {})
+        local_moved = known and base["local"][field] != local[field]
+        remote_moved = known and base["remote"][field] != remote[field]
+        if local_moved and not remote_moved:
+            return "push" if push else "drift"
+        if remote_moved and not local_moved:
+            return "pull" if pull else "drift"
+        if push and not pull:
+            return "push"
+        if pull and not push:
+            return "pull"
+        choice = self.prefer or {
+            ConflictPolicy.SCHAKL_WINS.value: "schakl",
+            ConflictPolicy.TIMEON_WINS.value: "timeon",
+        }.get(self.account.conflict_policy)
+        return {"schakl": "push", "timeon": "pull"}.get(choice or "", "ask")
+
+    async def _reconcile_project(
+        self,
+        project: Project,
+        row: dict[str, Any],
+        link: TimeonLink | None,
+        *,
+        pull: bool,
+        push: bool,
+        dry_run: bool,
+    ) -> None:
+        """Bring one paired project's name, status, billable default and budget into step."""
+        local = neutral_from_project(project)
+        remote = neutral_from_project_row(row)
+        if local["budget"] == UNRESOLVED and remote["budget"] != UNRESOLVED:
+            self.report.warn("project_budget_period", name=project.name)
+        base = dict((link.observed or {}).get("base") or {}) if link is not None else {}
+        diffs = differences(local, remote, PROJECT_FIELDS)
+        verdicts = {
+            field: self._project_winner(field, local, remote, base, pull=pull, push=push)
+            for field in diffs
+        }
+        to_push = [f for f, v in verdicts.items() if v == "push"]
+        to_pull = [f for f, v in verdicts.items() if v == "pull"]
+        for field in (f for f, v in verdicts.items() if v == "ask"):
+            self._warn_project_differs(project, field, local, remote)
+        if any(v == "drift" for v in verdicts.values()):
+            self.report.counts["projects_drift"] += 1
+        if not diffs:
+            self.report.counts["projects_in_step"] += 1
+        if to_push:
+            self.report.counts["projects_pushed"] += 1
+        if to_pull:
+            self.report.counts["projects_pulled"] += 1
+        if dry_run or link is None:
+            return
+
+        agreed = [f for f in PROJECT_FIELDS if f not in diffs]
+        ext = str(row.get("projectID"))
+        if to_push:
+            agreed += await self._apply_project_push(project, ext, to_push)
+        if to_pull:
+            pulled = await self._apply_project_pull(project, remote, to_pull)
+            agreed += pulled
+            if pulled:
+                local = neutral_from_project(project)
+        # What the two sides now agree on, field by field. A pushed field's Timeon value *is*
+        # the schakl one; a field still undecided keeps whatever was on record before, so it
+        # reads as undecided again tomorrow instead of as settled.
+        settled = {f: local[f] for f in agreed}
+        await self._stamp_project(
+            link,
+            settled,
+            {f: (settled[f] if f in to_push or f in to_pull else remote[f]) for f in agreed},
+            tuple(agreed),
+            pushed=bool(to_push),
+            pulled=bool(to_pull),
+        )
+
+    def _warn_project_differs(
+        self, project: Project, field: str, local: dict[str, Any], remote: dict[str, Any]
+    ) -> None:
+        """One undecided field, as a sentence somebody can act on (never the token itself)."""
+        if field in ("closed", "billable"):
+            side = "here" if local[field] else "there"
+            self.report.warn(f"project_differs_{field}_{side}", name=project.name)
+            return
+        self.report.warn(
+            f"project_differs_{field}",
+            name=project.name,
+            schakl=_shown(local[field]),
+            timeon=_shown(remote[field]),
+        )
+
+    async def _apply_project_push(
+        self, project: Project, ext: str, fields: list[str]
+    ) -> list[str]:
+        """Write the named fields to Timeon. Answers the ones that landed.
+
+        Three endpoints for four fields, because that is how Timeon splits them — and each is
+        tried on its own, so a budget Timeon refuses does not cost the rename beside it.
+        """
+        done: list[str] = []
+        steps: list[tuple[list[str], Any]] = []
+        if "name" in fields or "billable" in fields:
+            async def save() -> None:
+                current = await self.client.project(int(ext))
+                await self.client.save_project(project_update_payload(current, project))
+
+            steps.append(([f for f in ("name", "billable") if f in fields], save))
+        if "closed" in fields:
+            async def status() -> None:
+                await self.client.set_project_status(
+                    int(ext), STATUS_CLOSED if is_closed(project) else STATUS_OPEN
+                )
+
+            steps.append((["closed"], status))
+        if "budget" in fields:
+            async def budget() -> None:
+                await self._push_budget(project, ext)
+
+            steps.append((["budget"], budget))
+        for names, step in steps:
+            try:
+                await step()
+            except TimeonError as exc:
+                self.report.error(
+                    "project_push_failed", name=project.name, detail=str(exc)[:200]
+                )
+                continue
+            done += names
+        return done
+
+    async def _apply_project_pull(
+        self, project: Project, remote: dict[str, Any], fields: list[str]
+    ) -> list[str]:
+        """Take the named fields over from Timeon, through the project's own service.
+
+        In a SAVEPOINT (§18): the service refuses for reasons of its own — a budget sourced from
+        a subscription is not writable (#225) — and that is one project's line in the report,
+        not the end of the run.
+        """
+        from app.errors import AppError
+        from app.modules.projects.schemas import ProjectUpdate
+        from app.modules.projects.service import ProjectService
+
+        values: dict[str, Any] = {}
+        if "name" in fields and remote["name"]:
+            values["name"] = remote["name"]
+        if "billable" in fields:
+            values["billable_default"] = remote["billable"]
+        if "closed" in fields:
+            values["status"] = ProjectStatus.ARCHIVED if remote["closed"] else ProjectStatus.ACTIVE
+        if "budget" in fields:
+            values.update(budget_values(remote["budget"]))
+        if not values:
+            return []
+        try:
+            async with self.ctx.session.begin_nested():
+                await ProjectService(self.ctx).update(project.id, ProjectUpdate(**values))
+        except AppError as exc:
+            self.report.error("project_pull_failed", name=project.name, detail=exc.message_key)
+            return []
+        await self.ctx.session.refresh(project)
+        return list(fields)
+
+    async def _stamp_project(
+        self,
+        link: TimeonLink,
+        local: dict[str, Any],
+        remote: dict[str, Any],
+        fields: tuple[str, ...],
+        *,
+        pushed: bool = False,
+        pulled: bool = False,
+    ) -> None:
+        """Record what the two sides agree on. Written only when it changed — the first run
+        stamps every pairing once, and a quiet run after it writes nothing."""
+        before = dict((link.observed or {}).get("base") or {})
+        base = {
+            "local": {**(before.get("local") or {}), **{f: local[f] for f in fields}},
+            "remote": {**(before.get("remote") or {}), **{f: remote[f] for f in fields}},
+        }
+        values: dict[str, Any] = {}
+        if base != before:
+            values.update(
+                observed={**(link.observed or {}), "base": base},
+                observed_at=datetime.now(UTC),
+                local_hash=fingerprint(base["local"], PROJECT_FIELDS),
+                remote_hash=fingerprint(base["remote"], PROJECT_FIELDS),
+            )
+        if pushed:
+            values["pushed_at"] = datetime.now(UTC)
+        if pulled:
+            values["pulled_at"] = datetime.now(UTC)
+        if values:
+            await self.links.update(link, **values)
 
     # ------------------------------------------------------------------ resolver
     async def resolver(self) -> Resolver:
@@ -1274,9 +1674,12 @@ class TimeonSyncService:
         dry_run: bool,
         existing: TimeonLink | None,
         company_id: uuid.UUID | None = None,
-    ) -> None:
-        """A reference pairing (user / customer / project). No fingerprints: nothing about these
-        is ever written by the sync, so "did it change" is not a question with consequences.
+        origin: TimeonLinkOrigin = TimeonLinkOrigin.TIMEON,
+    ) -> TimeonLink | None:
+        """A reference pairing (user / customer / project). Answers the stored row, or ``None``
+        on a dry run that would have made one. People and clients carry no fingerprints —
+        nothing about them is ever written by the sync — while a project's are kept by
+        :meth:`_stamp_project`.
 
         Recorded on :attr:`_pairs` **before** the dry-run guard, so a dry run resolves ids exactly
         as the real run would — see :meth:`resolver`.
@@ -1284,21 +1687,20 @@ class TimeonSyncService:
         self._pairs.setdefault(kind.value, {})[external_id] = local_id
         if existing is not None and existing.local_id == local_id:
             if not dry_run and existing.external_name != external_name:
-                await self.links.update(existing, external_name=external_name)
-            return
+                return await self.links.update(existing, external_name=external_name)
+            return existing
         self.report.counts[f"{kind.value}_paired"] += 1
         if dry_run:
-            return
+            return existing
         if existing is not None:
-            await self.links.update(
+            return await self.links.update(
                 existing,
                 local_id=local_id,
                 company_id=company_id,
                 external_name=external_name,
                 status=TimeonLinkStatus.LINKED.value,
             )
-            return
-        await self.links.create(
+        return await self.links.create(
             account_id=self.account.id,
             kind=kind.value,
             external_id=external_id,
@@ -1306,5 +1708,5 @@ class TimeonSyncService:
             company_id=company_id,
             external_name=external_name,
             status=TimeonLinkStatus.LINKED.value,
-            origin=TimeonLinkOrigin.TIMEON.value,
+            origin=origin.value,
         )

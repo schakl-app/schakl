@@ -254,6 +254,9 @@ class FakeGoogle:
             "foutreden",
         ]
         self.key_events = ["aanvraag_verzonden"]
+        #: Answer a reader-filtered request (role AND user filter) with no rows, the way a
+        #: narrow filter does at Google — what the options and the silent-zero check must survive.
+        self.empty_when_filtered = False
 
     def transport(self) -> httpx.MockTransport:
         return httpx.MockTransport(self._handle)
@@ -287,6 +290,9 @@ class FakeGoogle:
             reports = []
             for req in requests:
                 dims = tuple(d["name"] for d in req.get("dimensions", []))
+                if self.empty_when_filtered and "andGroup" in (req.get("dimensionFilter") or {}):
+                    reports.append(_report(list(dims), []))
+                    continue
                 reports.append(self.canned.get(dims) or _report(list(dims), []))
             return httpx.Response(200, json={"reports": reports})
         if path.endswith(":runReport"):
@@ -885,10 +891,43 @@ async def test_dashboard_end_to_end_staff_and_client(client_for, fakes) -> None:
         assert filtered.json()["filters"][0]["active"] == ["autotransport"]
         last = google.batches[-1][0]
         assert "andGroup" in last["dimensionFilter"]
+        # What a filter offers is what the *period* saw. A narrowed answer with no rows left
+        # still offers every service, read from the unfiltered plan — which the view the reader
+        # clicked from already cached, so the options cost Google nothing. And a narrowed zero
+        # is not a silent zero: that warning is about the measurement, not about the filter.
+        google.empty_when_filtered = True
+        asked = len(google.batches)
+        narrowed = (
+            await c.get(
+                url,
+                params={"period": "2026-08-29..2026-09-03", "f": ["service:motortransport"]},
+                headers=headers,
+            )
+        ).json()
+        google.empty_when_filtered = False
+        assert {w["key"]: w for w in narrowed["widgets"]}["requests"]["value"] == 0
+        narrowed_controls = {f["dimension"]: f for f in narrowed["filters"]}
+        assert narrowed_controls["service"]["active"] == ["motortransport"]
+        assert {o["key"] for o in narrowed_controls["service"]["options"]} >= {
+            "autotransport",
+            "overig",
+            "motortransport",
+        }
+        assert "silent_zero" not in {w["code"] for w in narrowed["warnings"]}
+        assert 1 <= len(google.batches) - asked <= 2
+
+        # Which rows are page filters is the API's statement: a service is, a channel is not,
+        # and neither is an error reason — only error events carry one, so narrowing the page
+        # by it answers zero requests on every tile. Refused, and absent from what is offered.
+        assert widgets["requests_by_service"]["filterable"] is True
+        assert widgets["requests_by_channel"]["filterable"] is False
+        assert widgets["failures_by_reason"]["filterable"] is False
+        scoped = await c.get(url, params={"f": ["error_reason:validatiefout"]}, headers=headers)
+        assert scoped.status_code == 422
+
         refused = await c.get(url, params={"f": ["colour:red"]}, headers=headers)
         assert refused.status_code == 422
         assert refused.json()["error"]["details"]["dimensions"] == [
-            "error_reason",
             "form_type",
             "language",
             "page_title",

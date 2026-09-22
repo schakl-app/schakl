@@ -6,6 +6,7 @@ import { apiFor } from "$lib/core/session";
 import { gtmActions } from "$lib/integrations/google_tag_manager/actions.server";
 import { marketingActions } from "$lib/modules/marketing/actions.server";
 import { filtersFromUrl } from "$lib/modules/marketing/leads/url";
+import type { AiSearchOverview } from "$lib/modules/marketing/aisearch/types";
 import type { LeadsDashboard } from "$lib/modules/marketing/leads/types";
 
 import type { Actions, PageServerLoad } from "./$types";
@@ -38,6 +39,14 @@ export const load: PageServerLoad = async (event) => {
       },
     }),
   );
+  // SE Ranking's AI Search overview (docs/SERANKING.md). Streamed, and started before anything
+  // is awaited: the first view of a month is a paid read from SE Ranking, seconds of somebody
+  // else's latency; every view after it is one indexed query.
+  const aiSearchP = streamed<AiSearchOverview>(
+    api.GET("/api/v1/marketing/companies/{company_id}/ai-search", {
+      params: { path: { company_id } },
+    }),
+  );
   const company = await companyP;
   if (!company.data) throw error(404, { code: "not_found", message: "errors.not_found" });
 
@@ -46,6 +55,7 @@ export const load: PageServerLoad = async (event) => {
     // The leads dashboard (docs/MARKETING.md), streamed like the metrics — its cold read is
     // Google's latency, and the shell must not wait for it.
     leads: leadsP,
+    aiSearch: aiSearchP,
     filters,
     // Streamed, not awaited: the period tabs, the picker and the page heading are the shell the
     // user came to interact with, and they need none of this. The metrics read folds two bounded

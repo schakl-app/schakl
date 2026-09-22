@@ -26,7 +26,7 @@ import asyncio
 import logging
 import uuid
 from calendar import monthrange
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from io import BytesIO
 from typing import Any
@@ -157,12 +157,18 @@ async def gather_sections(
     overrides: dict | None = None,
 ) -> Gathered:
     out = Gathered()
-    for spec in enabled_sections(audience, layout, overrides):
-        # A section is *skipped*, never 403'd: a report is assembled from what the generating
-        # caller may read, so a member without ad-spend access produces a report without it
-        # rather than a failure they cannot fix.
-        if spec.requires_permission and not ctx.can(spec.requires_permission):
-            continue
+    # A section is *skipped*, never 403'd: a report is assembled from what the generating
+    # caller may read, so a member without ad-spend access produces a report without it
+    # rather than a failure they cannot fix.
+    specs = [
+        spec
+        for spec in enabled_sections(audience, layout, overrides)
+        if not spec.requires_permission or ctx.can(spec.requires_permission)
+    ]
+    # Told to every provider, so a gatherer shared by several sections asks only what this
+    # document will print (``ReportWindow.sections``).
+    window = replace(window, sections=frozenset(spec.key for spec in specs))
+    for spec in specs:
         try:
             data = await spec.provider(ctx, window)
         except Exception as exc:  # noqa: BLE001 — one source must not cost the whole report
@@ -173,12 +179,19 @@ async def gather_sections(
             continue
         if not data:
             continue
-        out.sections[spec.key] = data
-        out.order.append(spec.key)
-        out.specs[spec.key] = spec
+        # Notes first, and whether or not anything prints: a section may be **withheld** — it
+        # has something to say to the agency and nothing to show the client (SE Ranking has not
+        # published the month yet; the plan is out of units). Returning ``None`` for that would
+        # drop the one sentence explaining why the chapter is missing from this month's
+        # document, and a loss with nothing taking its place has to be stated (CLAUDE.md §10).
         for note in data.pop("notes", None) or []:
             if note not in out.warnings:
                 out.warnings.append(note)
+        if data.get("withheld"):
+            continue
+        out.sections[spec.key] = data
+        out.order.append(spec.key)
+        out.specs[spec.key] = spec
     return out
 
 

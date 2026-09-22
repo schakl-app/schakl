@@ -33,6 +33,7 @@ from collections import defaultdict
 from datetime import date, timedelta
 from typing import TYPE_CHECKING, Any
 
+from app.config import settings
 from app.modules.marketing.models import MarketingSource
 from app.modules.marketing.sources.base import (
     AUTH_ORG_KEY,
@@ -50,8 +51,77 @@ logger = logging.getLogger("schakl.marketing")
 
 #: The project/rankings host. Keyword groups and positions live here.
 API4 = "https://api4.seranking.com"
-#: The audit + AI-result-tracker host. Same key, different base — SE Ranking's arrangement.
+#: The audit + AI-result-tracker + AI Search host. Same key, different base — SE Ranking's
+#: arrangement.
 API_V1 = "https://api.seranking.com/v1"
+
+
+def api4() -> str:
+    """The project host, read per call so a test stack or a proxy can move it (config)."""
+    return settings.seranking_api4_url.rstrip("/") or API4
+
+
+def api_v1() -> str:
+    """The Data API host — audit, AI Result Tracker, AI Search, the subscription."""
+    return settings.seranking_api_v1_url.rstrip("/") or API_V1
+
+
+#: The AI engines the Data API's AI Search endpoints know (docs/SERANKING.md). A closed
+#: vocabulary the API refuses anything outside of, so it is stated here once and the settings
+#: screen, the validator and the request builder all read it.
+AI_ENGINES = ("ai-overview", "ai-mode", "chatgpt", "perplexity", "gemini")
+#: How a target is matched: the registrable domain with every subdomain, one exact host, or one
+#: exact URL. Also the Data API's own words.
+AI_SCOPES = ("base_domain", "domain", "url")
+
+
+class DataApiRefused(RuntimeError):
+    """The Data API answered, and the answer was a refusal we can name.
+
+    ``kind`` is one of ``denied`` (401/403 — the key is not entitled to this), ``insufficient``
+    (400 *Insufficient funds* — the plan's units are spent) or ``failed`` (anything else that is
+    not a payload). Carries the vendor's own words as ``detail`` for the log and the screen's
+    quote line — never as the envelope's ``message`` (CLAUDE.md §9).
+    """
+
+    def __init__(self, kind: str, status: int | None, detail: str = "") -> None:
+        super().__init__(f"{kind} ({status}): {detail}")
+        self.kind = kind
+        self.status = status
+        self.detail = detail
+
+
+def classify_refusal(status: int, body: Any) -> DataApiRefused:
+    """Which refusal a non-2xx Data API answer is — see :class:`DataApiRefused`."""
+    detail = _vendor_message(body)
+    if status in (401, 403):
+        return DataApiRefused("denied", status, detail)
+    if status == 400 and "insufficient" in detail.lower():
+        return DataApiRefused("insufficient", status, detail)
+    return DataApiRefused("failed", status, detail)
+
+
+def _vendor_message(body: Any) -> str:
+    """The provider's own sentence about a refusal, wherever it put it — or nothing."""
+    if isinstance(body, dict):
+        for key in ("message", "error", "detail", "error_description"):
+            value = body.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()[:300]
+            if isinstance(value, dict):
+                nested = _vendor_message(value)
+                if nested:
+                    return nested
+    elif isinstance(body, str) and body.strip():
+        return body.strip()[:300]
+    return ""
+
+
+def _json(response: Any) -> Any:
+    try:
+        return response.json() if getattr(response, "content", b"x") else {}
+    except ValueError:
+        return {}
 
 #: A keyword ranked outside this is "not in sight" for a client report. The workflow this
 #: replaces used the same threshold to decide which rows are worth printing at all.
@@ -206,7 +276,7 @@ class SeRankingAdapter:
         across every audit on the account and sorting the candidates by status. An explicit
         link removes the whole class of "the report showed another client's audit".
         """
-        response = await client.get(f"{API4}/sites")
+        response = await client.get(f"{api4()}/sites")
         response.raise_for_status()
         options: list[AccountOption] = []
         for site in _rows(response.json(), "sites"):
@@ -457,7 +527,7 @@ class SeRankingAdapter:
         if audit_id is None:
             return None
         response = await client.get(
-            f"{API_V1}/site-audit/audits/report", params={"audit_id": audit_id}
+            f"{api_v1()}/site-audit/audits/report", params={"audit_id": audit_id}
         )
         response.raise_for_status()
         body = response.json()
@@ -506,7 +576,7 @@ class SeRankingAdapter:
     ) -> list[dict[str, Any]]:
         """Per-LLM presence from the AI Result Tracker — one row per configured engine."""
         response = await client.get(
-            f"{API_V1}/projects/{external_id}/ai-result-tracker/llm-engines"
+            f"{api_v1()}/projects/{external_id}/ai-result-tracker/llm-engines"
         )
         response.raise_for_status()
         engines = _rows(response.json(), "engines")
@@ -516,7 +586,7 @@ class SeRankingAdapter:
             if engine_id is None:
                 continue
             stats = await client.get(
-                f"{API_V1}/projects/{external_id}/ai-result-tracker/llm-engines/"
+                f"{api_v1()}/projects/{external_id}/ai-result-tracker/llm-engines/"
                 f"{engine_id}/statistics",
                 params={"from": start.isoformat(), "to": end.isoformat()},
             )
@@ -549,6 +619,136 @@ class SeRankingAdapter:
                     "last_update": str(summary.get("last_update") or ""),
                 }
             )
+        return out
+
+    # --- the Data API's AI Search (docs/SERANKING.md) ------------------------------------ #
+    async def ai_search_overview(
+        self,
+        client: httpx.AsyncClient,
+        *,
+        target: str,
+        source: str,
+        scope: str = "base_domain",
+        engine: str | None = None,
+        brand: str | None = None,
+    ) -> dict[str, Any]:
+        """The AI Search overview for one target: four summary figures with their
+        month-over-month change, and five monthly streams.
+
+        800 units a call — which is why the caller stores the answer per month and never asks
+        twice for the same one (``marketing.aisearch``). **Two endpoints, chosen by whether an
+        engine is named**: ``…/overview/by-engine/time-series`` *requires* ``engine`` (the
+        public reference marks it so), and "every engine" is its sibling
+        ``…/overview/aggregated/time-series``, which takes none — the split SE Ranking's own
+        MCP server makes. Leaving ``engine`` off the by-engine path is therefore a refusal, not
+        an aggregate. The aggregate is the vendor's own figure and **not** the sum of the
+        five, so nothing here adds per-engine answers together. ``brand`` left out lets the
+        server attribute mentions to whatever brand it resolves from the target;
+        :meth:`discover_brand` is how that resolution is made visible.
+
+        Returns the raw body — the parse lives beside the store, in ``aisearch.parse_overview``,
+        so a test can feed it a fixture without a client.
+        """
+        params: dict[str, Any] = {"target": target, "source": source, "scope": scope}
+        if engine:
+            params["engine"] = engine
+        if brand:
+            params["brand"] = brand
+        path = "by-engine" if engine else "aggregated"
+        response = await client.get(
+            f"{api_v1()}/ai-search/overview/{path}/time-series", params=params
+        )
+        body = _json(response)
+        if response.status_code >= 400:
+            raise classify_refusal(response.status_code, body)
+        if not isinstance(body, dict) or "summary" not in body:
+            # A 200 with no summary is a refusal wearing a success code — the Data API answers
+            # some faults that way. Naming it is what keeps a blank card from reading as
+            # "this brand is invisible in AI".
+            raise DataApiRefused("failed", response.status_code, _vendor_message(body))
+        return body
+
+    async def discover_brand(
+        self,
+        client: httpx.AsyncClient,
+        *,
+        target: str,
+        source: str,
+        scope: str = "base_domain",
+    ) -> list[str]:
+        """The brand name(s) SE Ranking attributes to a target — 100 units.
+
+        What the overview call resolves *silently* when no brand is given; asked here so the
+        answer can be printed beside the numbers and overridden where it is wrong (a company
+        whose domain and trade name differ is the common case, and a figure attributed to the
+        wrong brand looks exactly like a figure).
+        """
+        response = await client.get(
+            f"{api_v1()}/ai-search/discover-brand",
+            params={"target": target, "source": source, "scope": scope},
+        )
+        body = _json(response)
+        if response.status_code >= 400:
+            raise classify_refusal(response.status_code, body)
+        brands = body.get("brands") if isinstance(body, dict) else None
+        if not isinstance(brands, list):
+            return []
+        return [str(b).strip() for b in brands if str(b).strip()]
+
+    async def data_api_subscription(self, client: httpx.AsyncClient) -> dict[str, Any]:
+        """``GET /account/subscription`` — the Data API plan behind the key, at no unit cost.
+
+        The one Data API call that is free, which makes it the probe: a key that reaches it
+        holds Data API access, and its ``units_left`` is what says whether the AI Search
+        overview (800 a call) can be afforded this month.
+        """
+        response = await client.get(
+            f"{api_v1()}/account/subscription", params={"output": "json"}
+        )
+        body = _json(response)
+        if response.status_code >= 400:
+            raise classify_refusal(response.status_code, body)
+        info = body.get("subscription_info") if isinstance(body, dict) else None
+        if not isinstance(info, dict):
+            raise DataApiRefused("failed", response.status_code, _vendor_message(body))
+        return {
+            "status": str(info.get("status") or ""),
+            "units_limit": _int(info.get("units_limit")),
+            "units_left": _int(info.get("units_left")),
+            # The vendor's own field is misspelt (``expiraton_date``) on the live API and spelt
+            # correctly in its documentation; both are read, since either may be true tomorrow.
+            "expires_at": str(
+                info.get("expiration_date") or info.get("expiraton_date") or ""
+            ),
+        }
+
+    async def verify(self, client: httpx.AsyncClient) -> dict[str, Any]:
+        """Whether the key reaches each of SE Ranking's two APIs — separately.
+
+        One credential, two products with two entitlements: the project API (rankings, the
+        audit list) and the Data API (the audit report, the AI tracker, AI Search). A key can
+        hold one and not the other, and a single "SE Ranking works" verdict would send an
+        admin to re-issue a key that already works for the half they were using. Every probe
+        fails softly (the Cloudflare rule: a probe is evidence, never the gate), so a Data API
+        outage reports as such rather than as a bad key.
+        """
+        out: dict[str, Any] = {"project_api": "failed", "data_api": "failed"}
+        try:
+            response = await client.get(f"{api4()}/sites")
+            if response.status_code < 400:
+                out["project_api"] = "ok"
+            elif response.status_code in (401, 403):
+                out["project_api"] = "denied"
+        except Exception as exc:  # noqa: BLE001 — a probe never raises
+            logger.info("seranking verify: project API unreachable: %s", exc)
+        try:
+            out["subscription"] = await self.data_api_subscription(client)
+            out["data_api"] = "ok"
+        except DataApiRefused as exc:
+            out["data_api"] = "denied" if exc.kind == "denied" else "failed"
+            out["data_api_detail"] = exc.detail
+        except Exception as exc:  # noqa: BLE001
+            logger.info("seranking verify: Data API unreachable: %s", exc)
         return out
 
     def deep_link(self, external_id: str, config: dict) -> str:
@@ -584,7 +784,7 @@ class SeRankingAdapter:
         }
         if landing_pages:
             params["with_landing_pages"] = "1"
-        response = await client.get(f"{API4}/sites/{external_id}/positions", params=params)
+        response = await client.get(f"{api4()}/sites/{external_id}/positions", params=params)
         response.raise_for_status()
         return response.json()
 
@@ -596,7 +796,7 @@ class SeRankingAdapter:
         Soft on failure like :meth:`_keyword_groups`: without it the per-engine table loses its
         *names*, which is a poorer section, while raising would lose the section entirely.
         """
-        response = await client.get(f"{API4}/sites/{external_id}/search-engines")
+        response = await client.get(f"{api4()}/sites/{external_id}/search-engines")
         if response.status_code >= 400:
             return {}
         return {
@@ -623,7 +823,7 @@ class SeRankingAdapter:
         now = time.monotonic()
         if _ENGINE_CATALOGUE is not None and now - _ENGINE_CATALOGUE_AT < _CATALOGUE_TTL:
             return _ENGINE_CATALOGUE
-        response = await client.get(f"{API4}/system/search-engines")
+        response = await client.get(f"{api4()}/system/search-engines")
         if response.status_code >= 400:
             return _ENGINE_CATALOGUE or {}
         catalogue = {
@@ -641,7 +841,7 @@ class SeRankingAdapter:
     async def _keyword_groups(
         self, client: httpx.AsyncClient, external_id: str
     ) -> dict[str, str]:
-        response = await client.get(f"{API4}/keyword-groups/{external_id}")
+        response = await client.get(f"{api4()}/keyword-groups/{external_id}")
         if response.status_code >= 400:
             return {}
         return {
@@ -653,7 +853,7 @@ class SeRankingAdapter:
     async def _latest_audit_id(
         self, client: httpx.AsyncClient, external_id: str
     ) -> int | None:
-        response = await client.get(f"{API_V1}/site-audit/audits", params={"limit": 200})
+        response = await client.get(f"{api_v1()}/site-audit/audits", params={"limit": 200})
         if response.status_code >= 400:
             return None
         finished = [

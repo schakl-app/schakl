@@ -273,6 +273,12 @@ table.data thead { display: table-header-group; }
  * above the table: a percentage is a claim about two spans and both must be on the page. */
 .compared { color: var(--muted); font-size: 8pt; margin: -4px 0 8px; }
 
+/* What a chart draws, where no table beside it says so (the AI search chapter's monthly bars). */
+.chart-caption {
+  color: var(--muted); font-size: 7.5pt; font-weight: 600; letter-spacing: 0.04em;
+  text-transform: uppercase; margin: 10px 0 2px;
+}
+
 /* A keyword group's own name, carried inside the table head so a group that runs over a page
  * break takes its theme with it (see the template). It used to be a `div` above the table,
  * which `display: table-header-group` cannot repeat — so page four opened on four keywords

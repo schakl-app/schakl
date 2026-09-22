@@ -18,6 +18,8 @@
   import { editLocales } from "$lib/core/i18n-edit.svelte";
   import I18nLocaleSwitcher from "$lib/core/ui/I18nLocaleSwitcher.svelte";
 
+  import MarketingAiSearchSection from "./aisearch/MarketingAiSearchSection.svelte";
+  import type { AiSearchOverview } from "./aisearch/types";
   import { comparePeriodLabel, compareModeLabel, currentPeriodLabel } from "./format";
   import MarketingLeadsSection from "./leads/MarketingLeadsSection.svelte";
   import type { LeadsDashboard } from "./leads/types";
@@ -50,6 +52,7 @@
     leadsError = null,
     filters = {},
     profileHref = null,
+    aiSearch = null,
   }: {
     companyId: string;
     metrics: CompanyMarketing | null;
@@ -62,6 +65,13 @@
     filters?: Record<string, string[]>;
     /** Where the measurement profile is edited — a manager's link, `null` otherwise. */
     profileHref?: string | null;
+    /**
+     * SE Ranking's AI Search overview (docs/SERANKING.md), streamed like the leads: a first view
+     * of the month may be SE Ranking's latency. `null` on a host that does not load it. About the
+     * *client*, not about a link — so it is drawn whether or not any source is linked, and the
+     * website filter does not apply to it.
+     */
+    aiSearch?: Promise<{ data: AiSearchOverview | null; errorKey: string | null } | null> | null;
     /** The payload is still in flight (it streams — docs/PERFORMANCE.md). "Nothing linked yet" is
      *  a wrong answer while that is true, not a slow one, so the shell says "loading" instead. */
     pending?: boolean;
@@ -389,7 +399,7 @@
 <!-- The leads dashboard sits above the per-source sections: it is the report a client asks
      for, and the sections below are the cross-source overview it used to be the only one of. -->
 {#if leads || leadsPending || leadsError}
-  <div class="mb-6">
+  <div class="mb-4">
     <MarketingLeadsSection
       {leads}
       pending={leadsPending}
@@ -461,7 +471,7 @@
     {/if}
   </div>
 {:else}
-  <div class="space-y-6">
+  <div class="space-y-4">
     {#each groups as group (group.id ?? "_company")}
       <section>
         {#if showGroupHeadings}
@@ -469,7 +479,7 @@
             {group.name ?? t("marketing.website_group_none")}
           </h2>
         {/if}
-        <div class="space-y-5">
+        <div class="space-y-4">
           {#each group.sources as src (src.link_id)}
             <MarketingSourceSection
               {companyId}
@@ -483,5 +493,15 @@
         </div>
       </section>
     {/each}
+  </div>
+{/if}
+
+{#if aiSearch && companyId}
+  <div class="mt-4">
+    <MarketingAiSearchSection
+      {companyId}
+      overview={aiSearch}
+      isPortal={Boolean(page.data.user?.isPortal)}
+    />
   </div>
 {/if}

@@ -1569,6 +1569,31 @@ async def test_pages_link_registers_the_hostname_and_points_dns(client_for, clou
         assert [r for r in cloudflare.dns[zone_id] if r["type"] == "CNAME"]
 
 
+async def test_a_read_only_pages_token_says_which_permission_is_missing(
+    client_for, cloudflare
+) -> None:
+    """A token with *Pages: Read* passes every probe and lists every project, so the link is
+    the first call that can refuse — and "this token may not do that" left the admin guessing
+    which of a dozen permissions to add. The refusal names Pages."""
+    t = await make_tenant("cf-pages-ro")
+    headers = await auth_cookie(t.user)
+    cloudflare.pages["acct-1"] = [
+        {"name": "klant-site", "subdomain": "klant-site.pages.dev", "production_branch": "main"}
+    ]
+    cloudflare.deny_writes.add("/pages/projects")
+    async with client_for(t.host) as c:
+        account, domain, _ = await _connected(c, headers, cloudflare)
+        await c.post(f"/api/v1/cloudflare/accounts/{account['id']}/sync", headers=headers)
+        projects = (await c.get("/api/v1/cloudflare/pages/projects", headers=headers)).json()
+        refused = await c.post(
+            f"/api/v1/cloudflare/domains/{domain['id']}/pages",
+            json={"project_id": projects[0]["id"], "hostname": "www.klant.nl"},
+            headers=headers,
+        )
+        assert refused.status_code == 409, refused.text
+        assert refused.json()["error"]["message"] == "errors.cloudflare_scope_missing_pages"
+
+
 async def test_pages_links_a_domain_that_has_no_zone_here(client_for, cloudflare) -> None:
     """A Pages hostname hangs off the *project's* account, not off this domain's zone.
 

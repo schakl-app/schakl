@@ -13,6 +13,14 @@ from fastapi import APIRouter, Depends, Query, UploadFile
 
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
+from app.modules.marketing.aisearch.schemas import (
+    AiSearchCompanySettingsWrite,
+    AiSearchOverview,
+    BrandLookup,
+    BrandLookupRequest,
+    SeRankingCheck,
+)
+from app.modules.marketing.aisearch.service import AiSearchService
 from app.modules.marketing.aiv_import import MAX_BYTES, parse_export, parse_rows
 from app.modules.marketing.leads.schemas import LeadsCatalog, LeadsDashboard
 from app.modules.marketing.leads.service import LeadsService, parse_filters
@@ -320,6 +328,98 @@ async def company_leads(
     ad spend behind them from Google Ads, read through the client's measurement profile
     (docs/MARKETING.md). ``configured`` is false for a client without a profile."""
     return await LeadsService(ctx).dashboard(company_id, period, parse_filters(f))
+
+
+@router.get(
+    "/settings/seranking/check",
+    response_model=SeRankingCheck,
+    dependencies=[require_permission("marketing.link.manage")],
+)
+async def check_seranking_key(
+    ctx: RequestContext = Depends(require_context),
+) -> SeRankingCheck:
+    """Which of SE Ranking's two APIs the stored key reaches — the project API (rankings) and
+    the **Data API** (AI Search) — with the Data API plan's units left, and what the AI Search
+    overview costs per month at the current settings. Free: neither probe is a charged call.
+
+    A GET on purpose: it changes nothing, and a read must keep answering on an expired licence
+    (the write gate reads the method), which is exactly when somebody is checking credentials.
+    """
+    return await AiSearchService(ctx).check()
+
+
+@router.get(
+    "/companies/{company_id}/ai-search",
+    response_model=AiSearchOverview,
+    dependencies=[require_permission("marketing.metrics.read")],
+)
+async def company_ai_search(
+    company_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> AiSearchOverview:
+    """How visible this client's brand is in AI answers (ChatGPT, Perplexity, Gemini, Google's
+    AI Overviews and AI Mode) **last month, against the month before** — SE Ranking's AI Search
+    overview (docs/SERANKING.md): brand presence, link presence, average position and AI
+    opportunity traffic, plus the monthly series behind them.
+
+    Always the last complete month. Where it is not stored yet it is read from SE Ranking first
+    (800 units per engine choice, once per month) and stored; after that this is a database
+    read. ``state`` is ``off`` where the agency has not switched the overview on for this
+    client, ``no_target`` where no domain could be derived, ``no_key`` with no SE Ranking key.
+    """
+    return await AiSearchService(ctx).overview(company_id)
+
+
+@router.post(
+    "/companies/{company_id}/ai-search/refresh",
+    response_model=AiSearchOverview,
+    dependencies=[require_permission("marketing.link.manage")],
+)
+async def refresh_company_ai_search(
+    company_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> AiSearchOverview:
+    """Ask SE Ranking again **now**, whatever is stored. Spends 800 units per configured engine
+    choice — which is why it is the manage permission and its own verb, never a parameter on
+    the read: after a changed key, a topped-up plan or a corrected brand."""
+    return await AiSearchService(ctx).overview(company_id, refresh=True)
+
+
+@router.put(
+    "/companies/{company_id}/ai-search/settings",
+    response_model=AiSearchOverview,
+    dependencies=[require_permission("marketing.link.manage")],
+)
+async def set_company_ai_search_settings(
+    company_id: uuid.UUID,
+    payload: AiSearchCompanySettingsWrite,
+    ctx: RequestContext = Depends(require_context),
+) -> AiSearchOverview:
+    """This client's AI Search settings, as a diff over the house defaults in Instellingen →
+    Marketing: on/off, engines (``all`` is SE Ranking's cross-engine aggregate), the country
+    database, the scope, the target and the brand. **Posted whole** — a field left ``null``
+    follows the house default. Saving asks SE Ranking nothing; the next read does."""
+    return await AiSearchService(ctx).save_settings(company_id, payload)
+
+
+@router.post(
+    "/companies/{company_id}/ai-search/brand",
+    response_model=BrandLookup,
+    dependencies=[require_permission("marketing.link.manage")],
+)
+async def lookup_company_ai_search_brand(
+    company_id: uuid.UUID,
+    payload: BrandLookupRequest | None = None,
+    ctx: RequestContext = Depends(require_context),
+) -> BrandLookup:
+    """The brand name(s) SE Ranking attributes to this client's target (100 units). Brand
+    presence counts *that* brand's mentions, so a wrong attribution is a wrong number — look it
+    up, and set the brand explicitly where SE Ranking's answer is not the client's trade name."""
+    return await AiSearchService(ctx).lookup_brand(
+        company_id,
+        target=payload.target if payload else None,
+        source=payload.source if payload else None,
+    )
 
 
 @router.get(

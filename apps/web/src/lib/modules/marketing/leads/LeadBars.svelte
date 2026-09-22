@@ -26,11 +26,10 @@
 
   const rows = $derived(widget.rows);
   const max = $derived(Math.max(...rows.map((r) => r.values.count ?? 0), 1));
-  const filterable = $derived(
-    Boolean(
-      filterHref && widget.dimension && !["channel", "channel_group"].includes(widget.dimension),
-    ),
-  );
+  // Which widgets' rows narrow the page is the API's answer (`filterable`), not a list of
+  // exceptions kept here: the list said "not a channel" and so drew an error reason as a
+  // filter, which no request carries — one click and every tile on the page read zero.
+  const filterable = $derived(Boolean(filterHref && widget.filterable && widget.dimension));
   const label = (row: (typeof rows)[number]) =>
     widget.dimension === "channel_group" ? channelGroupLabel(row.key) : row.label;
 </script>
@@ -38,7 +37,7 @@
 {#if rows.length === 0}
   <p class="text-sm text-text-muted">{t("marketing.no_data")}</p>
 {:else}
-  <ul class="space-y-1.5">
+  <ul class="space-y-1">
     {#each rows as row (row.key)}
       {@const value = row.values.count ?? 0}
       {@const active = activeKeys.includes(row.key)}
@@ -49,14 +48,19 @@
             ? filterHref?.(widget.dimension, row.key)
             : undefined}
           data-sveltekit-noscroll={filterable ? true : undefined}
-          class="flex items-center gap-2 rounded px-1 text-sm {filterable
-            ? 'hover:bg-surface'
-            : ''} {active ? 'bg-surface font-medium' : ''}"
+          class="flex items-center gap-2 rounded px-1 py-0.5 text-sm {filterable
+            ? 'cursor-pointer hover:bg-surface-tint'
+            : ''} {active ? 'bg-brand/10 font-medium' : ''}"
+          aria-current={active ? "true" : undefined}
           title={filterable ? t("marketing.leads.filter.click_to_filter") : undefined}
         >
-          <span class="w-36 shrink-0 truncate text-text-muted" title={label(row)}>{label(row)}</span
+          <span
+            class="w-36 shrink-0 truncate {active ? 'text-text' : 'text-text-muted'}"
+            title={label(row)}>{label(row)}</span
           >
-          <span class="h-2 flex-1 overflow-hidden rounded-full bg-surface">
+          <!-- The track is the tint, not the page's ground: on a white card `bg-surface` is a
+               track nobody can see, and a bar with no track has no scale. -->
+          <span class="h-2 flex-1 overflow-hidden rounded-full bg-surface-tint">
             <span
               class="block h-full rounded-full {active ? 'bg-brand' : 'bg-brand/70'}"
               style="width: {(value / max) * 100}%"

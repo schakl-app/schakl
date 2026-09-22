@@ -8,6 +8,10 @@ from datetime import date, datetime
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.core.periods import ComparePeriod
+from app.modules.marketing.aisearch.schemas import (
+    AiSearchOrgSettingsWrite,
+    AiSearchSettingsRead,
+)
 from app.modules.marketing.models import MarketingSource
 from app.modules.marketing.rankings import (
     DEFAULT_LIMIT,
@@ -517,6 +521,12 @@ class MarketingSettingsRead(BaseModel):
     #: Whether the agency's SE Ranking API key is stored (#300). One key covers every client
     #: project; the value itself is never returned, like the token above.
     seranking_api_key_configured: bool = False
+    #: Whether a **separate Data API key** is stored (docs/SERANKING.md §2). False is the
+    #: ordinary case — the key above is then used for both of SE Ranking's APIs.
+    seranking_data_api_key_configured: bool = False
+    #: The house AI Search overview settings every client inherits — always resolved, the
+    #: ``default_compare`` rule. Off unless the agency switched it on: a read costs units.
+    ai_search: AiSearchSettingsRead | None = None
     #: The house comparison every client's dashboard inherits (#312) — always resolved, never
     #: null: a settings screen offering "niets gekozen" beside two real options would be a third
     #: state nobody means. A client overrides it on their own dashboard.
@@ -540,6 +550,15 @@ class MarketingSettingsWrite(BaseModel):
     ads_developer_token: str | None = Field(default=None, max_length=1024)
     #: The agency's SE Ranking API key (#300). Same write-only rule.
     seranking_api_key: str | None = Field(default=None, max_length=1024)
+    #: A separate SE Ranking **Data API** key. Same write-only rule; ``clear_…`` below is how
+    #: one is removed again, since an empty submission means "keep it".
+    seranking_data_api_key: str | None = Field(default=None, max_length=1024)
+    #: Remove the separate Data API key and fall back to the shared one. A write-only secret
+    #: cannot be emptied by posting nothing, so removing it is its own statement.
+    clear_seranking_data_api_key: bool = False
+    #: The house AI Search overview settings. Omitted keeps the stored ones; a present block is
+    #: merged field by field over what is stored.
+    ai_search: AiSearchOrgSettingsWrite | None = None
     #: The org's default comparison (#312). Omitted keeps the stored one — unlike the per-client
     #: field there is nothing above this to inherit from, so ``null`` has no second meaning here.
     default_compare: ComparePeriod | None = None

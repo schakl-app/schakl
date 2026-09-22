@@ -69,6 +69,10 @@ class LeadWidget(BaseModel):
     dimension: str | None = None
     #: The tenant's title for that dimension, when they gave one.
     dimension_title: str | None = None
+    #: Whether a row of this widget is a page filter. The API's statement, not the screen's
+    #: guess: a widget may group by a dimension the page cannot be narrowed by (a channel, an
+    #: error reason), and a row drawn as a link there is a control that empties the dashboard.
+    filterable: bool = False
     value: float | None = None
     #: A second figure drawn beside the first on a scorecard ("waarvan primair").
     secondary: float | None = None

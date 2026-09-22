@@ -7,11 +7,18 @@
    * Google client secret: the API reports only whether one is configured and never returns it.
    */
   import { enhance } from "$app/forms";
+  import { fmtNumber } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
   import { InFlight } from "$lib/core/submit.svelte";
   import { pageTitle } from "$lib/core/title";
   import Button from "$lib/core/ui/Button.svelte";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
+  import {
+    AI_ENGINES,
+    AI_SCOPES,
+    UNITS_PER_ENGINE,
+    type AiEngine,
+  } from "$lib/modules/marketing/aisearch/types";
   import { compareModeLabel, portalDefaultLabel, sourceLabel } from "$lib/modules/marketing/format";
   import {
     LABELLED_CONNECTIONS,
@@ -23,6 +30,27 @@
   const settings = $derived(data.settings);
 
   const busy = new InFlight();
+
+  // ---- SE Ranking's AI Search overview: the house defaults (docs/SERANKING.md) ---------------
+  // Seeded once from what is stored and owned by the form from then on, so the cost line under
+  // the boxes follows a tick before anything is saved (#305: show the constraint working).
+  // svelte-ignore state_referenced_locally
+  const stored = data.settings?.ai_search;
+  let aiEnabled = $state(stored?.enabled ?? false);
+  let aiEngines = $state<AiEngine[]>([...(stored?.engines ?? ["all"])]);
+  function toggleEngine(engine: AiEngine) {
+    aiEngines = aiEngines.includes(engine)
+      ? aiEngines.filter((e) => e !== engine)
+      : [...aiEngines, engine];
+  }
+  const perClient = $derived(Math.max(aiEngines.length, 1) * UNITS_PER_ENGINE);
+  const check = $derived(form?.check ?? null);
+  const apiTone = (status: string) =>
+    status === "ok"
+      ? "text-green-600 dark:text-green-400"
+      : status === "not_configured"
+        ? "text-text-muted"
+        : "text-red-600 dark:text-red-400";
 
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand";
@@ -39,7 +67,14 @@
   <!-- keep(): this edits settings that already exist. The two secrets load empty by design, but
        the comparison select carries a real saved value that a reset would rewind to the first
        option (docs/UX.md, "Saving must never blank the form"). -->
-  <form method="POST" action="?/save" use:enhance={busy.keep()} class="space-y-5">
+  <form
+    method="POST"
+    action="?/save"
+    use:enhance={busy.keep((input) =>
+      input.action.search.includes("checkSeranking") ? "check" : "",
+    )}
+    class="space-y-5"
+  >
     <div>
       <label for="ads-developer-token" class="mb-1 block text-sm font-medium text-text">
         {t("settings.marketing.ads_developer_token")}
@@ -75,7 +110,177 @@
         class={inputClass}
       />
       <p class="mt-1 text-xs text-text-muted">{t("marketing.settings.seranking_key_hint")}</p>
+
+      <!-- SE Ranking sells two APIs and issues a token for each (docs/SERANKING.md §2). One key
+           often reaches both, so this box is optional — and the check below says which API each
+           key actually reaches, rather than leaving an agency to find out from an empty card. -->
+      <label for="seranking-data-api-key" class="mb-1 mt-4 block text-sm font-medium text-text">
+        {t("marketing.settings.seranking_data_key")}
+      </label>
+      <input
+        id="seranking-data-api-key"
+        name="seranking_data_api_key"
+        type="password"
+        autocomplete="new-password"
+        placeholder={settings?.seranking_data_api_key_configured
+          ? t("marketing.settings.seranking_key_configured")
+          : t("marketing.settings.seranking_data_key_placeholder")}
+        class={inputClass}
+      />
+      <p class="mt-1 text-xs text-text-muted">{t("marketing.settings.seranking_data_key_hint")}</p>
+      {#if settings?.seranking_data_api_key_configured}
+        <label class="mt-2 flex items-start gap-2 text-sm text-text">
+          <FormCheckbox
+            name="clear_seranking_data_api_key"
+            class="mt-0.5 shrink-0 rounded border-border"
+          />
+          <span>{t("marketing.settings.seranking_data_key_clear")}</span>
+        </label>
+      {/if}
+
+      <div class="mt-3">
+        <Button
+          type="submit"
+          variant="secondary"
+          formaction="?/checkSeranking"
+          loading={busy.is("check")}
+          data-testid="seranking-check"
+        >
+          {t("marketing.settings.seranking_check")}
+        </Button>
+        <p class="mt-1 text-xs text-text-muted">{t("marketing.settings.seranking_check_hint")}</p>
+      </div>
+      {#if check}
+        <dl
+          class="mt-3 grid gap-x-6 gap-y-2 rounded-lg bg-surface p-4 text-sm sm:grid-cols-2"
+          data-testid="seranking-check-result"
+        >
+          <div>
+            <dt class="text-xs text-text-muted">{t("marketing.settings.seranking_project_api")}</dt>
+            <dd class="font-medium {apiTone(check.project_api)}">
+              {t(`marketing.settings.seranking_api.${check.project_api}`)}
+            </dd>
+          </div>
+          <div>
+            <dt class="text-xs text-text-muted">
+              {t("marketing.settings.seranking_data_api")}
+              · {t(`marketing.settings.seranking_key_used.${check.data_api_key}`)}
+            </dt>
+            <dd class="font-medium {apiTone(check.data_api)}">
+              {t(`marketing.settings.seranking_api.${check.data_api}`)}
+            </dd>
+          </div>
+          {#if check.data_api === "ok" && check.units_left !== null && check.units_left !== undefined}
+            <div class="sm:col-span-2">
+              <dt class="text-xs text-text-muted">{t("marketing.settings.seranking_units")}</dt>
+              <dd class="text-text">
+                {t("marketing.settings.seranking_units_value", {
+                  left: fmtNumber(check.units_left, 0),
+                  limit: fmtNumber(check.units_limit ?? 0, 0),
+                })}
+                {#if check.monthly_units > 0}
+                  <span class="text-text-muted">
+                    · {t("marketing.settings.seranking_units_needed", {
+                      units: fmtNumber(check.monthly_units, 0),
+                      clients: check.enabled_clients,
+                    })}
+                  </span>
+                {/if}
+              </dd>
+            </div>
+          {/if}
+          {#if check.data_api === "denied"}
+            <p class="text-xs text-text-muted sm:col-span-2">
+              {t("marketing.settings.seranking_data_denied_hint")}
+            </p>
+          {/if}
+        </dl>
+      {/if}
     </div>
+
+    <!-- The house defaults for SE Ranking's AI Search overview (docs/SERANKING.md). **Off until
+         somebody switches it on**: every read costs the agency 800 of its own units per engine
+         choice, per client, per month — so the price is printed under the choice that sets it.
+         Target and brand are not here: they are facts about one client, edited on that
+         client's dashboard. -->
+    <fieldset id="ai-search" class="scroll-mt-24 border-t border-border pt-5">
+      <legend class="mb-1 text-sm font-semibold text-text">
+        {t("settings.marketing.ai_search")}
+      </legend>
+      <p class="mb-3 text-xs text-text-muted">{t("settings.marketing.ai_search_hint")}</p>
+      <label class="flex items-center gap-2 text-sm text-text">
+        <!-- The component owns the mark (it survives a reset); the mirror only drives the cost
+             line below. -->
+        <FormCheckbox
+          name="ai_search_enabled"
+          checked={aiEnabled}
+          onchange={(event) => (aiEnabled = event.currentTarget.checked)}
+          class="rounded border-border"
+        />
+        <span>{t("settings.marketing.ai_search_enabled")}</span>
+      </label>
+      <div class="mt-4">
+        <p class="mb-1 text-sm font-medium text-text">
+          {t("marketing.ai_search.settings.engines")}
+        </p>
+        <div class="flex flex-wrap gap-x-4 gap-y-1.5">
+          {#each AI_ENGINES as engine (engine)}
+            <label class="flex items-center gap-1.5 text-sm text-text">
+              <input
+                type="checkbox"
+                name="ai_search_engines"
+                value={engine}
+                checked={aiEngines.includes(engine)}
+                onchange={() => toggleEngine(engine)}
+                class="rounded border-border"
+              />
+              {t(`marketing.ai_search.engine.${engine}`)}
+            </label>
+          {/each}
+        </div>
+        <p class="mt-1 text-xs text-text-muted">{t("settings.marketing.ai_search_engines_hint")}</p>
+      </div>
+      <div class="mt-4 grid gap-4 sm:grid-cols-2">
+        <div>
+          <label for="ai-search-source" class="mb-1 block text-sm font-medium text-text">
+            {t("marketing.ai_search.settings.source")}
+          </label>
+          <input
+            id="ai-search-source"
+            name="ai_search_source"
+            value={settings?.ai_search?.source ?? "nl"}
+            maxlength="2"
+            class="{inputClass} uppercase"
+          />
+          <p class="mt-1 text-xs text-text-muted">
+            {t("marketing.ai_search.settings.source_hint")}
+          </p>
+        </div>
+        <div>
+          <label for="ai-search-scope" class="mb-1 block text-sm font-medium text-text">
+            {t("marketing.ai_search.settings.scope")}
+          </label>
+          <select
+            id="ai-search-scope"
+            name="ai_search_scope"
+            value={settings?.ai_search?.scope ?? "base_domain"}
+            class={inputClass}
+          >
+            {#each AI_SCOPES as scope (scope)}
+              <option value={scope}>{t(`marketing.ai_search.scope.${scope}`)}</option>
+            {/each}
+          </select>
+        </div>
+      </div>
+      <p class="mt-3 text-xs text-text-muted" data-testid="ai-search-house-cost">
+        {t(
+          aiEnabled
+            ? "settings.marketing.ai_search_cost_on"
+            : "settings.marketing.ai_search_cost_off",
+          { units: fmtNumber(perClient, 0) },
+        )}
+      </p>
+    </fieldset>
 
     <!-- What each source is called, on every screen that names one (#446, widened): the
          marketing page, the client hub, the client's own homepage. The supplier behind the
@@ -278,7 +483,7 @@
       <p class="text-sm text-red-600 dark:text-red-400">{t(form.error)}</p>
     {/if}
 
-    <Button type="submit" loading={busy.active}>
+    <Button type="submit" loading={busy.is("")}>
       {t("common.save")}
     </Button>
   </form>
