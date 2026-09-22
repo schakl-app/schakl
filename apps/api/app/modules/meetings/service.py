@@ -23,8 +23,9 @@ from sqlalchemy import func, select
 from app.core.activity import ActivityService
 from app.core.ai.audio import MAX_AUDIO_BYTES, decode_clip
 from app.core.ai.service import enabled_features
-from app.core.directory import labels_for
+from app.core.directory import labels_for, visible_ids
 from app.core.jobs import enqueue
+from app.core.members import staff_select
 from app.core.parent import ensure_parent_in_tenant
 from app.core.storage.models import StoredFile
 from app.core.storage.service import drop_file
@@ -49,6 +50,7 @@ from app.modules.meetings.schemas import (
     MeetingDetail,
     MeetingFinish,
     MeetingList,
+    MeetingParticipant,
     MeetingRow,
     MeetingStatusRead,
     MeetingUpdate,
@@ -165,6 +167,7 @@ class MeetingService:
                 minutes = MinutesDraft.model_validate(row.minutes)
             except ValueError:  # a draft stored by an older shape: the screen says "none"
                 minutes = None
+        participants = participants_of(row)
         return MeetingDetail(
             **base.model_dump(),
             language=row.language,
@@ -175,7 +178,9 @@ class MeetingService:
             transcript_text=row.transcript_text,
             transcript_model=transcript.get("model"),
             transcript_parts=int(transcript.get("parts") or 0),
-            speakers={str(k): str(v) for k, v in (row.speakers or {}).items()},
+            diarized=any(s.speaker for s in segments),
+            participants=participants,
+            speakers=speaker_names(participants),
             minutes=minutes,
             interaction_id=row.interaction_id,
             task_ids=[uuid.UUID(str(t)) for t in (row.task_ids or [])],
@@ -222,6 +227,12 @@ class MeetingService:
                 self.ctx.session, table, getattr(data, fk), self.ctx.org.id
             )
         user = self.ctx.user
+        participants = await self._clean_participants(data.participants)
+        if not any(p.user_id == user.id for p in participants):
+            # The person pressing record is in the room by definition.
+            participants.insert(
+                0, MeetingParticipant(name=user.full_name or user.email, user_id=user.id)
+            )
         now = _now()
         row = await self.repo.create(
             title=data.title.strip(),
@@ -236,9 +247,71 @@ class MeetingService:
             owner_user_id=user.id,
             owner_name=user.full_name or user.email,
             participants_informed_at=now,
+            participants=[p.model_dump(mode="json") for p in participants],
         )
         await ActivityService(self.ctx).record_created(ENTITY_TYPE, row.id)
         return await self._detail(row)
+
+    async def _clean_participants(
+        self, participants: list[MeetingParticipant]
+    ) -> list[MeetingParticipant]:
+        """The roster as it will be stored: every contact one this caller may see, every
+        colleague one of the org's staff, every speaker label used at most once.
+
+        The contact check goes through the directory seam (``visible_ids``) for §15's reason: a
+        contact's client lives in ``company_contacts``, a table this module may not know about,
+        so "belongs to this org" would let a company-group-scoped member minute a meeting with a
+        person at a client they cannot see.
+        """
+        cleaned: list[MeetingParticipant] = []
+        labels: set[str] = set()
+        contact_ids = [p.contact_id for p in participants if p.contact_id is not None]
+        user_ids = [p.user_id for p in participants if p.user_id is not None]
+        visible_contacts: set[uuid.UUID] = set()
+        if contact_ids:
+            visible_contacts = await visible_ids(self.ctx, "contact", contact_ids)
+        staff: set[uuid.UUID] = set()
+        if user_ids:
+            from app.core.auth.models import User
+
+            rows = await self.ctx.session.execute(
+                staff_select(self.ctx.org.id).where(User.id.in_(user_ids))
+            )
+            staff = {u.id for u in rows.scalars()}
+        for p in participants:
+            name = p.name.strip()[:255]
+            if not name:
+                continue
+            if p.contact_id is not None and p.contact_id not in visible_contacts:
+                raise AppError(
+                    "validation",
+                    "errors.validation",
+                    status_code=422,
+                    fields={"participants": "errors.not_found"},
+                )
+            if p.user_id is not None and p.user_id not in staff:
+                raise AppError(
+                    "validation",
+                    "errors.validation",
+                    status_code=422,
+                    fields={"participants": "errors.not_found"},
+                )
+            label = (p.speaker or "").strip()[:20] or None
+            if label is not None:
+                if label in labels:
+                    raise AppError(
+                        "validation",
+                        "errors.validation",
+                        status_code=422,
+                        fields={"participants": "meetings.error.speaker_twice"},
+                    )
+                labels.add(label)
+            cleaned.append(
+                MeetingParticipant(
+                    name=name, user_id=p.user_id, contact_id=p.contact_id, speaker=label
+                )
+            )
+        return cleaned
 
     async def _writable(self, meeting_id: uuid.UUID) -> Meeting:
         self.ctx.require("meetings.meeting.write")
@@ -369,7 +442,7 @@ class MeetingService:
         await self._enqueue(row)
         return await self._detail(row)
 
-    async def _enqueue(self, row: Meeting) -> None:
+    async def _enqueue(self, row: Meeting, *, stage: str = "full") -> None:
         # A fresh id per queue: arq declines a job whose *result* is still in Redis, and a
         # retry an hour after the first run would otherwise queue nothing and sit on
         # ``queued`` until the reaper called it failed (``core.jobs.enqueue``'s own warning).
@@ -377,6 +450,7 @@ class MeetingService:
             "meetings_process",
             str(self.ctx.org.id),
             str(row.id),
+            stage,
             _job_id=f"meetings-process-{row.id}-{int(_now().timestamp())}",
         )
         if job is None:
@@ -384,12 +458,29 @@ class MeetingService:
                 row, status=MeetingStatus.FAILED.value, error_key="meetings.error.not_queued"
             )
 
-    async def set_speakers(self, meeting_id: uuid.UUID, speakers: dict[str, str]) -> MeetingDetail:
+    async def set_participants(
+        self, meeting_id: uuid.UUID, participants: list[MeetingParticipant]
+    ) -> MeetingDetail:
+        """The whole roster, replaced — who was there and which label each one speaks under."""
         row = await self._writable(meeting_id)
-        cleaned = {
-            str(k)[:20]: str(v).strip()[:255] for k, v in speakers.items() if str(v).strip()
-        }
-        row = await self.repo.update(row, speakers=cleaned)
+        cleaned = await self._clean_participants(participants)
+        row = await self.repo.update(row, participants=[p.model_dump(mode="json") for p in cleaned])
+        return await self._detail(row)
+
+    async def redraft(self, meeting_id: uuid.UUID) -> MeetingDetail:
+        """Write the minutes again over the transcript already here — after the speakers were
+        named, which is what lets the draft say *who* took each item on. No new transcription,
+        so no new audio cost; the words are the words."""
+        row = await self._writable(meeting_id)
+        if row.status not in (MeetingStatus.FAILED.value, MeetingStatus.REVIEW.value):
+            raise AppError("conflict", "meetings.error.not_retryable", status_code=409)
+        if not (row.transcript_text or "").strip():
+            raise AppError("validation", "meetings.error.no_transcript", status_code=422)
+        await self._require_feature()
+        await self.repo.update(
+            row, status=MeetingStatus.QUEUED.value, status_at=_now(), error_key=None
+        )
+        await self._enqueue(row, stage="minutes")
         return await self._detail(row)
 
     async def save_minutes(self, meeting_id: uuid.UUID, draft: MinutesDraft) -> MeetingDetail:
@@ -419,8 +510,15 @@ class MeetingService:
         draft = data.minutes
         title = (draft.title or "").strip() or row.title
         locale = await org_locale(self.ctx)
-        body = render_minutes(draft, locale=locale, speakers=row.speakers or {})
+        participants = participants_of(row)
+        names = await self._owner_names(draft, participants)
+        body = render_minutes(draft, locale=locale, participants=participants, names=names)
         kind = data.interaction_kind or INTERACTION_KINDS.get(row.kind, "physical_meeting")
+        # The client's people in the room are the contact moment's roster (#300): a contact's
+        # page then lists this meeting under their name, which is the whole point of naming them.
+        contact_ids = list(
+            dict.fromkeys(p.contact_id for p in participants if p.contact_id is not None)
+        )
         interaction = await InteractionService(self.ctx).create(
             InteractionCreate(
                 kind=kind,
@@ -429,6 +527,7 @@ class MeetingService:
                 body_text=body,
                 company_id=row.company_id,
                 project_id=row.project_id,
+                contact_ids=contact_ids or None,
             )
         )
         interaction_id = uuid.UUID(str(interaction["id"]))
@@ -436,22 +535,32 @@ class MeetingService:
         tasks = TaskService(self.ctx)
         task_ids: list[uuid.UUID] = []
         skipped: list[dict[str, Any]] = []
+        # No SAVEPOINT around the create, on purpose. Assigning a task to a contact queues the
+        # contact's mail inside ``release_db`` (tasks #454), whose commit is the outermost one
+        # in SQLAlchemy 2 — inside ``begin_nested`` it committed the transaction, dropped the
+        # RLS GUC, and the very next read here answered 404 (docs: §18's per-row savepoint and
+        # §11's ``release_db`` cannot both hold; ``release_db`` wins). Every refusal the tasks
+        # module speaks in ``AppError`` is raised before it writes, so catching it without a
+        # savepoint still leaves the session usable; a task that lands is committed there and
+        # then, which is the per-row durability the savepoint was for.
+        company_id, project_id = row.company_id, row.project_id
         for item in draft.action_items:
             if not item.create_task:
                 continue
             try:
-                async with self.ctx.session.begin_nested():
-                    task = await tasks.create(
-                        TaskCreate(
-                            title=item.title,
-                            description=_task_notes(item, title, locale),
-                            company_id=row.company_id,
-                            project_id=row.project_id,
-                            assignee_user_id=item.assignee_user_id,
-                            due_date=item.due_date
-                            or (await _org_today(self.ctx)),
-                        )
+                # A contact who took it on gets the task *as the client's* (#273): the
+                # "waiting on the client" shape, with no colleague riding along on it.
+                task = await tasks.create(
+                    TaskCreate(
+                        title=item.title,
+                        description=_task_notes(item, title, locale),
+                        company_id=company_id,
+                        project_id=project_id,
+                        assignee_user_id=(None if item.owner_contact_id else item.assignee_user_id),
+                        assignee_contact_id=item.owner_contact_id,
+                        due_date=item.due_date or (await _org_today(self.ctx)),
                     )
+                )
                 task_ids.append(task.id)
             except AppError as exc:
                 skipped.append(
@@ -483,6 +592,44 @@ class MeetingService:
         return MeetingConfirmResult(
             interaction_id=interaction_id, task_ids=task_ids, skipped=skipped
         )
+
+    async def _owner_names(
+        self, draft: MinutesDraft, participants: list[MeetingParticipant]
+    ) -> dict[str, str]:
+        """``u:<id>`` / ``c:<id>`` → a display name, for every owner the minutes name.
+
+        The roster answers most of them; a colleague the reviewer picked from the whole staff
+        list, or a contact not minuted as present, is looked up — the contact through the
+        directory seam, so a name this caller may not see is not printed either.
+        """
+        names: dict[str, str] = {}
+        for p in participants:
+            if p.user_id is not None:
+                names.setdefault(f"u:{p.user_id}", p.name)
+            if p.contact_id is not None:
+                names.setdefault(f"c:{p.contact_id}", p.name)
+        missing_users = {
+            i.assignee_user_id
+            for i in draft.action_items
+            if i.assignee_user_id is not None and f"u:{i.assignee_user_id}" not in names
+        }
+        if missing_users:
+            from app.core.auth.models import User
+
+            rows = await self.ctx.session.execute(
+                staff_select(self.ctx.org.id).where(User.id.in_(list(missing_users)))
+            )
+            for user in rows.scalars():
+                names[f"u:{user.id}"] = user.full_name or user.email
+        missing_contacts = {
+            i.owner_contact_id
+            for i in draft.action_items
+            if i.owner_contact_id is not None and f"c:{i.owner_contact_id}" not in names
+        }
+        if missing_contacts:
+            for cid, label in (await labels_for(self.ctx, "contact", missing_contacts)).items():
+                names[f"c:{cid}"] = label
+        return names
 
     async def delete_audio(self, meeting_id: uuid.UUID) -> MeetingDetail:
         """Drop the recording, keep the words — the retention cron's act, on demand."""
@@ -548,12 +695,64 @@ def _clock(seconds: float | None) -> str:
     return f"{hours}:{minutes:02d}:{secs:02d}" if hours else f"{minutes}:{secs:02d}"
 
 
-def render_minutes(draft: MinutesDraft, *, locale: str, speakers: dict[str, str]) -> str:
+def participants_of(row: Meeting) -> list[MeetingParticipant]:
+    """The roster, whichever shape the row was written in.
+
+    ``participants`` where it exists; else the first shape, ``speakers = {"S1": "Jan"}``, read
+    as one name-only participant per label. A row nobody has touched since the column shipped
+    therefore reads exactly as it did.
+    """
+    if row.participants is not None:
+        out: list[MeetingParticipant] = []
+        for raw in row.participants:
+            if not isinstance(raw, dict):
+                continue
+            try:
+                out.append(MeetingParticipant.model_validate(raw))
+            except ValueError:
+                continue
+        return out
+    return [
+        MeetingParticipant(name=str(name).strip(), speaker=str(label)[:20])
+        for label, name in (row.speakers or {}).items()
+        if str(name).strip()
+    ]
+
+
+def speaker_names(participants: list[MeetingParticipant]) -> dict[str, str]:
+    """Label → name, the transcript's own lookup."""
+    return {p.speaker: p.name for p in participants if p.speaker}
+
+
+def _owner_key(item: Any) -> str | None:
+    if item.owner_contact_id is not None:
+        return f"c:{item.owner_contact_id}"
+    if item.assignee_user_id is not None:
+        return f"u:{item.assignee_user_id}"
+    return None
+
+
+def render_minutes(
+    draft: MinutesDraft,
+    *,
+    locale: str,
+    participants: list[MeetingParticipant],
+    names: dict[str, str],
+) -> str:
     """The minutes as the markdown the contact moment carries — headings in the org's language,
-    the reviewer's words verbatim, every claim with its timestamp beside it."""
+    the reviewer's words verbatim, every claim with its timestamp beside it.
+
+    The action items are written **by side and then by person**: what the agency took on,
+    under each colleague; what the client took on, under each contact; and the rest. A reader
+    on either side finds their own list without reading the other's, which is what a list of
+    action items is for.
+    """
     from app.i18n import translate
 
     lines: list[str] = []
+    if participants:
+        heading = translate("meetings.minutes.heading_attendees", locale)
+        lines += [f"## {heading}", "", ", ".join(p.name for p in participants), ""]
     if draft.summary.strip():
         heading = translate("meetings.minutes.heading_summary", locale)
         lines += [f"## {heading}", "", draft.summary.strip(), ""]
@@ -569,18 +768,46 @@ def render_minutes(draft: MinutesDraft, *, locale: str, speakers: dict[str, str]
         lines.append("")
     if draft.action_items:
         lines += [f"## {translate('meetings.minutes.heading_actions', locale)}", ""]
-        for item in draft.action_items:
-            owner = item.owner_label.strip() if item.owner_label else ""
-            due = f" — {item.due_date.isoformat()}" if item.due_date else ""
-            who = f" ({owner})" if owner else ""
-            at = f" _({_clock(item.at)})_" if item.at is not None else ""
-            lines.append(f"- {item.title.strip()}{who}{due}{at}")
-        lines.append("")
+        for side, items in group_action_items(draft.action_items):
+            side_heading = translate(f"meetings.minutes.side_{side}", locale)
+            lines += [f"### {side_heading}", ""]
+            for owner_key, owned in items:
+                owner = names.get(owner_key or "", "") if owner_key else ""
+                if not owner and owned and owned[0].owner_label:
+                    owner = owned[0].owner_label.strip()
+                if owner:
+                    lines.append(f"**{owner}**")
+                for item in owned:
+                    due = f" — {item.due_date.isoformat()}" if item.due_date else ""
+                    at = f" _({_clock(item.at)})_" if item.at is not None else ""
+                    lines.append(f"- {item.title.strip()}{due}{at}")
+                lines.append("")
     if draft.open_questions:
         lines += [f"## {translate('meetings.minutes.heading_questions', locale)}", ""]
         lines += [f"- {q.strip()}" for q in draft.open_questions]
         lines.append("")
     return "\n".join(lines).strip()
+
+
+def group_action_items(
+    items: list[Any],
+) -> list[tuple[str, list[tuple[str | None, list[Any]]]]]:
+    """Action items by side (``agency`` / ``client`` / ``other``), each side by owner, in order
+    of first appearance. Items with a free-text owner are grouped on that text; items with
+    nobody named share one unnamed group under ``other``."""
+    sides: dict[str, dict[str | None, list[Any]]] = {"agency": {}, "client": {}, "other": {}}
+    for item in items:
+        if item.owner_contact_id is not None:
+            side = "client"
+        elif item.assignee_user_id is not None:
+            side = "agency"
+        else:
+            side = "other"
+        key = _owner_key(item)
+        if key is None and item.owner_label and item.owner_label.strip():
+            key = f"n:{item.owner_label.strip().lower()}"
+        sides[side].setdefault(key, []).append(item)
+    return [(side, list(groups.items())) for side, groups in sides.items() if groups]
 
 
 async def drop_audio(ctx: Any, row: Meeting) -> None:
@@ -614,5 +841,8 @@ __all__ = [
     "MeetingSource",
     "chunk_content_id",
     "drop_audio",
+    "group_action_items",
+    "participants_of",
     "render_minutes",
+    "speaker_names",
 ]

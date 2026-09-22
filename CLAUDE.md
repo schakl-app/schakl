@@ -2124,7 +2124,19 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   confirming; the words stay). Confirm writes the interaction and the tasks through those
   modules' own services as the reviewer, and a task the tasks module refuses is *reported* on the
   result rather than failing the minutes (§18). `meeting_assist` is its own `AI_FEATURES` key for
-  #327's reason — a meeting is mostly other people's words.
+  #327's reason — a meeting is mostly other people's words. Its first live meeting found the
+  fifth rule: **a roster is a list of people, and a label is a property of a person**.
+  `speakers = {"S2": "Jan"}` could say what a label was and never who was in the room, so an
+  action item had nobody to be grounded in; `meetings.participants` names a colleague, a
+  client's contact or a name — asked *before* the recording, paired with the labels in review —
+  and the model reads a `PARTICIPANTS` block whose "who said it" is "who took it on".
+  `owner_contact_id` is grounded in it, the minutes print action items **by side and then by
+  person** (*Voor ons* / *Voor de klant* / *Overig*), confirm puts the contacts on the contact
+  moment's roster and makes a contact's ticked promise a task assigned to *them*, and
+  `POST /redraft` rewrites the minutes over the same transcript once the speakers are named,
+  at no audio cost. Its sibling: **a model that answers text only must be named before the
+  recording, not discovered after it** — the instance's `gpt-transcribe` labels nobody, so
+  `speech_diarize` rides `/meta/me` beside `speech` and the recorder says so above the button.
 
 ## 11. Working agreement (for Claude Code)
 

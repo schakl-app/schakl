@@ -9,6 +9,12 @@
    * how much is safe — "opgeslagen tot 12:00" — because a counter alone is a promise the tab
    * cannot keep. And **every way out releases the microphone** (docs/VOICE.md): leaving the page
    * aborts the capture and deletes the half-made row, so a forgotten recorder is not a bill.
+   *
+   * Two more since the roster shipped. **Who is at the table is asked here**, before the
+   * recording, because that is when the person knows it — and it is what the minutes ground
+   * "who took this on" in. And **a speech model that does not label speakers is said by name
+   * before a minute is recorded** (`speech_diarize`): a transcript without speakers looks exactly
+   * like one that failed to find any, so the honest place to say it is above the record button.
    */
   import ArrowLeft from "@lucide/svelte/icons/arrow-left";
   import Mic from "@lucide/svelte/icons/mic";
@@ -22,6 +28,7 @@
   import { aiEnabled } from "$lib/core/ai";
   import { fmtNumericDate } from "$lib/core/format";
   import { t } from "$lib/core/i18n";
+  import { can } from "$lib/core/permissions";
   import { orgToday } from "$lib/core/today";
   import Button from "$lib/core/ui/Button.svelte";
   import Combobox from "$lib/core/ui/Combobox.svelte";
@@ -37,9 +44,12 @@
     type CaptureSource,
   } from "$lib/modules/meetings/recorder.svelte";
   import { kindLabel } from "$lib/modules/meetings/format";
+  import ParticipantsEditor, {
+    type Participant,
+  } from "$lib/modules/meetings/ParticipantsEditor.svelte";
   import { projectArchivedLabel, splitProjectOptions } from "$lib/modules/projects/picker";
 
-  let { data } = $props();
+  let { data, form } = $props();
 
   type Source = CaptureSource | "upload";
 
@@ -52,6 +62,7 @@
   let companyId = $state(data.companyId ?? "");
   let projectId = $state("");
   let informed = $state(false);
+  let participants = $state<Participant[]>([]);
   let file = $state<File | null>(null);
   let error = $state<string | null>(null);
   let fieldError = $state<string | null>(null);
@@ -74,7 +85,9 @@
   const enabled = $derived(
     aiEnabled(page.data.user, "meeting_assist") && aiEnabled(page.data.user, "speech"),
   );
+  const diarizes = $derived(aiEnabled(page.data.user, "speech_diarize"));
   const companyPicker = $derived(splitCompanyOptions(data.companies, { selectedId: companyId }));
+  const companyName = $derived(data.companies.find((c) => c.id === companyId)?.name ?? null);
   const projectPicker = $derived(
     splitProjectOptions(data.projects, { selectedId: projectId, companyId }),
   );
@@ -102,6 +115,7 @@
         project_id: projectId || null,
         language: page.data.locale ?? "nl",
         participants_informed: informed,
+        participants,
       }),
     });
     if (!res.ok) {
@@ -217,6 +231,17 @@
   {#snippet subtitle()}{t("meetings.record.subtitle")}{/snippet}
 </PageHeader>
 
+{#if enabled && !diarizes && phase === "form"}
+  <p
+    class="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-200"
+  >
+    {t("meetings.record.no_diarize")}
+    {#if can(page.data.user, "ai.settings.manage")}
+      <a href="/settings/ai" class="underline">{t("meetings.record.no_diarize_link")}</a>
+    {/if}
+  </p>
+{/if}
+
 {#if !enabled}
   <p
     class="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-200"
@@ -316,6 +341,21 @@
         />
       </div>
     </div>
+
+    <fieldset>
+      <legend class="mb-1 text-sm font-medium text-text">{t("meetings.field.participants")}</legend>
+      <p class="mb-2 text-xs text-text-muted">{t("meetings.field.participants_hint")}</p>
+      <ParticipantsEditor
+        bind:participants
+        members={data.members}
+        {companyId}
+        {companyName}
+        definitions={data.contactDefinitions}
+        locale={data.locale}
+        created={form?.inlineCreated ?? null}
+        qcError={form?.qcError ?? null}
+      />
+    </fieldset>
 
     <fieldset>
       <legend class="mb-2 text-sm font-medium text-text">{t("meetings.field.kind")}</legend>

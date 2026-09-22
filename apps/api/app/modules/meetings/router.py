@@ -21,7 +21,7 @@ from app.modules.meetings.schemas import (
     MeetingDetail,
     MeetingFinish,
     MeetingList,
-    MeetingSpeakers,
+    MeetingParticipants,
     MeetingStatusRead,
     MeetingUpdate,
     MinutesDraft,
@@ -139,15 +139,31 @@ async def retry_meeting(
 
 
 @router.put(
-    "/{meeting_id}/speakers",
+    "/{meeting_id}/participants",
     response_model=MeetingDetail,
     dependencies=[require_permission("meetings.meeting.write")],
 )
-async def set_speakers(
-    meeting_id: uuid.UUID, payload: MeetingSpeakers, ctx: RequestContext = Depends(require_context)
+async def set_participants(
+    meeting_id: uuid.UUID,
+    payload: MeetingParticipants,
+    ctx: RequestContext = Depends(require_context),
 ) -> MeetingDetail:
-    """Name the provider's speaker labels — "S2 is Jan"."""
-    return await MeetingService(ctx).set_speakers(meeting_id, payload.speakers)
+    """Who was in the meeting — a colleague, a contact of the client, or a name — and which
+    speaker label (S1, S2 …) each of them is. Replaces the whole roster."""
+    return await MeetingService(ctx).set_participants(meeting_id, payload.participants)
+
+
+@router.post(
+    "/{meeting_id}/redraft",
+    response_model=MeetingDetail,
+    dependencies=[require_permission("meetings.meeting.write")],
+)
+async def redraft_meeting(
+    meeting_id: uuid.UUID, ctx: RequestContext = Depends(require_context)
+) -> MeetingDetail:
+    """Draft the minutes again over the transcript already here — after naming the speakers,
+    so the action items land on the people who took them on. No new transcription."""
+    return await MeetingService(ctx).redraft(meeting_id)
 
 
 @router.put(

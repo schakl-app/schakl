@@ -20,6 +20,12 @@ Shape decisions:
   not the e-mail one (#327): a colleague pressed record and a colleague presses confirm.
 - **The owner is snapshotted** (``owner_name``, #64): the colleague who recorded it keeps their
   name on the minutes after they leave.
+- **The roster is a list of people, not a map of labels.** ``participants`` names who was there
+  — a colleague by ``user_id``, a client's contact by ``contact_id``, anyone else by name — and
+  a provider's speaker label (``S2``) is a *property of a participant*, filled in once the
+  transcript is back. The other way round (``speakers = {"S2": "Jan"}``, the first shape) could
+  say who a label was and never who was in the room, so an action item had nobody to be
+  grounded in and a client's promise could not become a task assigned to that client.
 - **``participants_informed_at`` is a statement, not a checkbox.** Recording a conversation you
   take part in is legal here; *not telling the others* is not (AVG art. 13, and Sr 139a/b for a
   secret one), so the API refuses to open a recording until the person stated they did.
@@ -136,8 +142,16 @@ class Meeting(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, AuditableMixi
     # "parts": n}``; ``transcript_text`` the same words flat, for the search box and the prompt.
     transcript: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     transcript_text: Mapped[str | None] = mapped_column(Text, nullable=True)
-    #: The reviewer's names for the provider's speaker labels: ``{"S1": "Jan de Vries"}``.
+    #: The first shape of the roster — the reviewer's names for the provider's labels,
+    #: ``{"S1": "Jan de Vries"}``. Kept for the rows already written; read as a name-only roster
+    #: where ``participants`` is ``NULL``, never written any more.
     speakers: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    #: Who was in the room: ``[{"name", "user_id", "contact_id", "speaker"}]`` — a colleague
+    #: (``user_id``), a contact of the client (``contact_id``) or somebody with only a name, each
+    #: optionally holding the provider's speaker label they turned out to be. Stated *before* the
+    #: recording where the person knows it, corrected in review, and what the minutes' "who took
+    #: this on" is grounded in (``minutes.py``).
+    participants: Mapped[list[Any] | None] = mapped_column(JSONB, nullable=True)
     #: The drafted minutes and the reviewer's edits to them (``minutes.MinutesDraft``).
     minutes: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 

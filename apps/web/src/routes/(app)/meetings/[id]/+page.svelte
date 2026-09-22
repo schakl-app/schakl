@@ -11,6 +11,14 @@
    * transcript stays on the screen** while the draft is edited: a misheard name is only fixable
    * while the words are in view, and the speaker labels are named here, beside the lines they
    * label.
+   *
+   * The roster is the third thing on the desk. A speaker label is paired with a *person* — a
+   * colleague, a contact of the client, or a name — and the action items are drawn **by side
+   * and then by person** (what the agency took on, under each colleague; what the client took
+   * on, under each contact; the rest), because that is how either side reads a list of action
+   * items: for their own name. Naming the speakers after the draft was written is common, so
+   * *Notulen opnieuw opstellen* writes the minutes again over the same transcript, at no audio
+   * cost, with the people known this time.
    */
   import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
   import ArrowLeft from "@lucide/svelte/icons/arrow-left";
@@ -36,7 +44,7 @@
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import Markdown from "$lib/core/ui/Markdown.svelte";
-  import MemberPicker from "$lib/core/ui/MemberPicker.svelte";
+  import { memberLabel } from "$lib/core/members";
   import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
   import {
     fmtClock,
@@ -46,6 +54,9 @@
     sourceLabel,
   } from "$lib/modules/meetings/format";
   import MeetingStatusPill from "$lib/modules/meetings/MeetingStatusPill.svelte";
+  import ParticipantsEditor, {
+    type Participant,
+  } from "$lib/modules/meetings/ParticipantsEditor.svelte";
   import type {
     MinutesActionItem,
     MinutesDecision,
@@ -60,6 +71,7 @@
   // The generated types mark every defaulted field optional; the API always sends them.
   const segments = $derived((meeting.segments ?? []) as TranscriptSegment[]);
   const speakers = $derived((meeting.speakers ?? {}) as Record<string, string>);
+  const members = $derived(data.members);
   const taskIds = $derived(meeting.task_ids ?? []);
   const busy = new InFlight();
   let confirmOpen = $state(false);
@@ -103,6 +115,37 @@
     draftFor = row.id;
   });
 
+  /**
+   * The roster under edit — the same copy-once rule as the draft, and re-seeded after its own
+   * save so a label the API just stored is what the editor shows. `participantsRev` is what the
+   * save bumps; the row's `updated_at` would also move on every draft save.
+   */
+  let participants = $state<Participant[]>([]);
+  let participantsFor = $state<string | null>(null);
+  $effect(() => {
+    const row = meeting;
+    const key = `${row.id}:${JSON.stringify(row.participants ?? [])}`;
+    if (untrack(() => participantsFor) === key) return;
+    participants = structuredClone($state.snapshot(row.participants ?? [])).map((p) => ({
+      name: p.name,
+      user_id: p.user_id ?? null,
+      contact_id: p.contact_id ?? null,
+      speaker: p.speaker ?? null,
+    }));
+    participantsFor = key;
+  });
+  const participantsPayload = $derived(JSON.stringify(participants));
+  const participantsDirty = $derived(
+    JSON.stringify(
+      (meeting.participants ?? []).map((p) => ({
+        name: p.name,
+        user_id: p.user_id ?? null,
+        contact_id: p.contact_id ?? null,
+        speaker: p.speaker ?? null,
+      })),
+    ) !== participantsPayload,
+  );
+
   const speakerLabels = $derived(
     Array.from(new Set(segments.map((s) => s.speaker).filter((s): s is string => !!s))),
   );
@@ -110,6 +153,99 @@
     if (!label) return "";
     return speakers[label] ?? label;
   }
+  // A transcript with words and no labels is a speech model that answers text only — said by
+  // name, because it looks exactly like a recording in which nobody could be told apart.
+  const undiarized = $derived(!meeting.diarized && !!(segments.length || meeting.transcript_text));
+
+  /**
+   * "Who took this on" as one control. `u:<id>` is a colleague (a participant or anybody on
+   * staff), `c:<id>` a contact of the client (a participant), `n:<name>` a free-text owner —
+   * and typing an unknown name makes one. Exactly one of the item's three owner fields is set
+   * by a pick; the API refuses a colleague and a contact on the same item anyway.
+   */
+  const ownerItems = $derived.by(() => {
+    const items: { value: string; label: string; hint?: string }[] = [];
+    const seen: string[] = [];
+    for (const p of participants) {
+      const value = p.user_id
+        ? `u:${p.user_id}`
+        : p.contact_id
+          ? `c:${p.contact_id}`
+          : `n:${p.name}`;
+      if (seen.includes(value)) continue;
+      seen.push(value);
+      items.push({
+        value,
+        label: p.name,
+        hint: p.user_id
+          ? t("party.employee")
+          : p.contact_id
+            ? t("party.contact")
+            : t("meetings.participants.other"),
+      });
+    }
+    for (const m of members) {
+      const value = `u:${m.user_id}`;
+      if (seen.includes(value) || m.is_active === false) continue;
+      seen.push(value);
+      items.push({ value, label: memberLabel(m), hint: t("party.employee") });
+    }
+    return items;
+  });
+  function ownerValue(item: MinutesActionItem): string {
+    if (item.owner_contact_id) return `c:${item.owner_contact_id}`;
+    if (item.assignee_user_id) return `u:${item.assignee_user_id}`;
+    if (item.owner_label) return `n:${item.owner_label}`;
+    return "";
+  }
+  function setOwner(item: MinutesActionItem, value: string) {
+    item.assignee_user_id = value.startsWith("u:") ? value.slice(2) : null;
+    item.owner_contact_id = value.startsWith("c:") ? value.slice(2) : null;
+    item.owner_label = value.startsWith("n:") ? value.slice(2) : null;
+    // A colleague's item is ours to do; anybody else's is minuted unless the reviewer ticks it.
+    item.create_task = !!item.assignee_user_id;
+  }
+  function ownerName(item: MinutesActionItem): string {
+    const value = ownerValue(item);
+    if (!value) return "";
+    const found = ownerItems.find((o) => o.value === value);
+    return found?.label ?? item.owner_label ?? "";
+  }
+
+  type Side = "agency" | "client" | "other";
+  interface OwnerGroup {
+    key: string;
+    name: string;
+    indices: number[];
+  }
+  /** The action items by side, each side by owner — the shape the minutes print in too. */
+  function groupItems(items: MinutesActionItem[]): { side: Side; groups: OwnerGroup[] }[] {
+    const sides: Record<Side, Map<string, OwnerGroup>> = {
+      agency: new Map(),
+      client: new Map(),
+      other: new Map(),
+    };
+    items.forEach((item, index) => {
+      const side: Side = item.owner_contact_id
+        ? "client"
+        : item.assignee_user_id
+          ? "agency"
+          : "other";
+      const key = ownerValue(item).toLowerCase();
+      const group = sides[side].get(key) ?? { key, name: ownerName(item), indices: [] };
+      group.indices.push(index);
+      sides[side].set(key, group);
+    });
+    return (["agency", "client", "other"] as Side[])
+      .filter((side) => sides[side].size)
+      .map((side) => ({ side, groups: Array.from(sides[side].values()) }));
+  }
+  const draftGroups = $derived(draft ? groupItems(draft.action_items) : []);
+  const doneGroups = $derived(
+    meeting.status === "done" && meeting.minutes
+      ? groupItems((meeting.minutes.action_items ?? []) as MinutesActionItem[])
+      : [],
+  );
 
   const companyPicker = $derived(
     splitCompanyOptions(data.companies, { selectedId: meeting.company_id ?? "" }),
@@ -154,6 +290,7 @@
         title: "",
         description: null,
         assignee_user_id: null,
+        owner_contact_id: null,
         owner_label: null,
         due_date: null,
         at: null,
@@ -194,6 +331,67 @@
     "w-full rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand";
   const smallInput = `${inputClass} py-1.5`;
 </script>
+
+{#snippet actionItem(i: number)}
+  {#if draft}
+    {@const item = draft.action_items[i]}
+    <div class="rounded-lg border border-border p-3">
+      <div class="flex items-center gap-2">
+        <input
+          class={smallInput}
+          bind:value={item.title}
+          placeholder={t("meetings.review.item_placeholder")}
+          disabled={!reviewing}
+        />
+        {#if reviewing}
+          <button
+            type="button"
+            class="shrink-0 rounded p-1 text-text-muted hover:text-red-600"
+            aria-label={t("common.remove")}
+            onclick={() => removeItem(i)}><X size={14} /></button
+          >
+        {/if}
+      </div>
+      <div class="mt-2 grid gap-2 sm:grid-cols-2">
+        <div>
+          <span class="mb-1 block text-xs text-text-muted">{t("meetings.review.owner")}</span>
+          <Combobox
+            id={`item-owner-${i}`}
+            name={`_owner_${i}`}
+            items={ownerItems}
+            value={ownerValue(item)}
+            placeholder={t("meetings.review.nobody")}
+            onselect={(value: string) => setOwner(item, value)}
+            oncreate={(name: string) => setOwner(item, `n:${name.trim()}`)}
+          />
+        </div>
+        <div>
+          <label for={`item-due-${i}`} class="mb-1 block text-xs text-text-muted"
+            >{t("meetings.review.due")}</label
+          >
+          <DateInput
+            id={`item-due-${i}`}
+            name={`_due_${i}`}
+            value={item.due_date ?? ""}
+            onchange={(value: string) => (item.due_date = value || null)}
+          />
+        </div>
+      </div>
+      <label class="mt-2 flex items-center gap-2 text-sm text-text">
+        <input
+          type="checkbox"
+          class="size-4 rounded border-border"
+          bind:checked={item.create_task}
+          disabled={!reviewing}
+        />
+        {item.owner_contact_id
+          ? t("meetings.review.create_task_contact")
+          : t("meetings.review.create_task")}
+      </label>
+      {@render evidence(item)}
+    </div>
+  {/if}
+{/snippet}
 
 {#snippet evidence(item: MinutesDecision | MinutesActionItem)}
   {#if item.quote}
@@ -368,15 +566,23 @@
         {/if}
         {#if meeting.minutes.action_items?.length}
           <h3 class="mt-4 text-sm font-semibold text-text">{t("meetings.review.action_items")}</h3>
-          <ul class="mt-1 list-disc space-y-1 pl-5 text-sm text-text">
-            {#each meeting.minutes.action_items ?? [] as item, i (i)}
-              <li>
-                {item.title}
-                {#if item.owner_label}<span class="text-text-muted">({item.owner_label})</span>{/if}
-                {#if item.due_date}<span class="text-text-muted">— {item.due_date}</span>{/if}
-              </li>
+          {#each doneGroups as block (block.side)}
+            <p class="mt-2 text-xs font-medium tracking-wide text-text-muted uppercase">
+              {t(`meetings.minutes.side_${block.side}`)}
+            </p>
+            {#each block.groups as group (group.key)}
+              {#if group.name}<p class="mt-1 text-sm font-medium text-text">{group.name}</p>{/if}
+              <ul class="mt-0.5 list-disc space-y-1 pl-5 text-sm text-text">
+                {#each group.indices as i (i)}
+                  {@const item = (meeting.minutes.action_items ?? [])[i]}
+                  <li>
+                    {item.title}
+                    {#if item.due_date}<span class="text-text-muted">— {item.due_date}</span>{/if}
+                  </li>
+                {/each}
+              </ul>
             {/each}
-          </ul>
+          {/each}
         {/if}
         {#if meeting.minutes.open_questions?.length}
           <h3 class="mt-4 text-sm font-semibold text-text">
@@ -514,74 +720,22 @@
 
       <Card kind="panel" title={t("meetings.review.action_items")}>
         <p class="mb-3 text-xs text-text-muted">{t("meetings.review.action_items_hint")}</p>
-        <div class="space-y-3">
-          {#each draft.action_items as item, i (i)}
-            <div class="rounded-lg border border-border p-3">
-              <div class="flex items-center gap-2">
-                <input
-                  class={smallInput}
-                  bind:value={item.title}
-                  placeholder={t("meetings.review.item_placeholder")}
-                  disabled={!reviewing}
-                />
-                {#if reviewing}
-                  <button
-                    type="button"
-                    class="shrink-0 rounded p-1 text-text-muted hover:text-red-600"
-                    aria-label={t("common.remove")}
-                    onclick={() => removeItem(i)}><X size={14} /></button
-                  >
-                {/if}
+        <div class="space-y-4">
+          {#each draftGroups as block (block.side)}
+            <div>
+              <p class="mb-1 text-xs font-medium tracking-wide text-text-muted uppercase">
+                {t(`meetings.minutes.side_${block.side}`)}
+              </p>
+              <div class="space-y-3">
+                {#each block.groups as group (group.key)}
+                  {#if group.name && group.indices.length > 1}
+                    <p class="text-sm font-medium text-text">{group.name}</p>
+                  {/if}
+                  {#each group.indices as i (i)}
+                    {@render actionItem(i)}
+                  {/each}
+                {/each}
               </div>
-              <div class="mt-2 grid gap-2 sm:grid-cols-3">
-                <div>
-                  <span class="mb-1 block text-xs text-text-muted"
-                    >{t("meetings.review.assignee")}</span
-                  >
-                  <MemberPicker
-                    name={`_assignee_${i}`}
-                    members={data.members}
-                    value={item.assignee_user_id ?? ""}
-                    placeholder={t("meetings.review.nobody")}
-                    onselect={(value: string) => (item.assignee_user_id = value || null)}
-                  />
-                </div>
-                <div>
-                  <label for={`item-owner-${i}`} class="mb-1 block text-xs text-text-muted"
-                    >{t("meetings.review.owner_label")}</label
-                  >
-                  <input
-                    id={`item-owner-${i}`}
-                    class={smallInput}
-                    value={item.owner_label ?? ""}
-                    oninput={(e) =>
-                      (item.owner_label = (e.currentTarget as HTMLInputElement).value || null)}
-                    placeholder={t("meetings.review.owner_placeholder")}
-                    disabled={!reviewing}
-                  />
-                </div>
-                <div>
-                  <label for={`item-due-${i}`} class="mb-1 block text-xs text-text-muted"
-                    >{t("meetings.review.due")}</label
-                  >
-                  <DateInput
-                    id={`item-due-${i}`}
-                    name={`_due_${i}`}
-                    value={item.due_date ?? ""}
-                    onchange={(value: string) => (item.due_date = value || null)}
-                  />
-                </div>
-              </div>
-              <label class="mt-2 flex items-center gap-2 text-sm text-text">
-                <input
-                  type="checkbox"
-                  class="size-4 rounded border-border"
-                  bind:checked={item.create_task}
-                  disabled={!reviewing}
-                />
-                {t("meetings.review.create_task")}
-              </label>
-              {@render evidence(item)}
             </div>
           {:else}
             <p class="text-sm text-text-muted">{t("meetings.review.no_action_items")}</p>
@@ -703,6 +857,8 @@
 {/if}
 
 {#snippet transcriptPanel(editable: boolean)}
+  <!-- Redraft rides the participants form: `formaction` picks the action, and the roster in
+       the hidden field travels with it so the redraft reads what the screen shows. -->
   {#if meeting.audio_file_id}
     <Card kind="panel" title={t("meetings.review.recording")}>
       <audio controls preload="none" class="w-full" src={`/api/v1/files/${meeting.audio_file_id}`}
@@ -712,41 +868,70 @@
   {/if}
   {#if segments.length || meeting.transcript_text}
     <Card kind="panel" title={t("meetings.review.transcript")}>
-      {#if speakerLabels.length}
-        <form method="POST" action="?/speakers" class="mb-4" use:enhance={busy.keep("speakers")}>
-          <p class="mb-2 text-xs text-text-muted">
-            {t("meetings.review.speakers_hint")}
-            {#if meeting.transcript_parts > 1}
-              {t("meetings.review.speakers_parts", { parts: String(meeting.transcript_parts) })}
-            {/if}
-          </p>
-          <div class="grid gap-2 sm:grid-cols-2">
-            {#each speakerLabels as label (label)}
-              <label class="flex items-center gap-2 text-sm">
-                <span class="w-8 shrink-0 font-mono text-xs text-text-muted">{label}</span>
-                <input
-                  name={`speaker:${label}`}
-                  class={smallInput}
-                  value={speakers[label] ?? ""}
-                  placeholder={t("meetings.review.speaker_placeholder")}
-                  disabled={!editable}
-                />
-              </label>
-            {/each}
-          </div>
-          {#if editable}
+      {#if undiarized}
+        <p
+          class="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200"
+        >
+          {t("meetings.review.undiarized", { model: meeting.transcript_model ?? "?" })}
+        </p>
+      {/if}
+      <form
+        method="POST"
+        action="?/participants"
+        class="mb-4"
+        use:enhance={busy.keep("participants")}
+      >
+        <input type="hidden" name="participants" value={participantsPayload} />
+        <p class="mb-2 text-xs text-text-muted">
+          {t(
+            speakerLabels.length
+              ? "meetings.review.participants_hint"
+              : "meetings.review.participants_hint_plain",
+          )}
+          {#if meeting.transcript_parts > 1}
+            {t("meetings.review.speakers_parts", { parts: String(meeting.transcript_parts) })}
+          {/if}
+        </p>
+        <ParticipantsEditor
+          bind:participants
+          {members}
+          companyId={meeting.company_id ?? ""}
+          companyName={meeting.company_name ?? null}
+          {speakerLabels}
+          {editable}
+          definitions={data.contactDefinitions}
+          locale={data.locale}
+          created={form?.inlineCreated ?? null}
+          qcError={form?.qcError ?? null}
+        />
+        {#if editable}
+          <div class="mt-2 flex flex-wrap items-center gap-2">
             <Button
               type="submit"
               variant="secondary"
               size="sm"
-              class="mt-2"
-              loading={busy.is("speakers")}
+              loading={busy.is("participants")}
+              disabled={!participantsDirty || busy.active}
             >
-              {t("meetings.review.save_speakers")}
+              {t("meetings.review.save_participants")}
             </Button>
-          {/if}
-        </form>
-      {/if}
+            {#if meeting.status === "review"}
+              <Button
+                type="submit"
+                variant="secondary"
+                size="sm"
+                formaction="?/redraft"
+                title={t("meetings.review.redraft_hint")}
+                loading={busy.is("redraft")}
+                disabled={busy.active}
+              >
+                <RefreshCw size={14} />
+                {t("meetings.review.redraft")}
+              </Button>
+            {/if}
+          </div>
+        {/if}
+      </form>
       <div class="max-h-[70vh] space-y-2 overflow-y-auto text-sm">
         {#each segments as segment, i (i)}
           <p>

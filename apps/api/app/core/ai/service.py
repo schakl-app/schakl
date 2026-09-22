@@ -41,7 +41,12 @@ from app.core.ai.schemas import (
     AIUsageFeature,
     AIUsageSummary,
 )
-from app.core.ai.transcribe import DEFAULT_SPEECH_MODEL, DEFAULT_SPEECH_MODELS, can_transcribe
+from app.core.ai.transcribe import (
+    DEFAULT_SPEECH_MODEL,
+    DEFAULT_SPEECH_MODELS,
+    can_transcribe,
+    speech_limits,
+)
 from app.core.crypto import decrypt, encrypt
 from app.core.tenancy import RequestContext
 from app.errors import AppError
@@ -61,9 +66,7 @@ def invalidate_features_cache(org_id: uuid.UUID) -> None:
 
 def _feature_config(row: AISettings, feature: str) -> AIFeatureConfig:
     raw = (row.features or {}).get(feature) or {}
-    return AIFeatureConfig(
-        enabled=bool(raw.get("enabled", True)), model=raw.get("model") or None
-    )
+    return AIFeatureConfig(enabled=bool(raw.get("enabled", True)), model=raw.get("model") or None)
 
 
 async def get_row(session: AsyncSession, org_id: uuid.UUID) -> AISettings | None:
@@ -75,6 +78,11 @@ async def get_row(session: AsyncSession, org_id: uuid.UUID) -> AISettings | None
 #: is configured or there is no such capability — and adding it there would grow the settings
 #: form, the web's ``AIFeature`` union and the per-feature model override for a non-choice.
 SPEECH_CAPABILITY = "speech"
+#: Beside ``speech``: the configured speech model labels *who* spoke. A meeting wants that and
+#: a dictation does not, and a model that answers text only (``gpt-4o-transcribe``,
+#: ``gpt-transcribe``, whisper) looks exactly like one that failed to — the recorder says so
+#: **before** the recording is made, by reading this.
+SPEECH_DIARIZE_CAPABILITY = "speech_diarize"
 
 
 async def enabled_features(session: AsyncSession, org_id: uuid.UUID) -> list[str]:
@@ -100,8 +108,20 @@ async def enabled_features(session: AsyncSession, org_id: uuid.UUID) -> list[str
     )
     if row is not None and any(f in features for f in SPEECH_FEATURES) and _speech_ready(row):
         features.append(SPEECH_CAPABILITY)
+        if speech_limits(_speech_shape(row)).diarize:
+            features.append(SPEECH_DIARIZE_CAPABILITY)
     _features_cache[org_id] = (now, features)
     return features
+
+
+def _speech_shape(row: AISettings) -> ProviderConfig:
+    """Provider + model and nothing else — what ``speech_limits`` reads; no key is decrypted."""
+    provider = row.speech_provider or row.provider
+    return ProviderConfig(
+        provider=provider,
+        api_key="",
+        model=row.speech_model or DEFAULT_SPEECH_MODELS.get(provider, DEFAULT_SPEECH_MODEL),
+    )
 
 
 def _speech_ready(row: AISettings) -> bool:
@@ -151,9 +171,7 @@ class AIService:
             raise AppError("ai_not_configured", "errors.ai_not_configured", status_code=409)
         config = _feature_config(row, feature)
         if feature in AI_FEATURES and not config.enabled:
-            raise AppError(
-                "ai_feature_disabled", "errors.ai_feature_disabled", status_code=409
-            )
+            raise AppError("ai_feature_disabled", "errors.ai_feature_disabled", status_code=409)
         try:
             api_key = decrypt(row.api_key_enc)
         except ValueError as exc:  # rotated encryption key — configuration is gone
@@ -185,9 +203,7 @@ class AIService:
         if row is None:
             raise AppError("ai_not_configured", "errors.ai_not_configured", status_code=409)
         if feature not in SPEECH_FEATURES or not _feature_config(row, feature).enabled:
-            raise AppError(
-                "ai_feature_disabled", "errors.ai_feature_disabled", status_code=409
-            )
+            raise AppError("ai_feature_disabled", "errors.ai_feature_disabled", status_code=409)
         provider = row.speech_provider or row.provider
         if not can_transcribe(provider):
             raise AppError(
@@ -508,9 +524,7 @@ class AISettingsService:
                 fields={"base_url": "errors.required"},
             )
 
-        features = {
-            f: data.features[f].model_dump() for f in AI_FEATURES if f in data.features
-        }
+        features = {f: data.features[f].model_dump() for f in AI_FEATURES if f in data.features}
         # Speech is optional and independent: no speech provider means "reuse the chat one",
         # which resolves only for a provider that can transcribe.
         speech_key = (data.speech_api_key or "").strip()

@@ -9,3 +9,4 @@ export type MinutesDraft = components["schemas"]["MinutesDraft"];
 export type MinutesActionItem = components["schemas"]["MinutesActionItem"];
 export type MinutesDecision = components["schemas"]["MinutesDecision"];
 export type TranscriptSegment = components["schemas"]["TranscriptSegment"];
+export type MeetingParticipant = components["schemas"]["MeetingParticipant"];

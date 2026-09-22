@@ -306,6 +306,7 @@
               value={ai?.speech_model ?? ""}
               placeholder={speechProvider === "mistral" ? "voxtral-mini-latest" : "whisper-1"}
             />
+            <p class="mt-1 text-xs text-text-muted">{t("settings.ai.speech_model_hint")}</p>
           </div>
           <div>
             <label for="ai-audio-budget" class="mb-1 block text-sm text-text"

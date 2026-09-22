@@ -21,7 +21,9 @@ export type AIFeature =
   | "email_assist"
   | "task_intake"
   | "meeting_assist"
-  | "speech";
+  | "speech"
+  /** The speech model labels *who* spoke — what a meeting wants and a dictation does not. */
+  | "speech_diarize";
 
 /** Svelte context key the (app) layout provides; shared components (the editor's writing
  *  assist) read it so no consumer needs per-module wiring (#128). */

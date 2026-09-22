@@ -2,6 +2,7 @@ import { error as httpError, fail, redirect } from "@sveltejs/kit";
 
 import type { components } from "$lib/core/api/schema";
 import { apiErrorKey } from "$lib/core/errors";
+import { createContactAction } from "$lib/core/quickcreate.server";
 import { apiFor } from "$lib/core/session";
 
 import type { Actions, PageServerLoad } from "./$types";
@@ -20,6 +21,16 @@ export const load: PageServerLoad = async (event) => {
 };
 
 type MinutesBody = components["schemas"]["MinutesDraft"];
+type ParticipantBody = components["schemas"]["MeetingParticipant"];
+
+function parseParticipants(form: FormData): ParticipantBody[] | null {
+  try {
+    const parsed = JSON.parse(String(form.get("participants") ?? "[]"));
+    return Array.isArray(parsed) ? (parsed as ParticipantBody[]) : null;
+  } catch {
+    return null;
+  }
+}
 
 function minutesFrom(form: FormData): MinutesBody | null {
   const raw = String(form.get("minutes") ?? "");
@@ -55,22 +66,52 @@ export const actions: Actions = {
     return { saved: true };
   },
 
-  /** The reviewer's names for the speaker labels. */
-  speakers: async (event) => {
+  /** Who was there, and which speaker label each of them is — the whole roster as one field,
+   *  because a participant is a nested shape a flat form cannot spell. */
+  participants: async (event) => {
     const form = await event.request.formData();
-    const speakers: Record<string, string> = {};
-    for (const [key, value] of form.entries()) {
-      if (key.startsWith("speaker:") && String(value).trim()) {
-        speakers[key.slice("speaker:".length)] = String(value).trim();
-      }
-    }
-    const { error } = await apiFor(event).PUT("/api/v1/meetings/{meeting_id}/speakers", {
+    const participants = parseParticipants(form);
+    if (!participants) return fail(400, { error: "errors.validation" });
+    const { error } = await apiFor(event).PUT("/api/v1/meetings/{meeting_id}/participants", {
       params: { path: { meeting_id: event.params.id } },
-      body: { speakers },
+      body: { participants },
     });
-    if (error) return fail(400, { error: apiErrorKey(error).key });
+    if (error) {
+      const e = apiErrorKey(error);
+      return fail(400, { error: e.fields?.participants ?? e.key });
+    }
     return { saved: true };
   },
+
+  /**
+   * The minutes again, over the transcript already here — after the speakers were named. It
+   * rides the participants form, so the roster on the screen is saved first: a redraft that
+   * read the *stored* roster would ignore the label the person just picked and never say why.
+   */
+  redraft: async (event) => {
+    const form = await event.request.formData();
+    const api = apiFor(event);
+    if (form.has("participants")) {
+      const participants = parseParticipants(form);
+      if (participants) {
+        const saved = await api.PUT("/api/v1/meetings/{meeting_id}/participants", {
+          params: { path: { meeting_id: event.params.id } },
+          body: { participants },
+        });
+        if (saved.error) {
+          const e = apiErrorKey(saved.error);
+          return fail(400, { error: e.fields?.participants ?? e.key });
+        }
+      }
+    }
+    const { error } = await api.POST("/api/v1/meetings/{meeting_id}/redraft", {
+      params: { path: { meeting_id: event.params.id } },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { queued: true };
+  },
+
+  createContact: createContactAction,
 
   /** The edited draft, kept without confirming. */
   saveMinutes: async (event) => {

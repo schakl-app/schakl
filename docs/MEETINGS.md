@@ -62,6 +62,43 @@ the screen states what the person is asked to say — why, who reads it, how lon
 The audio has a retention: `meetings_sweep_audio` drops the recording of a confirmed meeting after
 `AUDIO_RETENTION_DAYS` (30); the transcript and the minutes stay. A reviewer can drop it earlier.
 
+## Who was there, and who took what on
+
+A meeting's roster is `meetings.participants`: a list of people, each a colleague (`user_id`), a
+contact of the client (`contact_id`) or somebody known by name alone, and each optionally
+holding the provider's speaker label they turned out to be (`speaker: "S2"`). The recorder asks
+for it **before** the recording — the person knows who is at the table — and adds the recorder
+themselves; the review screen finishes it, pairing labels with people beside the transcript's
+lines, with the client's contacts offered from the client's own roster (and the ordinary
+inline-create behind the ＋). The first shape, `speakers = {"S2": "Jan"}`, is still read for the
+rows written under it and never written again: it could say what a label was and not who was in
+the room, so nothing could be grounded in it.
+
+Three things follow from the roster being *people*:
+
+- **The model is told who spoke.** The prompt carries a `PARTICIPANTS` block (label, name,
+  kind, id), and the rule that an action item's owner is the speaker who said they would do it.
+  `owner_contact_id` joins `assignee_user_id` on an action item and is grounded exactly as
+  strictly — only a contact the block named; a contact and a colleague on one item resolves to
+  the contact, because a client's promise is never a colleague's task.
+- **The minutes are written by side and then by person**: *Voor ons* under each colleague,
+  *Voor de klant* under each contact, *Overig* for the rest — the review screen groups the same
+  way, so either side reads its own list. Confirm puts the client's contacts on the contact
+  moment as its roster (`contact_ids`), and a ticked item owned by a contact becomes a task
+  **assigned to that contact** (`assignee_contact_id`, the "waiting on the client" shape).
+- **Naming the speakers after the draft is the common case**, so `POST /meetings/{id}/redraft`
+  writes the minutes again over the transcript already on the row (`meetings_process` with
+  `stage="minutes"`): no new transcription, no audio cost, the people known this time. The
+  screen's button saves the roster first, so the redraft reads what the screen shows.
+
+**A speech model that does not label speakers is said by name, before and after.** A transcript
+with words and no labels looks exactly like a recording in which nobody could be told apart, so
+`enabled_features` reports `speech_diarize` beside `speech` (read off `speech_limits` for the
+configured model), the recorder shows an amber line above the record button when it is absent,
+the review screen names the model (`transcript.diarized`), and Instellingen → AI says under the
+model field which models label speakers. Found on the first live meeting: the instance's speech
+model was `gpt-transcribe`, which answers text only, and nothing on any screen had said so.
+
 ## Lifecycle
 
 `recording → queued → transcribing → summarising → review → done`, or `failed` with the reason as
@@ -73,7 +110,8 @@ while the row is in flight.
 
 ## Gates
 
-- `meetings.meeting.read` (member), `.write` (member — record, review, confirm),
+- `meetings.meeting.read` (member), `.write` (member — record, review, name the
+  participants, redraft, confirm),
   `.delete` (admin). The router carries the module's licence write gate (`sku="meetings"`).
 - Recording needs `meeting_assist` on (`AI_FEATURES`, its own key: a meeting is mostly *other
   people's* words sent whole to a model) and a speech provider that can transcribe

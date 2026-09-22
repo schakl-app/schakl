@@ -9491,6 +9491,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/meetings/{meeting_id}/participants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Participants
+         * @description Who was in the meeting — a colleague, a contact of the client, or a name — and which
+         *     speaker label (S1, S2 …) each of them is. Replaces the whole roster.
+         */
+        put: operations["set_participants_api_v1_meetings__meeting_id__participants_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meetings/{meeting_id}/redraft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Redraft Meeting
+         * @description Draft the minutes again over the transcript already here — after naming the speakers,
+         *     so the action items land on the people who took them on. No new transcription.
+         */
+        post: operations["redraft_meeting_api_v1_meetings__meeting_id__redraft_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/meetings/{meeting_id}/retry": {
         parameters: {
             query?: never;
@@ -9502,26 +9544,6 @@ export interface paths {
         put?: never;
         /** Retry Meeting */
         post: operations["retry_meeting_api_v1_meetings__meeting_id__retry_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/meetings/{meeting_id}/speakers": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Set Speakers
-         * @description Name the provider's speaker labels — "S2 is Jan".
-         */
-        put: operations["set_speakers_api_v1_meetings__meeting_id__speakers_put"];
-        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -26879,6 +26901,8 @@ export interface components {
             language?: string | null;
             /** Occurred At */
             occurred_at?: string | null;
+            /** Participants */
+            participants?: components["schemas"]["MeetingParticipant"][];
             /**
              * Participants Informed
              * @default false
@@ -26931,6 +26955,11 @@ export interface components {
              * @default 0
              */
             decision_count: number;
+            /**
+             * Diarized
+             * @default false
+             */
+            diarized: boolean;
             /** Duration Seconds */
             duration_seconds?: number | null;
             /** Error Key */
@@ -26955,6 +26984,8 @@ export interface components {
             owner_name?: string | null;
             /** Owner User Id */
             owner_user_id?: string | null;
+            /** Participants */
+            participants?: components["schemas"]["MeetingParticipant"][];
             /** Participants Informed At */
             participants_informed_at?: string | null;
             /** Project Id */
@@ -27000,6 +27031,33 @@ export interface components {
             items: components["schemas"]["MeetingRow"][];
             /** Total */
             total?: number | null;
+        };
+        /**
+         * MeetingParticipant
+         * @description One person in the room.
+         *
+         *     Exactly one of ``user_id`` (a colleague) / ``contact_id`` (a contact of the client) may be
+         *     set; neither means somebody known by name alone. ``speaker`` is the provider's label this
+         *     person turned out to be (``S2``) — filled in after the transcript is back, and the one
+         *     thing the review screen changes about a participant.
+         */
+        MeetingParticipant: {
+            /** Contact Id */
+            contact_id?: string | null;
+            /** Name */
+            name: string;
+            /** Speaker */
+            speaker?: string | null;
+            /** User Id */
+            user_id?: string | null;
+        };
+        /**
+         * MeetingParticipants
+         * @description The whole roster, replaced: who was there and which speaker label each one is.
+         */
+        MeetingParticipants: {
+            /** Participants */
+            participants?: components["schemas"]["MeetingParticipant"][];
         };
         /** MeetingRow */
         MeetingRow: {
@@ -27055,16 +27113,6 @@ export interface components {
          * @enum {string}
          */
         MeetingSource: "microphone" | "tab" | "upload";
-        /**
-         * MeetingSpeakers
-         * @description The reviewer's names for the provider's labels: ``{"S1": "Jan de Vries"}``.
-         */
-        MeetingSpeakers: {
-            /** Speakers */
-            speakers?: {
-                [key: string]: string;
-            };
-        };
         /**
          * MeetingStatus
          * @enum {string}
@@ -27443,6 +27491,8 @@ export interface components {
             description?: string | null;
             /** Due Date */
             due_date?: string | null;
+            /** Owner Contact Id */
+            owner_contact_id?: string | null;
             /** Owner Label */
             owner_label?: string | null;
             /** Quote */
@@ -57044,7 +57094,42 @@ export interface operations {
             };
         };
     };
-    retry_meeting_api_v1_meetings__meeting_id__retry_post: {
+    set_participants_api_v1_meetings__meeting_id__participants_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MeetingParticipants"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    redraft_meeting_api_v1_meetings__meeting_id__redraft_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -57075,7 +57160,7 @@ export interface operations {
             };
         };
     };
-    set_speakers_api_v1_meetings__meeting_id__speakers_put: {
+    retry_meeting_api_v1_meetings__meeting_id__retry_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -57084,11 +57169,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MeetingSpeakers"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
