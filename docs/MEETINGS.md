@@ -108,6 +108,42 @@ through a slow provider is a legitimate forty minutes). `retry` re-queues a `fai
 row over the folded recording. The detail page polls `GET /meetings/{id}/status` — three columns —
 while the row is in flight.
 
+## What a redeploy does to a recording, and what a dead tab leaves behind
+
+A Swarm redeploy (`docs/DEPLOY.md`) is not an outage for the recorder, and the module is built so
+that it stays that way: the capture is `MediaRecorder` in a tab that is already loaded, nothing
+polls for a new app version, and the service-worker registration never reloads a page. What a
+redeploy *can* do is refuse a piece for a while — a request that meets an API task being retired,
+the edge stack restarting, or simply a phone stepping out of wifi at the same moment — and the
+first recorder answered that with three retries over twelve seconds, then a red line and a button.
+The person who would press the button is in the meeting. Four rules now hold.
+
+- **A piece is retried for minutes, not seconds** (`upload.ts`): a capped backoff (1 s → 30 s)
+  until `UPLOAD_RETRY_BUDGET_MS` (ten minutes) has been spent waiting, held in memory, in order.
+  The screen says *"Verbinding herstellen… opgeslagen tot 12:03"* in amber while it retries — the
+  recording goes on and nothing is lost yet — and turns red with *Opnieuw opslaan* only once the
+  budget is gone. A refusal the API means (a 4xx) still comes back at once. The API replaces a
+  piece it already holds under the same `seq`, so a retry after a lost response cannot double a
+  minute. The API task gets `stop_grace_period: 30s` so the upload it holds at SIGTERM finishes.
+- **Leaving is asked about, twice.** While a capture runs, `beforeunload` puts the browser's own
+  prompt on a reload, a closed tab or a typed URL, and `beforeNavigate` asks in our words before a
+  nav link or the back button — because the page's unmount aborts the capture *and deletes the
+  row*, and a mis-click must not be how a meeting ends.
+- **A tab that died anyway leaves a row the page can finish.** The pieces it uploaded are stored;
+  what is missing is the stop. Every piece bumps `updated_at` and a recorder posts one a minute,
+  so the detail page polls a `recording` row and, once nothing has landed for two minutes, says
+  so and offers *Verwerk wat is opgeslagen* — `POST /finish` without a duration, the transcription's
+  own count filling it in — or the delete. Before this the row sat on *"nog aan het opnemen"* for
+  ever, and the reaper deliberately ignores `recording` (a four-hour meeting is legal).
+- **The worker resumes a run its own restart cut short.** The worker rolls stop-first; arq
+  cancels the running `meetings_process` and queues it again, and the second run arrives to a row
+  still stamped `transcribing` or `summarising`. `run_pipeline` used to stand down on anything but
+  `queued`, which handed a ten-second restart to the ninety-minute reaper and then to a person
+  pressing retry. A row in a worker state is resumed now — from the minutes where the transcript
+  is already committed (the row was stamped `summarising` in the same commit that stored it), so a
+  second transcription is never bought for the same audio. A row on `review`, `done` or `failed`
+  is still nobody's to resume.
+
 ## Gates
 
 - `meetings.meeting.read` (member), `.write` (member — record, review, name the

@@ -2167,6 +2167,26 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   as them, ids grounded in the document, a confirmed meeting's minutes untouched whatever the
   answer says.
 
+- **A redeploy must be a non-event for a tab in the middle of a recording, and a piece that
+  does not land is retried by the browser, never by the person** (`meetings/upload.ts`,
+  `docs/MEETINGS.md`). The API rolls start-first (§11), which keeps the healthcheck green and says
+  nothing about the request that meets the task being retired, the edge restarting, or the phone
+  leaving wifi at that moment; the recorder answered any of them with twelve seconds of retries, a
+  red line and a button, for a person who is in the meeting and not at the screen. Four rules.
+  **The retry budget matches the outage, not the round trip**: a capped backoff for ten minutes,
+  in memory and in order, said in amber as *reconnecting* — red and a button only once the budget
+  is gone, a 4xx at once. **The service holding the upload is given time to finish it**
+  (`stop_grace_period: 30s` on the API; uvicorn drains what it holds, and a minute of audio over
+  a phone's uplink is longer than Compose's ten). **A background job cut short by its own worker's
+  restart is resumed, from where its output already is**: arq re-queues a cancelled
+  `meetings_process`, and `run_pipeline` now takes a row in a worker state rather than standing
+  down and leaving a ten-second restart to a ninety-minute reaper — skipping the transcription
+  where the row's transcript is already committed, because the same audio is never bought twice.
+  And **a page that owns a live capture asks before it is left** (`beforeunload` + `beforeNavigate`),
+  while **a row the tab abandoned is finishable from its own page** (a `recording` row nothing has
+  touched for two minutes, judged on `updated_at`, offers *Verwerk wat is opgeslagen*), because
+  the pieces are stored and the only thing missing is the stop nobody sent.
+
 ## 11. Working agreement (for Claude Code)
 
 - Start each phase in **plan mode**; propose the plan and wait for approval before coding.

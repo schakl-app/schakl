@@ -84,10 +84,27 @@
   let confirmAudio = $state(false);
   let exportOpen = $state(false);
 
-  // The worker owns the row for a while: ask again until it does not (`pollWhile`'s rule).
+  // The worker owns the row for a while: ask again until it does not (`pollWhile`'s rule). A
+  // row still recording is polled too — a recorder in another tab posts a piece a minute, and
+  // this page has to notice when it stops doing so.
   pollWhile(
-    () => inFlight(meeting.status),
+    () => inFlight(meeting.status) || meeting.status === "recording",
     () => invalidate("meetings:meeting"),
+  );
+
+  /**
+   * A recording whose recorder is gone. The tab posts one piece a minute while it runs, so a
+   * `recording` row nothing has touched for longer than that is a tab that was reloaded, closed
+   * or crashed — a redeploy at the wrong moment, a phone that locked. The pieces it did upload
+   * are stored; what is missing is the stop, so the page offers it. Two minutes, not one: a
+   * piece retried through a connection blip lands late rather than never. Re-evaluated on every
+   * poll, which is where `meeting` changes.
+   */
+  const STALLED_AFTER_MS = 2 * 60_000;
+  const stalled = $derived(
+    meeting.status === "recording" &&
+      !!meeting.updated_at &&
+      Date.now() - new Date(meeting.updated_at).getTime() > STALLED_AFTER_MS,
   );
 
   /**
@@ -561,7 +578,47 @@
   </p>
 {/if}
 
-{#if inFlight(meeting.status) || meeting.status === "recording"}
+{#if stalled}
+  <!-- The recorder is gone; what it uploaded is here. Offer the stop it never sent. -->
+  <Card kind="panel">
+    <div class="flex items-start gap-3">
+      <AlertTriangle size={18} class="mt-0.5 text-amber-600 dark:text-amber-400" />
+      <div class="min-w-0 flex-1">
+        <p class="text-sm font-medium text-text">
+          {t("meetings.progress.stalled", {
+            time: fmtDateTime(meeting.updated_at ?? meeting.created_at),
+          })}
+        </p>
+        <p class="text-sm text-text-muted">
+          {#if (meeting.chunks_received ?? 0) === 0}
+            {t("meetings.progress.stalled_none")}
+          {:else}
+            {tn("meetings.progress.stalled_hint", meeting.chunks_received ?? 0)}
+          {/if}
+        </p>
+        {#if canWrite}
+          <div class="mt-3 flex flex-wrap gap-2">
+            <form method="POST" action="?/finishRecording" use:enhance={busy.keep("finish")}>
+              <Button
+                type="submit"
+                variant="primary"
+                loading={busy.is("finish")}
+                disabled={(meeting.chunks_received ?? 0) === 0}
+              >
+                {t("meetings.action.finish_recording")}
+              </Button>
+            </form>
+            {#if meeting.can_delete}
+              <Button type="button" variant="secondary" onclick={() => (confirmDelete = true)}>
+                {t("common.delete")}
+              </Button>
+            {/if}
+          </div>
+        {/if}
+      </div>
+    </div>
+  </Card>
+{:else if inFlight(meeting.status) || meeting.status === "recording"}
   <Card kind="panel">
     <div class="flex items-center gap-3">
       <Sparkles size={18} class="text-brand" />

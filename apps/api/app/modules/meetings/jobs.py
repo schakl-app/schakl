@@ -189,7 +189,21 @@ async def run_pipeline(
     # an expired attribute read is a lazy load — sync IO the async session refuses.
     org_id = org.id
     row = await _load(session, org_id, meeting_id)
-    if row is None or row.status != MeetingStatus.QUEUED.value:
+    if row is None:
+        return
+    if row.status in WORKER_STATUSES:
+        # A run this worker (or its predecessor) claimed and did not finish: the worker rolls
+        # stop-first on a redeploy, arq cancels the job and queues it again, and the second run
+        # arrives to a row still stamped ``transcribing`` or ``summarising``. Standing down here
+        # left the meeting to the reaper — ninety minutes, then ``failed``, then a person pressing
+        # retry — for a restart that took ten seconds. So a row in a worker state is *resumed*,
+        # and resumed from where the words are: a transcript already committed is not
+        # transcribed again (the row was stamped ``summarising`` in the same commit that stored
+        # it), because a second transcription is a second bill for the same audio.
+        logger.info("meetings: %s was left on %s; resuming", meeting_id, row.status)
+        if (row.transcript_text or "").strip():
+            stage = "minutes"
+    elif row.status != MeetingStatus.QUEUED.value:
         logger.info("meetings: %s is not queued; standing down", meeting_id)
         return
     ctx = system_context(org, session)

@@ -9,7 +9,10 @@
  * `MediaRecorder` for a blob every `CHUNK_MS` and uploads each as it lands — one piece a minute,
  * in order, retried, and the API folds them (`app/modules/meetings/pipeline.py`). Only the first
  * piece carries the container header; the rest are continuations of it, which is why a piece is
- * never transcribed on its own and why the order is the file.
+ * never transcribed on its own and why the order is the file. A piece that does not land is
+ * retried in the background for minutes, not seconds (`upload.ts`): the person is in the meeting,
+ * a redeploy or a dropped connection ends on its own, and `retrying` is what the screen says in
+ * the meantime — the capture never stops for it.
  *
  * The **tab** source is `getDisplayMedia` with audio: what a Meet, Teams or Zoom call in the
  * browser plays, mixed with the microphone through an `AudioContext` so both sides of the
@@ -20,8 +23,11 @@
  *
  * Everything here is capability-detected after mount, never inferred from a user agent.
  */
-import { blobToBase64 } from "$lib/core/voice";
 import { micErrorKey } from "$lib/core/voice";
+
+import { uploadChunk } from "./upload";
+
+export { uploadChunk } from "./upload";
 
 export type MeetingRecorderState = "idle" | "starting" | "recording" | "stopping" | "finished";
 export type CaptureSource = "microphone" | "tab";
@@ -34,7 +40,6 @@ const AUDIO_BITS_PER_SECOND = 32_000;
 export const MAX_MEETING_MS = 4 * 3600_000;
 /** An upload cut into pieces this size — under the API's per-piece cap with room for base64. */
 export const UPLOAD_PIECE_BYTES = 4 * 1024 * 1024;
-const RETRY_DELAYS_MS = [1_000, 3_000, 8_000];
 
 const PREFERRED_TYPES = [
   "audio/webm;codecs=opus",
@@ -65,34 +70,6 @@ function pickMimeType(): string | undefined {
   return undefined;
 }
 
-/** One piece to the API. Returns an i18n error key, or null. */
-export async function uploadChunk(
-  meetingId: string,
-  seq: number,
-  blob: Blob,
-): Promise<string | null> {
-  const audio = await blobToBase64(blob);
-  for (let attempt = 0; ; attempt++) {
-    try {
-      const res = await fetch(`/api/v1/meetings/${meetingId}/chunks`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ seq, audio }),
-      });
-      if (res.ok) return null;
-      // A refusal the API means (413, 409, 422) will not change on retry; a 5xx might.
-      if (res.status < 500) {
-        const payload = await res.json().catch(() => null);
-        return payload?.error?.message ?? "errors.server";
-      }
-    } catch {
-      // network: retry below
-    }
-    if (attempt >= RETRY_DELAYS_MS.length) return "meetings.record.upload_failed";
-    await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
-  }
-}
-
 export class MeetingRecorder {
   state = $state<MeetingRecorderState>("idle");
   error = $state<string | null>(null);
@@ -104,6 +81,9 @@ export class MeetingRecorder {
   /** A piece that could not be uploaded after every retry; the recording goes on, and the
    *  finish waits until it is retried. */
   uploadError = $state<string | null>(null);
+  /** A piece being retried right now: since when, and how many attempts so far. The recording
+   *  goes on and nothing is lost; the screen says "reconnecting" rather than "failed". */
+  retrying = $state<{ since: number; attempts: number } | null>(null);
   stoppedAtLimit = $state(false);
   source = $state<CaptureSource>("microphone");
 
@@ -131,6 +111,7 @@ export class MeetingRecorder {
     this.source = source;
     this.error = null;
     this.uploadError = null;
+    this.retrying = null;
     this.stoppedAtLimit = false;
     this.state = "starting";
     this.#seq = 0;
@@ -243,7 +224,12 @@ export class MeetingRecorder {
     if (!meetingId) return;
     this.pending += 1;
     this.#queue = this.#queue.then(async () => {
-      const error = await uploadChunk(meetingId, seq, blob);
+      const error = await uploadChunk(meetingId, seq, blob, {
+        onRetry: (attempt) => {
+          this.retrying = { since: this.retrying?.since ?? Date.now(), attempts: attempt + 1 };
+        },
+      });
+      this.retrying = null;
       this.pending -= 1;
       if (error) {
         this.#failed.push({ seq, blob });

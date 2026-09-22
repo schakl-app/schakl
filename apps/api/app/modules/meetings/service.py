@@ -190,6 +190,7 @@ class MeetingService:
             language=row.language,
             participants_informed_at=row.participants_informed_at,
             chunks_received=row.chunks_received,
+            updated_at=row.updated_at,
             audio_file_id=row.audio_file_id,
             audio_content_type=(
                 CONTENT_TYPES.get(row.audio_format or "") if row.audio_file_id else None

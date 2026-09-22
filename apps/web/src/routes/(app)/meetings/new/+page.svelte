@@ -15,6 +15,13 @@
    * "who took this on" in. And **a speech model that does not label speakers is said by name
    * before a minute is recorded** (`speech_diarize`): a transcript without speakers looks exactly
    * like one that failed to find any, so the honest place to say it is above the record button.
+   *
+   * And one about leaving. While a recording runs, this page is the recorder: a reload, a closed
+   * tab or a mis-clicked nav link ends the capture and — through `leave()` — deletes the row, so
+   * both are asked about first (`beforeunload` for the browser's own exits, `beforeNavigate` for
+   * the app's). A piece that is not landing is *not* a reason to stop: the upload retries in the
+   * background for minutes (`upload.ts`), and the screen says so in amber, because a redeploy or
+   * a dropped connection ends on its own and the recording must not.
    */
   import ArrowLeft from "@lucide/svelte/icons/arrow-left";
   import Mic from "@lucide/svelte/icons/mic";
@@ -23,7 +30,7 @@
   import Upload from "@lucide/svelte/icons/upload";
   import { onMount } from "svelte";
 
-  import { goto } from "$app/navigation";
+  import { beforeNavigate, goto } from "$app/navigation";
   import { page } from "$app/state";
   import { aiEnabled } from "$lib/core/ai";
   import { fmtNumericDate } from "$lib/core/format";
@@ -80,6 +87,27 @@
     if (!micSupported) source = "upload";
     if (!title) title = t("meetings.record.default_title", { date: fmtNumericDate(orgToday()) });
     return () => void leave();
+  });
+
+  /** Is leaving now the end of a recording? (`finish` hands the row over first.) */
+  const guarded = $derived(recorder.active || phase === "uploading");
+
+  // The browser's own exits — reload, close, a typed URL — get the native "leave site?" prompt.
+  $effect(() => {
+    if (!guarded) return;
+    const ask = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      // Older browsers read a returnValue; modern ones show their own sentence regardless.
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", ask);
+    return () => window.removeEventListener("beforeunload", ask);
+  });
+
+  // The app's own exits — a nav link, the back button — ask in our words and can be refused.
+  beforeNavigate((navigation) => {
+    if (!guarded || navigation.type === "leave") return;
+    if (!confirm(t("meetings.record.leave_confirm"))) navigation.cancel();
   });
 
   const enabled = $derived(
@@ -262,6 +290,12 @@
         {t("meetings.record.finishing")}
       {:else if recorder.uploadError}
         <span class="text-red-700 dark:text-red-300">{t(recorder.uploadError)}</span>
+      {:else if recorder.retrying}
+        <!-- A piece is being retried: the recording goes on and nothing is lost yet, so amber,
+             with what *is* safe beside it. -->
+        <span class="text-amber-800 dark:text-amber-200">
+          {t("meetings.record.reconnecting", { clock: formatClock(recorder.uploaded * 60) })}
+        </span>
       {:else if recorder.uploaded === 0 && recorder.pending === 0}
         {t("meetings.record.saving_soon")}
       {:else}

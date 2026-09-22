@@ -141,6 +141,20 @@ export const actions: Actions = {
     return { confirmed: true, skipped: data?.skipped ?? [] };
   },
 
+  /**
+   * A recording whose tab died: the pieces already uploaded become the recording. The same
+   * call the recorder makes when it stops, without a duration — the transcription's own count
+   * fills it in.
+   */
+  finishRecording: async (event) => {
+    const { error } = await apiFor(event).POST("/api/v1/meetings/{meeting_id}/finish", {
+      params: { path: { meeting_id: event.params.id } },
+      body: { duration_seconds: null },
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
+    return { queued: true };
+  },
+
   retry: async (event) => {
     const { error } = await apiFor(event).POST("/api/v1/meetings/{meeting_id}/retry", {
       params: { path: { meeting_id: event.params.id } },

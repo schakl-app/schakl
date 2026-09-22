@@ -910,3 +910,58 @@ async def test_a_client_never_reads_a_meeting_even_holding_the_key(
                 headers=guest_h,
             )
         ).status_code == 403
+
+
+async def test_a_run_the_worker_restart_cut_short_is_resumed(
+    client_for, tmp_path, monkeypatch
+) -> None:
+    """The worker rolls stop-first on a redeploy: arq cancels the running job and queues it
+    again, and the second run finds the row still stamped with the state the first one was in.
+    Standing down there left the meeting to the reaper (ninety minutes, then ``failed``, then a
+    person pressing retry) for a restart that took seconds — so a row in a worker state is
+    resumed, and from where the words are: a transcript already stored is not bought twice."""
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+    transcriptions: list[int] = []
+    inner = _fake_transcribe(900)
+
+    async def counting(config, clip, **kwargs):  # noqa: ANN001, ANN003
+        transcriptions.append(1)
+        return await inner(config, clip, **kwargs)
+
+    monkeypatch.setattr("app.modules.meetings.pipeline.provider_transcribe", counting)
+    t = await make_tenant("meet-resume")
+    headers = await auth_cookie(t.user)
+
+    async def left_on(status: str, meeting_id: str) -> None:
+        async with async_session_maker() as session:
+            await set_current_org(session, t.org.id)
+            row = await session.get(Meeting, uuid.UUID(meeting_id))
+            row.status = status
+            row.status_at = datetime.now(UTC)
+            row.minutes = None
+            await session.commit()
+
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        meeting = await _record(c, headers)
+        monkeypatch.setattr(
+            "app.core.ai.providers.stream_chat", _fake_stream(_submit(**_minutes(str(t.user.id))))
+        )
+        # Stopped while transcribing: nothing was written, so the words are read once.
+        await left_on("transcribing", meeting["id"])
+        await _run(t.org.id, meeting["id"])
+        detail = (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()
+        assert detail["status"] == "review", detail
+        assert len(transcriptions) == 1
+        # Stopped while summarising: the transcript is on the row, so the resume starts at the
+        # minutes and the provider is not asked for the words again.
+        await left_on("summarising", meeting["id"])
+        await _run(t.org.id, meeting["id"])
+        detail = (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()
+        assert detail["status"] == "review" and detail["minutes"], detail
+        assert len(transcriptions) == 1
+        # A row a person is reviewing is not a run to resume: the worker still stands down.
+        await _run(t.org.id, meeting["id"])
+        assert (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()[
+            "status"
+        ] == "review"

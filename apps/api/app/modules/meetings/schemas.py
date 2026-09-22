@@ -192,6 +192,10 @@ class MeetingDetail(MeetingRow):
     language: str | None = None
     participants_informed_at: dt.datetime | None = None
     chunks_received: int = 0
+    #: While ``recording``, when the last piece landed (every piece bumps the row): a recorder
+    #: posts one a minute, so a row untouched for longer is a tab that died, and the screen
+    #: offers to process what was saved rather than waiting for a stop that will never come.
+    updated_at: dt.datetime | None = None
     audio_file_id: uuid.UUID | None = None
     #: The recording's container, so a browser can say *before* pressing play whether it can
     #: play it (Safari on iOS plays no WebM) rather than drawing a dead control.
