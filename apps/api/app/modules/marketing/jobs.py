@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,7 +34,7 @@ from app.core.models import Org, OrgStatus
 from app.core.timezone import org_zoneinfo
 from app.db import async_session_maker, set_current_org
 from app.errors import AppError
-from app.modules.marketing.models import MarketingCompanySettings, MarketingLink
+from app.modules.marketing.models import MarketingCompanySettings, MarketingLink, MarketingSource
 from app.modules.marketing.service import sync_link_range
 
 logger = logging.getLogger("schakl.marketing")
@@ -49,6 +49,16 @@ async def _licensed() -> bool:
 #: How many trailing days the nightly run re-pulls (covers GSC's 2-3 day finalization lag and a
 #: few days of GA4/Ads attribution drift).
 _TRAILING_DAYS = 7
+#: Sources whose past keeps moving for longer than a week. Google Ads credits a conversion to
+#: the click's day for up to its conversion window (30 days by default), so a seven-day re-pull
+#: froze each day short of what Google later reports — and the year-ago window, backfilled once
+#: it had long settled, then made every year-over-year conversion figure read low.
+_TRAILING_DAYS_BY_SOURCE = {MarketingSource.GADS.value: 30}
+
+
+def trailing_start(end: date, source: str) -> date:
+    """The first day the nightly run re-pulls for ``source``."""
+    return end - timedelta(days=_TRAILING_DAYS_BY_SOURCE.get(source, _TRAILING_DAYS) - 1)
 #: ~13 months, so a first backfill spans a full year plus the current partial month.
 _BACKFILL_DAYS = 400
 _CHUNK_DAYS = 30
@@ -62,7 +72,6 @@ async def _org_today(session: AsyncSession, org: Org):
 async def _sync_org(org: Org, session: AsyncSession) -> None:
     today = await _org_today(session, org)
     end = today - timedelta(days=1)
-    start = end - timedelta(days=_TRAILING_DAYS - 1)
     links = (
         (
             await session.execute(
@@ -92,7 +101,7 @@ async def _sync_org(org: Org, session: AsyncSession) -> None:
             except Exception:
                 logger.warning("could not enqueue backfill resume for link %s", link.id)
             continue
-        await sync_link_range(session, org, link, start, end)
+        await sync_link_range(session, org, link, trailing_start(end, link.source), end)
     if links:
         logger.info(
             "marketing: synced %s links for org %s (%s backfills resumed)",
@@ -145,8 +154,7 @@ async def marketing_sync_link(ctx: dict, org_id: str, link_id: str) -> None:
         org, link = loaded
         today = await _org_today(session, org)
         end = today - timedelta(days=1)
-        start = end - timedelta(days=_TRAILING_DAYS - 1)
-        await sync_link_range(session, org, link, start, end)
+        await sync_link_range(session, org, link, trailing_start(end, link.source), end)
         await session.commit()
 
 

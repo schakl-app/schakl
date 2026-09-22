@@ -44,10 +44,13 @@ from app.integrations.google_ads.service import GoogleAdsService
 
 logger = logging.getLogger("schakl.googleads")
 
-#: How many trailing days the nightly run re-pulls. Ads attribution keeps moving for several
-#: days after the click, so a week of overlap is what lets a late conversion self-heal into the
-#: day it belongs to rather than never appearing at all.
-TRAILING_DAYS = 7
+#: How many trailing days the nightly run re-pulls. Google credits a conversion to the day of
+#: the **click**, up to the conversion window after it (30 days by default), so a day keeps
+#: gaining conversions for a month. A week of overlap froze every day at whatever it had
+#: reached by day seven, while last year's days were backfilled long after they had settled —
+#: so the year-over-year conversions compared an unfinished month with a finished one and read
+#: as a drop that Google's own screen did not show (AAZET: 18 stored against Google's 20).
+TRAILING_DAYS = 30
 
 #: What a first sync reaches back for: thirteen months, so a year-over-year comparison works the
 #: day after an account is linked rather than a year after.
