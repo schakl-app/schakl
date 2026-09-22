@@ -7711,7 +7711,7 @@
   "marketing.leads.widget.requests_by_language": "Which language?",
   "marketing.leads.widget.funnel": "Started versus submitted",
   "marketing.leads.widget.failures_by_reason": "Error reasons",
-  "marketing.leads.widget.failures_by_page": "Where it goes wrong",
+  "marketing.leads.widget.failures_by_page": "Failed submissions by page",
   "marketing.leads.widget.requests_by_source": "Top source / medium",
   "marketing.leads.widget.ads_cost": "Cost",
   "marketing.leads.widget.ads_conversions": "Conversions",

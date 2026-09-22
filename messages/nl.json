@@ -7711,7 +7711,7 @@
   "marketing.leads.widget.requests_by_language": "Welke taal?",
   "marketing.leads.widget.funnel": "Gestart versus verzonden",
   "marketing.leads.widget.failures_by_reason": "Foutredenen",
-  "marketing.leads.widget.failures_by_page": "Waar het misgaat",
+  "marketing.leads.widget.failures_by_page": "Mislukte verzendingen per pagina",
   "marketing.leads.widget.requests_by_source": "Top bron/medium",
   "marketing.leads.widget.ads_cost": "Kosten",
   "marketing.leads.widget.ads_conversions": "Conversies",
