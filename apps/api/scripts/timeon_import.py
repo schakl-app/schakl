@@ -46,7 +46,7 @@ import urllib.parse
 import urllib.request
 import uuid
 from collections import Counter, defaultdict
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 from typing import Any
 
 logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
@@ -161,10 +161,22 @@ class Timeon:
 
 
 def natural_key(
-    user_id: uuid.UUID, started_at: datetime, minutes: int, project_id: uuid.UUID | None, desc: str
+    user_id: uuid.UUID,
+    started_at: datetime,
+    minutes: int,
+    project_id: uuid.UUID | None,
+    desc: str,
+    zone,
 ) -> tuple[Any, ...]:
-    """What makes an imported entry recognisably itself on a later run."""
-    return (user_id, started_at.replace(tzinfo=None), minutes, project_id, (desc or "").strip())
+    """What makes an imported entry recognisably itself on a later run: the org-local day and
+    clock (§8 — the stored value is an instant, and Timeon's is a local date + seconds)."""
+    return (
+        user_id,
+        started_at.astimezone(zone).replace(tzinfo=None),
+        minutes,
+        project_id,
+        (desc or "").strip(),
+    )
 
 
 def plan_start_times(hours: list[dict[str, Any]]) -> dict[int, int]:
@@ -245,6 +257,7 @@ async def main() -> int:  # noqa: C901 - a migration reads better as one narrati
     from app.core.permissions.permset import PermissionSet
     from app.core.permissions.service import create_membership
     from app.core.tenancy import RequestContext
+    from app.core.timezone import org_zoneinfo
     from app.db import async_session_maker, set_current_org
     from app.modules.projects.models import Project, ProjectStatus
     from app.modules.projects.schemas import ProjectCreate
@@ -286,6 +299,9 @@ async def main() -> int:  # noqa: C901 - a migration reads better as one narrati
         else:
             org = orgs[0]
         await set_current_org(session, org.id)
+        # Timeon's hours are a local date + seconds; a schakl entry is an instant (§8), so
+        # every clock below is read in the org's own zone.
+        zone = await org_zoneinfo(session, org.id)
         print(f"Org: {org.slug} ({org.id})\n")
 
         # ---------------------------------------------------------------- phase 1: users
@@ -449,7 +465,9 @@ async def main() -> int:  # noqa: C901 - a migration reads better as one narrati
 
         existing_entries = (await session.execute(select(TimeEntry))).scalars().all()
         have: Counter[tuple[Any, ...]] = Counter(
-            natural_key(e.user_id, e.started_at, e.minutes, e.project_id, e.description or "")
+            natural_key(
+                e.user_id, e.started_at, e.minutes, e.project_id, e.description or "", zone
+            )
             for e in existing_entries
         )
         print(f"-- hours: {len(t_hours)} in Timeon, "
@@ -471,15 +489,16 @@ async def main() -> int:  # noqa: C901 - a migration reads better as one narrati
             company = company_for(row.get("customerID"))
             project = project_map.get(row.get("projectID")) if row.get("projectID") else None
             day = datetime.fromisoformat(row["date"].split("T")[0])
-            # A time entry's clock is the wall clock the user typed, stored as UTC (CLAUDE.md §8).
-            # Converting Amsterdam->UTC here would shift every historical timesheet by an hour.
-            started = datetime(
-                day.year, day.month, day.day, tzinfo=UTC
-            ) + timedelta(seconds=starts[row["hourID"]])
+            # Timeon's date + seconds is the org's wall clock; the entry stores the instant it
+            # names (CLAUDE.md §8). Wall-clock arithmetic on purpose: 09:00 is 09:00 on that
+            # date whether or not the clocks moved that night.
+            started = datetime.combine(day.date(), time.min, tzinfo=zone) + timedelta(
+                seconds=starts[row["hourID"]]
+            )
             minutes = seconds // 60
             desc = (row.get("remark") or "").strip() or None
             key = natural_key(
-                owner.id, started, minutes, project.id if project else None, desc or ""
+                owner.id, started, minutes, project.id if project else None, desc or "", zone
             )
             want[key] += 1
             if want[key] <= have.get(key, 0):

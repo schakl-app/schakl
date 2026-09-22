@@ -13,7 +13,7 @@ change of *inputs*, not of every caller.
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, time, timedelta
 from functools import lru_cache
 from zoneinfo import ZoneInfo, available_timezones
 
@@ -64,6 +64,40 @@ async def org_timezone_name(session: AsyncSession, org_id) -> str:
 async def org_zoneinfo(session: AsyncSession, org_id) -> ZoneInfo:
     """The org's zone as a :class:`ZoneInfo`, for local-calendar math in a background job."""
     return resolve_zoneinfo(await org_timezone_name(session, org_id))
+
+
+def as_instant(value: datetime, zone: ZoneInfo) -> datetime:
+    """A datetime a caller handed us, as the instant it names.
+
+    A **naive** value is a wall clock on the org's own calendar — what a person typed into a
+    time field, what a spreadsheet column says, what a registration system that knows no zones
+    exported — and is read in ``zone``. An **aware** value already names an instant and is kept
+    as it is, whatever offset it carries: ``2026-09-19T12:40:00+02:00`` and
+    ``2026-09-19T10:40:00Z`` are the same moment and land in the same row.
+
+    This is the one rule that lets the time module store real instants (``TIMESTAMPTZ``, §8)
+    while every form, import and agent keeps sending the clock time a person means.
+    """
+    return value.replace(tzinfo=zone) if value.tzinfo is None else value
+
+
+def day_start(day: date, zone: ZoneInfo) -> datetime:
+    """Local midnight opening ``day`` in ``zone`` — the instant a calendar day's window begins."""
+    return datetime.combine(day, time.min, tzinfo=zone)
+
+
+def day_window(date_from: date | None, date_to: date | None, zone: ZoneInfo) -> tuple[
+    datetime | None, datetime | None
+]:
+    """The half-open instant window ``[from 00:00, to + 1 day 00:00)`` on the org's calendar.
+
+    Either bound may be absent. Built here rather than at each of the fourteen call sites that
+    used to spell it out with ``tzinfo=UTC`` — which put an entry logged at 23:30 on the next
+    day's timesheet for every tenant ahead of UTC.
+    """
+    lo = day_start(date_from, zone) if date_from is not None else None
+    hi = day_start(date_to, zone) + timedelta(days=1) if date_to is not None else None
+    return lo, hi
 
 
 async def org_today(session: AsyncSession, org_id) -> date:

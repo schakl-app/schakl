@@ -20,6 +20,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy import text as sa_text
 
+from app.core.timezone import resolve_zoneinfo
 from app.integrations.timeon import client as timeon_client
 from app.integrations.timeon.models import (
     ConflictPolicy,
@@ -241,12 +242,13 @@ async def test_an_already_imported_entry_is_adopted_never_duplicated(client_for,
         customer_id=TIMEON_CUSTOMER,
         project_id=TIMEON_PROJECT,
     )
-    # The importer's own product: an entry at the same wall clock, duration and description.
+    # The importer's own product: an entry at the same wall clock, duration and description —
+    # typed naked, so it is the org's 09:00, exactly what Timeon's ``fromSeconds`` means.
     created = await client.post(
         "/api/v1/time/entries",
         json={
             "company_id": company_id,
-            "started_at": f"{DAY.isoformat()}T09:00:00Z",
+            "started_at": f"{DAY.isoformat()}T09:00:00",
             "minutes": 120,
             "description": "Sprint review",
             "billable": True,
@@ -386,7 +388,11 @@ async def test_a_pulled_entry_carries_its_clock_client_project_and_billable(
     entries = await _entries(tenant)
     assert len(entries) == 1
     entry = entries[0]
-    assert entry.started_at.astimezone(UTC).strftime("%Y-%m-%d %H:%M") == "2026-05-12 12:15"
+    # Timeon's 12:15 is the org's 12:15 (§8): the row holds the instant, read back in the zone.
+    assert (
+        entry.started_at.astimezone(resolve_zoneinfo(None)).strftime("%Y-%m-%d %H:%M")
+        == "2026-05-12 12:15"
+    )
     assert entry.minutes == 135
     assert entry.company_id == uuid.UUID(company_id)
     assert entry.project_id is not None, "the project was created and paired"
@@ -765,7 +771,7 @@ async def test_a_new_schakl_entry_is_created_over_there_under_a_push(client_for,
         "/api/v1/time/entries",
         json={
             "company_id": company_id,
-            "started_at": f"{DAY.isoformat()}T10:00:00Z",
+            "started_at": f"{DAY.isoformat()}T10:00:00",
             "minutes": 45,
             "description": "Nieuw hier",
         },
@@ -792,7 +798,7 @@ async def test_a_pull_only_direction_never_writes_to_timeon(client_for, timeon) 
         "/api/v1/time/entries",
         json={
             "company_id": company_id,
-            "started_at": f"{DAY.isoformat()}T10:00:00Z",
+            "started_at": f"{DAY.isoformat()}T10:00:00",
             "minutes": 45,
             "description": "Alleen hier",
         },
@@ -1065,7 +1071,8 @@ async def test_a_start_less_row_is_placed_deterministically_and_never_drifts(
     await _sync(client, headers, account_id)
 
     entries = await _entries(tenant)
-    assert [e.started_at.astimezone(UTC).strftime("%H:%M") for e in entries] == ["09:00", "10:00"]
+    zone = resolve_zoneinfo(None)
+    assert [e.started_at.astimezone(zone).strftime("%H:%M") for e in entries] == ["09:00", "10:00"]
 
     # Delete the first row: B's stacked start moves to 09:00, and that must not read as an edit.
     del timeon.hours[first["hourID"]]

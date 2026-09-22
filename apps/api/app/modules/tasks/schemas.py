@@ -314,7 +314,8 @@ class TaskLogTime(BaseModel):
     (#284): a task on a subscription-covered project bills nobody, and a finish prompt that
     silently posted ``true`` would be the one write path that forgot.
 
-    Times follow the *time* module's wall-clock-as-UTC convention, like every other entry.
+    Times follow the *time* module's rule (§8), like every other entry: a naive time is the
+    org's wall clock, an aware one an instant.
     """
 
     started_at: datetime

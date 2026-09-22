@@ -47,10 +47,11 @@ export const timeEntryActions = {
 
     const { error: apiError } = await apiFor(event).POST("/api/v1/time/entries", {
       body: {
-        // Wall clock, stored as UTC; the API rolls an end that is not after the start forward a
-        // day (an overnight span) rather than refusing it.
-        started_at: `${date}T${start}:00Z`,
-        ended_at: `${date}T${end}:00Z`,
+        // The typed clock goes over naked — no `Z` — and the API reads it as the org's wall
+        // clock (§8, `as_instant`); it rolls an end that is not after the start forward a day
+        // (an overnight span) rather than refusing it.
+        started_at: `${date}T${start}:00`,
+        ended_at: `${date}T${end}:00`,
         break_minutes: parsePostedMinutes(form.get("break_minutes")) ?? 0,
         description: String(form.get("description") ?? "").trim() || null,
         company_id: String(form.get("company_id") ?? "").trim() || null,
@@ -74,14 +75,14 @@ export const timeEntryActions = {
     const end = String(form.get("end") ?? "").trim();
     if (!id || !date || !start || !end) return fail(400, { error: "errors.required" });
 
-    // Entry times are the wall clock the user typed, stored as UTC (`modules/time/format.ts`),
-    // so the two halves are concatenated rather than converted — the same shape every other
-    // host's `updateEntry` posts.
+    // The typed clock goes over naked — no `Z` — and the API reads it as the org's wall clock
+    // (§8, `as_instant`): the two halves are concatenated, never converted here, the same shape
+    // every other host's `updateEntry` posts.
     const { error: apiError } = await apiFor(event).PATCH("/api/v1/time/entries/{entry_id}", {
       params: { path: { entry_id: id } },
       body: {
-        started_at: `${date}T${start}:00Z`,
-        ended_at: `${date}T${end}:00Z`,
+        started_at: `${date}T${start}:00`,
+        ended_at: `${date}T${end}:00`,
         break_minutes: form.has("break_minutes")
           ? (parsePostedMinutes(form.get("break_minutes")) ?? 0)
           : undefined,

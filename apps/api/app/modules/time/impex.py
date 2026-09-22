@@ -1,8 +1,9 @@
 """CSV import/export shape for time entries — the timesheet (issue #77, settings hub round).
 
 **Create-only import** (``natural_keys=()``): a time entry has no natural key a spreadsheet
-could carry. Times are the wall clock the user typed, stored as UTC (§8), so the CSV shape is
-``date`` + ``start``/``end`` (HH:MM) — exactly what the timesheet shows. Import goes through
+could carry. The CSV shape is ``date`` + ``start``/``end`` (HH:MM) on the **org's** calendar —
+exactly what the timesheet shows: an imported clock is read as the org's wall clock and an
+exported one is printed in it (§8), so a file round-trips unchanged. Import goes through
 ``TimeEntryService.create``, which means **rows are created as the importer's own entries**
 (the service is the authority on ownership); the exported ``user`` column is readonly so a
 round-trip still accepts the file. Approval/invoice flags are derived state, also readonly.
@@ -11,7 +12,7 @@ round-trip still accepts the file. Approval/invoice flags are derived state, als
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import column, select, table
@@ -19,6 +20,7 @@ from sqlalchemy import column, select, table
 from app.core.impex import ImpexColumn, ImpexDescriptor
 from app.core.impex.resolvers import name_or_id_resolver, no_natural_key
 from app.core.tenancy import RequestContext
+from app.core.timezone import org_zoneinfo
 from app.modules.time.schemas import TimeEntryCreate
 from app.modules.time.service import TimeService
 
@@ -61,19 +63,25 @@ async def _fetch_page(
     companies = await names(_companies, {e.company_id for e in items if e.company_id})
     projects = await names(_projects, {e.project_id for e in items if e.project_id})
     users = await names(_users, {e.user_id for e in items if e.user_id})
+    # The column getters are synchronous, so the org zone is resolved once here and the local
+    # clock stamped on each row — a stored instant is UTC and the sheet is the org's wall clock.
+    zone = await org_zoneinfo(ctx.session, ctx.org.id)
     for entry in items:
         entry._impex_company = companies.get(entry.company_id)  # noqa: SLF001
         entry._impex_project = projects.get(entry.project_id)  # noqa: SLF001
         entry._impex_user = users.get(entry.user_id)  # noqa: SLF001
+        entry._impex_started = entry.started_at.astimezone(zone)  # noqa: SLF001
+        entry._impex_ended = (  # noqa: SLF001
+            entry.ended_at.astimezone(zone) if entry.ended_at else None
+        )
     return items
 
 
 async def _create(ctx: RequestContext, values: dict[str, Any]) -> Any:
-    started_at = datetime.fromisoformat(f"{values['date']}T{values['start']}:00").replace(
-        tzinfo=UTC
-    )
+    # Naive on purpose: the service reads a naive time as the org's wall clock (§8).
+    started_at = datetime.fromisoformat(f"{values['date']}T{values['start']}:00")
     ended_at = (
-        datetime.fromisoformat(f"{values['date']}T{values['end']}:00").replace(tzinfo=UTC)
+        datetime.fromisoformat(f"{values['date']}T{values['end']}:00")
         if values.get("end")
         else None
     )
@@ -119,18 +127,18 @@ TIME_ENTRY_IMPEX = ImpexDescriptor(
             "date",
             data_type="date",
             required=True,
-            getter=lambda e: e.started_at.date() if e.started_at else None,
+            getter=lambda e: e._impex_started.date() if e.started_at else None,  # noqa: SLF001
         ),
         ImpexColumn(
             "start",
             data_type="time",
             required=True,
-            getter=lambda e: e.started_at.strftime("%H:%M") if e.started_at else None,
+            getter=lambda e: e._impex_started.strftime("%H:%M") if e.started_at else None,  # noqa: SLF001
         ),
         ImpexColumn(
             "end",
             data_type="time",
-            getter=lambda e: e.ended_at.strftime("%H:%M") if e.ended_at else None,
+            getter=lambda e: e._impex_ended.strftime("%H:%M") if e.ended_at else None,  # noqa: SLF001
         ),
         # Derived by the service from start/end (or drives the end when no end is given).
         ImpexColumn("minutes", data_type="number"),

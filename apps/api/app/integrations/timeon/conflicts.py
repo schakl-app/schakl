@@ -18,6 +18,7 @@ import uuid
 from datetime import UTC, datetime
 
 from app.core.tenancy import RequestContext
+from app.core.timezone import org_zoneinfo
 from app.errors import AppError
 from app.integrations.timeon.client import TimeonError
 from app.integrations.timeon.mapping import (
@@ -155,8 +156,11 @@ class TimeonConflictService:
                     "timeon_conflict_stale", "errors.timeon.conflict_stale", status_code=409
                 )
             seconds = row.get("fromSeconds")
+            zone = await org_zoneinfo(self.ctx.session, self.ctx.org.id)
             started = started_at_for(
-                day, int(seconds) if seconds is not None else start_seconds_of(entry.started_at)
+                day,
+                int(seconds) if seconds is not None else start_seconds_of(entry.started_at, zone),
+                zone,
             )
             company_id = resolver.company_by_ext.get(str(row.get("customerID") or ""))
             project_id = resolver.project_by_ext.get(str(row.get("projectID") or ""))
@@ -197,7 +201,12 @@ class TimeonConflictService:
             start_seconds=int(row.get("fromSeconds")) if has_start else None,
             resolver=resolver,
         )
-        local = neutral_from_entry(entry, resolver=resolver, has_remote_start=has_start)
+        local = neutral_from_entry(
+            entry,
+            resolver=resolver,
+            has_remote_start=has_start,
+            zone=await org_zoneinfo(self.ctx.session, self.ctx.org.id),
+        )
         await self.ctx.repo(TimeonLink).update(
             link,
             status=status.value,

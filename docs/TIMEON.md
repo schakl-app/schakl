@@ -101,7 +101,10 @@ These are `sync.py`'s own numbering; each is here because getting it wrong is ex
    Timeon history — which is every instance, because §1 wrote 2814 entries here — must
    *recognise* those entries and pair them without writing a byte. It matches on the importer's
    own natural key, which is why `mapping.natural_key` is byte-identical to the one in
-   `timeon_import.py`. A sync that created before it adopted would double three years of
+   `timeon_import.py` — both read an entry's clock **in the org's zone**, because a Timeon hour
+   is a local date + seconds and a schakl entry is a real instant (§8): the importer's rows were
+   shifted onto that rule by `d2f7c4e1b9a3`, and the key reads back exactly the date and clock
+   the importer wrote. A sync that created before it adopted would double three years of
    somebody's timesheet on its first press, and no undo exists for that. `kind="adopt"` is that
    phase on its own, and it is the button an agency presses on day one.
 2. **A window is the sync.** Timeon's hour rows carry no modified timestamp (§7), so "what

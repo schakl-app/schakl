@@ -66,8 +66,9 @@
       const quantity = (entry.minutes / 60).toFixed(2);
       return {
         id: `t:${entry.id}`,
-        label: entry.description?.trim() || entry.project_name || t("invoicing.new.time_line_fallback"),
-        hint: [fmtDayMonthYear(entry.started_at.slice(0, 10)), entry.project_name, entry.user_name]
+        label:
+          entry.description?.trim() || entry.project_name || t("invoicing.new.time_line_fallback"),
+        hint: [fmtDayMonthYear(entry.started_at), entry.project_name, entry.user_name]
           .filter(Boolean)
           .join(" · "),
         quantity,
@@ -81,10 +82,7 @@
   /** Recurring: one row per (agreement, period) — the unit a claim is made on. An agreement
    *  that cannot name a period cannot carry a claim, so it is surfaced as a reason, never as
    *  a tickable row that would fail on save. */
-  function periodOffers(
-    rows: (BillableSubscription | BillableDomain)[],
-    prefix: string,
-  ): Offer[] {
+  function periodOffers(rows: (BillableSubscription | BillableDomain)[], prefix: string): Offer[] {
     const out: Offer[] = [];
     for (const row of rows) {
       // A domain the agency does not invoice (#298): labelled, **not** blocked. The renewal
@@ -218,7 +216,9 @@
     {/if}
     <div class="max-h-96 overflow-y-auto rounded-lg border border-border">
       <table class="w-full text-sm">
-        <thead class="sticky top-0 bg-surface-raised text-xs uppercase tracking-wide text-text-muted">
+        <thead
+          class="sticky top-0 bg-surface-raised text-xs uppercase tracking-wide text-text-muted"
+        >
           <tr class="border-b border-border">
             <th class="w-8 px-3 py-2">
               <input

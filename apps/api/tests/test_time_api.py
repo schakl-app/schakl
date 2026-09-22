@@ -533,3 +533,136 @@ async def test_company_panel_names_the_day_and_the_colleague(client_for) -> None
         # The rest are this user's, and non-billable — the marker has both states to draw.
         assert {row["user_id"] for row in data["recent"][1:]} == {str(t.user.id)}
         assert all(row["billable"] is False for row in data["recent"][1:])
+
+
+async def test_a_naive_time_is_the_org_wall_clock_and_an_offset_is_honoured(client_for) -> None:
+    """§8: an entry's clock is an instant. A naive time is read in the **org's** zone — the
+    clock a person typed, a sheet says or an agent means — and an aware one is kept as it is,
+    so ``12:40+02:00`` and ``10:40Z`` are one moment. Before this, the typed clock was stamped
+    as UTC and read straight back, so the timer and every API caller printed two hours early."""
+    from app.core.timezone import resolve_zoneinfo
+
+    t = await make_tenant("time-instants")
+    headers = await auth_cookie(t.user)
+    zone = resolve_zoneinfo(None)  # the org's zone is the instance default in the suite
+    async with client_for(t.host) as c:
+        naive = (
+            await c.post(
+                "/api/v1/time/entries",
+                json={"started_at": "2026-09-19T12:40:00", "ended_at": "2026-09-19T13:40:00"},
+                headers=headers,
+            )
+        ).json()
+        aware = (
+            await c.post(
+                "/api/v1/time/entries",
+                json={"started_at": "2026-09-19T12:40:00+02:00", "minutes": 60},
+                headers=headers,
+            )
+        ).json()
+        assert datetime.fromisoformat(naive["started_at"]) == datetime(
+            2026, 9, 19, 12, 40, tzinfo=zone
+        )
+        assert datetime.fromisoformat(naive["ended_at"]) == datetime(
+            2026, 9, 19, 13, 40, tzinfo=zone
+        )
+        assert datetime.fromisoformat(aware["started_at"]) == datetime(
+            2026, 9, 19, 10, 40, tzinfo=UTC
+        )
+        assert naive["minutes"] == aware["minutes"] == 60
+
+        # A correction through the form posts the same naked shape and is read the same way.
+        moved = await c.patch(
+            f"/api/v1/time/entries/{naive['id']}",
+            json={"started_at": "2026-09-19T14:00:00", "ended_at": "2026-09-19T15:30:00"},
+            headers=headers,
+        )
+        assert moved.status_code == 200, moved.text
+        assert datetime.fromisoformat(moved.json()["started_at"]) == datetime(
+            2026, 9, 19, 14, 0, tzinfo=zone
+        )
+        assert moved.json()["minutes"] == 90
+
+
+async def test_an_evening_entry_lands_on_its_own_day_everywhere(client_for) -> None:
+    """Which *day* an entry belongs to is the org's calendar, on every reader: the day view,
+    the timesheet, the workspace, the list's date filter and the summary. An entry typed for
+    23:00 used to fall on the next day's sheet for every tenant ahead of UTC once the column
+    became an instant — and already did so in the invoicing groupings that read it as one."""
+    t = await make_tenant("time-evening")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        entry = (
+            await c.post(
+                "/api/v1/time/entries",
+                json={"started_at": "2026-07-06T23:00:00", "ended_at": "2026-07-06T23:45:00"},
+                headers=headers,
+            )
+        ).json()
+        assert entry["minutes"] == 45
+
+        own_day = (
+            await c.get("/api/v1/time/day", params={"date": "2026-07-06"}, headers=headers)
+        ).json()
+        next_day = (
+            await c.get("/api/v1/time/day", params={"date": "2026-07-07"}, headers=headers)
+        ).json()
+        assert [e["id"] for e in own_day["entries"]] == [entry["id"]]
+        assert next_day["entries"] == []
+
+        sheet = (
+            await c.get(
+                "/api/v1/time/timesheet", params={"week_start": "2026-07-06"}, headers=headers
+            )
+        ).json()
+        assert sheet["day_totals"] == [45, 0, 0, 0, 0, 0, 0]
+
+        workspace = (
+            await c.get(
+                "/api/v1/time/workspace",
+                params={"week_start": "2026-07-06", "day": "2026-07-06"},
+                headers=headers,
+            )
+        ).json()
+        assert workspace["day"]["total_minutes"] == 45
+
+        listed = (
+            await c.get(
+                "/api/v1/time/entries",
+                params={"date_from": "2026-07-06", "date_to": "2026-07-06"},
+                headers=headers,
+            )
+        ).json()
+        assert [e["id"] for e in listed["items"]] == [entry["id"]]
+        after = (
+            await c.get(
+                "/api/v1/time/entries", params={"date_from": "2026-07-07"}, headers=headers
+            )
+        ).json()
+        assert after["items"] == []
+
+        summary = (
+            await c.get("/api/v1/time/summary", params={"date": "2026-07-06"}, headers=headers)
+        ).json()
+        assert summary["minutes"] == 45
+
+
+async def test_a_timer_is_the_real_clock_and_lands_on_the_org_today(client_for) -> None:
+    """The timer stamps the instant it was pressed. It always did — it was the one writer that
+    never stamped a typed clock — which is why it was the one row every screen printed two
+    hours early. Now the same instant reads back on the org's own today."""
+    from tests.conftest import org_today
+
+    t = await make_tenant("time-timer-clock")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        before = datetime.now(UTC)
+        started = (await c.post("/api/v1/time/timer/start", json={}, headers=headers)).json()
+        stamped = datetime.fromisoformat(started["started_at"])
+        assert abs((stamped - before).total_seconds()) < 60
+        today = (
+            await c.get(
+                "/api/v1/time/day", params={"date": org_today().isoformat()}, headers=headers
+            )
+        ).json()
+        assert started["id"] in {e["id"] for e in today["entries"]}

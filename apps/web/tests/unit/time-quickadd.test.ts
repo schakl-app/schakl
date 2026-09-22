@@ -34,10 +34,9 @@ describe("nextStartFrom", () => {
       { started_at: "2026-03-16T09:00:00Z", ended_at: "2026-03-16T10:30:00Z" },
       { started_at: "2026-03-16T11:00:00Z", ended_at: "2026-03-16T13:15:00Z" },
     ];
-    const start = nextStartFrom(entries);
-    // Rendered in the viewer's zone, so assert the shape and that it is the later of the two.
-    assert.match(start, /^\d{2}:\d{2}$/);
-    assert.equal(start, endOfDay(entries));
+    // The org's clock, not the browser's (§8): 13:15Z is 14:15 in Amsterdam in March.
+    assert.equal(nextStartFrom(entries, "09:00", "Europe/Amsterdam"), "14:15");
+    assert.equal(nextStartFrom(entries, "09:00", "UTC"), "13:15");
   });
 
   test("an empty day falls back rather than guessing", () => {
@@ -45,12 +44,16 @@ describe("nextStartFrom", () => {
   });
 
   test("a running timer has no end, so it never becomes the start", () => {
-    assert.equal(nextStartFrom([{ started_at: "2026-03-16T09:00:00Z", ended_at: null }]), "09:00");
+    assert.equal(
+      nextStartFrom([{ started_at: "2026-03-16T09:00:00Z", ended_at: null }], "09:00", "UTC"),
+      "09:00",
+    );
   });
 
   test("out-of-order entries still yield the latest end", () => {
     const late = { started_at: "2026-03-16T14:00:00Z", ended_at: "2026-03-16T16:00:00Z" };
     const early = { started_at: "2026-03-16T09:00:00Z", ended_at: "2026-03-16T10:00:00Z" };
-    assert.equal(endOfDay([late, early]), endOfDay([early, late]));
+    assert.equal(endOfDay([late, early], "UTC"), "16:00");
+    assert.equal(endOfDay([late, early], "UTC"), endOfDay([early, late], "UTC"));
   });
 });

@@ -29,6 +29,7 @@
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import Modal from "$lib/core/ui/Modal.svelte";
   import PanelRows from "$lib/core/ui/PanelRows.svelte";
+  import { localDayTime } from "$lib/core/wallclock";
 
   import EntryForm from "./EntryForm.svelte";
   import TimeEntryRow from "./TimeEntryRow.svelte";
@@ -169,7 +170,7 @@
         action="?/updateEntry"
         deleteAction="?/deleteEntry"
         entry={editingEntry}
-        date={editingEntry.started_at.slice(0, 10)}
+        date={localDayTime(editingEntry.started_at).day}
         companies={lookups.companies}
         projects={lookups.projects}
         tasks={lookups.tasks}

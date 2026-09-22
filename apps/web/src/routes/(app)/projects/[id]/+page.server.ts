@@ -223,8 +223,8 @@ export const actions: Actions = {
     const { error: apiError } = await apiFor(event).PATCH("/api/v1/time/entries/{entry_id}", {
       params: { path: { entry_id: id } },
       body: {
-        started_at: `${date}T${start}:00Z`,
-        ended_at: `${date}T${end}:00Z`,
+        started_at: `${date}T${start}:00`,
+        ended_at: `${date}T${end}:00`,
         break_minutes: parsePostedMinutes(form.get("break_minutes")) ?? 0,
         description: String(form.get("description") ?? "").trim() || null,
         company_id: String(form.get("company_id") ?? "").trim() || null,

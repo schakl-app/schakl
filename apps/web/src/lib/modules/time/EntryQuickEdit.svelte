@@ -27,6 +27,7 @@
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import DurationInput from "$lib/core/ui/DurationInput.svelte";
   import TimeInput from "$lib/core/ui/TimeInput.svelte";
+  import { localDayTime } from "$lib/core/wallclock";
 
   import { endFromDuration, minutesBetween } from "./duration";
   import { formatMinutes } from "./format";
@@ -54,19 +55,20 @@
     ondone?: () => void;
   } = $props();
 
-  // Entry times are stored as the wall-clock the user typed (as UTC), so the ISO string is sliced
-  // rather than parsed — `format.ts` states the rule and `EntryForm` reads it the same way.
+  // An entry's instants read as the org's day and clock (§8, `localDayTime`), exactly as
+  // `EntryForm` seeds its fields and `format.ts` prints the row.
   //
   // Every seed below is a **deliberate** initial capture, as in `EntryForm`: these are the fields
   // being typed into, so following the prop afterwards would overwrite what the user is editing.
   // The host mounts this inside `{#key entry.id}`, which is what makes a different row a
   // different component rather than the same one with new values.
   // svelte-ignore state_referenced_locally
-  let fDate = $state(entry.started_at.slice(0, 10));
+  const started = localDayTime(entry.started_at);
   // svelte-ignore state_referenced_locally
-  let fStart = $state(entry.started_at.slice(11, 16));
-  // svelte-ignore state_referenced_locally
-  let fEnd = $state(entry.ended_at ? entry.ended_at.slice(11, 16) : "");
+  const ended = entry.ended_at ? localDayTime(entry.ended_at) : null;
+  let fDate = $state(started.day);
+  let fStart = $state(started.time);
+  let fEnd = $state(ended ? ended.time : "");
   // svelte-ignore state_referenced_locally
   let fBreak = $state<number | null>(entry.break_minutes ?? 0);
   // svelte-ignore state_referenced_locally

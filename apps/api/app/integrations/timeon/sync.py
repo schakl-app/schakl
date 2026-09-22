@@ -54,13 +54,14 @@ from __future__ import annotations
 import logging
 import uuid
 from collections import Counter
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 
 from app.core.tenancy import RequestContext
-from app.core.timezone import org_today
+from app.core.timezone import day_start, org_today, org_zoneinfo
 from app.integrations.timeon.client import TimeonClient, TimeonError
 from app.integrations.timeon.mapping import (
     UNRESOLVED,
@@ -178,6 +179,7 @@ class TimeonSyncService:
         self.conflicts = ctx.repo(TimeonConflict)
         self.report = RunReport()
         self._resolver: Resolver | None = None
+        self._zone: ZoneInfo | None = None
         #: Pairings this run resolved, whether or not it was allowed to *store* them.
         #:
         #: A dry run writes no link rows, so a resolver built from the database alone would find
@@ -189,6 +191,13 @@ class TimeonSyncService:
         #: ``"schakl"`` / ``"timeon"`` for this run only: which side is right about a project
         #: field the run cannot decide for itself. See :meth:`_project_winner`.
         self.prefer: str | None = None
+
+    async def zone(self) -> ZoneInfo:
+        """The org's zone, read once per run: a Timeon hour is a local day and clock (§8), so
+        every translation in both directions reads and writes it in this one zone."""
+        if self._zone is None:
+            self._zone = await org_zoneinfo(self.ctx.session, self.ctx.org.id)
+        return self._zone
 
     # ------------------------------------------------------------------ entry point
     async def run(
@@ -950,7 +959,7 @@ class TimeonSyncService:
         for entry in entries.values():
             if entry.id in by_local:
                 continue
-            if entry.started_at.astimezone(UTC).date() > end:
+            if entry.started_at.astimezone(await self.zone()).date() > end:
                 continue
             if may_push:
                 await self._push_new(entry, resolver, dry_run=dry_run)
@@ -984,12 +993,13 @@ class TimeonSyncService:
         and loading only by date would find no local row and read that as a deletion.
         """
         repo = self.ctx.repo(TimeEntry)
-        lo = datetime.combine(start, time.min, tzinfo=UTC)
-        hi = datetime.combine(end, time.max, tzinfo=UTC)
+        zone = await self.zone()
+        lo = day_start(start, zone)
+        hi = day_start(end, zone) + timedelta(days=1)
         stmt = (
             repo.scoped_select()
             .where(TimeEntry.started_at >= lo)
-            .where(TimeEntry.started_at <= hi)
+            .where(TimeEntry.started_at < hi)
             .where(TimeEntry.ended_at.isnot(None))
         )
         rows = list((await self.ctx.session.execute(stmt)).scalars().all())
@@ -1024,12 +1034,13 @@ class TimeonSyncService:
         with no remark), and pairing them in a stable order is right in both directions.
         """
         candidates: dict[tuple[Any, ...], list[TimeEntry]] = {}
+        zone = await self.zone()
         for entry in entries.values():
             if entry.id in by_local:
                 continue
             key = natural_key(
                 entry.user_id, entry.started_at, entry.minutes, entry.project_id,
-                entry.description,
+                entry.description, zone,
             )
             candidates.setdefault(key, []).append(entry)
         for bucket in candidates.values():
@@ -1046,10 +1057,11 @@ class TimeonSyncService:
             project_id = resolver.project_by_ext.get(str(row.get("projectID") or "")) or None
             key = natural_key(
                 owner,
-                started_at_for(day, starts.get(int(row.get("hourID") or 0), 0)),
+                started_at_for(day, starts.get(int(row.get("hourID") or 0), 0), zone),
                 int(row.get("seconds") or 0) // 60,
                 project_id,
                 row.get("remark"),
+                zone,
             )
             bucket = candidates.get(key)
             if not bucket:
@@ -1083,7 +1095,9 @@ class TimeonSyncService:
         remote = neutral_from_row(
             row, start_seconds=starts.get(int(row.get("hourID") or 0)), resolver=resolver
         )
-        local = neutral_from_entry(entry, resolver=resolver, has_remote_start=has_remote_start)
+        local = neutral_from_entry(
+            entry, resolver=resolver, has_remote_start=has_remote_start, zone=await self.zone()
+        )
         remote_hash, local_hash = fingerprint(remote), fingerprint(local)
 
         # `differences`, not `remote_hash == local_hash`: the two hashes answer "did *this* side
@@ -1195,7 +1209,7 @@ class TimeonSyncService:
         await revise_entry(
             self.ctx,
             entry,
-            started_at=started_at_for(day, seconds),
+            started_at=started_at_for(day, seconds, await self.zone()),
             minutes=int(row.get("seconds") or 0) // 60,
             company_id=company_id,
             project_id=project_id,
@@ -1331,7 +1345,7 @@ class TimeonSyncService:
         from app.modules.time.system import record_entry
 
         seconds = starts.get(int(row.get("hourID") or 0), 0)
-        started = started_at_for(day, seconds)
+        started = started_at_for(day, seconds, await self.zone())
         entry = await record_entry(
             self.ctx,
             user_id=owner,
@@ -1566,7 +1580,8 @@ class TimeonSyncService:
         user_ext = resolver.ext_by_user.get(entry.user_id)
         if user_ext is None:
             raise TimeonError("no Timeon user paired with this entry's owner")
-        started = entry.started_at.astimezone(UTC)
+        zone = await self.zone()
+        started = entry.started_at.astimezone(zone)
         payload = timeon_payload(
             hour_id=hour_id,
             observed=observed or {},
@@ -1580,7 +1595,7 @@ class TimeonSyncService:
                 observed, "projectID",
             ),
             day=started.date(),
-            start_seconds=start_seconds_of(started),
+            start_seconds=start_seconds_of(started, zone),
             minutes=entry.minutes,
             description=entry.description,
             billable=entry.billable,
@@ -1606,7 +1621,9 @@ class TimeonSyncService:
         remote = neutral_from_row(
             row, start_seconds=starts.get(int(row.get("hourID") or 0)), resolver=resolver
         )
-        local = neutral_from_entry(entry, resolver=resolver, has_remote_start=has_start)
+        local = neutral_from_entry(
+            entry, resolver=resolver, has_remote_start=has_start, zone=await self.zone()
+        )
         ext = str(row.get("hourID"))
         now = datetime.now(UTC)
         existing = (

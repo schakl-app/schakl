@@ -14,10 +14,13 @@ rather than the eighty fields Timeon ships (``secondsBillable``, ``weekdayString
 Four mapping decisions carry a reason, and all four were learned from real data rather than
 reasoned about.
 
-**A time entry's clock is the wall clock somebody typed.** ``TimeEntry.started_at`` is
-``TIMESTAMPTZ`` and holds that wall clock *as UTC* (CLAUDE.md §8 — stored instants are UTC,
-date-only and clock-only values stay wall-clock). Converting Europe/Amsterdam → UTC here would
-shift every historical timesheet by an hour and make every row look changed on the first run.
+**A Timeon hour is a local day and a clock; a schakl entry is an instant.** Timeon stores
+``date`` + ``fromSeconds`` with no zone, because a Dutch product for Dutch offices has one clock.
+``TimeEntry.started_at`` is a real ``TIMESTAMPTZ`` instant (CLAUDE.md §8), so every translation
+here goes through the **org's zone**: a pulled row's ``09:15`` becomes 09:15 Amsterdam on that
+date, and a pushed entry's day and seconds are read back in the same zone. Both directions use
+one zone, which is what keeps a round trip byte-identical and a DST boundary a non-event — the
+clock somebody typed in Timeon is the clock they see in schakl, on the same date.
 
 **``breakSeconds`` is not a lunch break** and is dropped in both directions. It is
 ``(to − from) − seconds`` — the *unbooked remainder* of the window, verified in 324 of the 325
@@ -45,8 +48,9 @@ import hashlib
 import json
 import uuid
 from collections import defaultdict
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 #: Where a start-less Timeon row's day begins. The migration importer's constant, kept
 #: identical so its 2814 entries adopt in place rather than being re-timed on first contact.
@@ -120,14 +124,16 @@ def plan_start_seconds(rows: list[dict[str, Any]]) -> dict[int, int]:
     return placed
 
 
-def started_at_for(day: date, start_seconds: int) -> datetime:
-    """The instant a pulled entry starts at — the wall clock, stored as UTC (§8)."""
-    return datetime(day.year, day.month, day.day, tzinfo=UTC) + timedelta(seconds=start_seconds)
+def started_at_for(day: date, start_seconds: int, zone: ZoneInfo) -> datetime:
+    """The instant a pulled entry starts at: Timeon's local day and clock, read in the org's
+    zone (§8). Wall-clock arithmetic on purpose — ``09:15`` is 09:15 on that date whether or not
+    the clocks moved that night."""
+    return datetime.combine(day, time.min, tzinfo=zone) + timedelta(seconds=start_seconds)
 
 
-def start_seconds_of(started_at: datetime) -> int:
-    """Seconds since that entry's own midnight. The inverse of :func:`started_at_for`."""
-    local = started_at.astimezone(UTC)
+def start_seconds_of(started_at: datetime, zone: ZoneInfo) -> int:
+    """Seconds since that entry's own local midnight. The inverse of :func:`started_at_for`."""
+    local = started_at.astimezone(zone)
     return local.hour * 3600 + local.minute * 60 + local.second
 
 
@@ -185,19 +191,21 @@ def neutral_from_row(
     }
 
 
-def neutral_from_entry(entry: Any, *, resolver: Resolver, has_remote_start: bool) -> dict[str, Any]:
-    """One schakl ``TimeEntry``, in the same shape.
+def neutral_from_entry(
+    entry: Any, *, resolver: Resolver, has_remote_start: bool, zone: ZoneInfo
+) -> dict[str, Any]:
+    """One schakl ``TimeEntry``, in the same shape — its day and clock read in the org's zone.
 
     ``has_remote_start`` mirrors the rule above from the other end: when the paired Timeon row
     carries no start of its own, this entry's start is a value *we* placed and comparing it would
     report our own arithmetic as somebody's edit.
     """
-    started = entry.started_at.astimezone(UTC)
+    started = entry.started_at.astimezone(zone)
     project_ext = resolver.ext_by_project.get(entry.project_id) if entry.project_id else None
     company_ext = resolver.ext_by_company.get(entry.company_id) if entry.company_id else None
     return {
         "started_on": started.date().isoformat(),
-        "start_seconds": start_seconds_of(started) if has_remote_start else None,
+        "start_seconds": start_seconds_of(started, zone) if has_remote_start else None,
         "minutes": int(entry.minutes or 0),
         "project": (
             "" if entry.project_id is None else (project_ext or UNRESOLVED)
@@ -268,6 +276,7 @@ def natural_key(
     minutes: int,
     project_id: uuid.UUID | None,
     description: str | None,
+    zone: ZoneInfo,
 ) -> tuple[Any, ...]:
     """What makes an entry recognisably itself when nothing is paired yet.
 
@@ -282,7 +291,9 @@ def natural_key(
     """
     return (
         user_id,
-        started_at.astimezone(UTC).replace(tzinfo=None),
+        # The local day and clock, naive: the importer wrote Timeon's own date + seconds, and
+        # under §8's instant rule that is exactly what ``astimezone(zone)`` reads back.
+        started_at.astimezone(zone).replace(tzinfo=None),
         int(minutes),
         project_id,
         (description or "").strip(),

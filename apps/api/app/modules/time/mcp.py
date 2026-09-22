@@ -14,13 +14,14 @@ from __future__ import annotations
 import calendar
 import re
 import uuid
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import date
 from typing import Any
 
 from sqlalchemy import func, select
 
 from app.core.ai.tools import AIToolSpec, Source, ToolResult
 from app.core.tenancy import RequestContext
+from app.core.timezone import day_window, org_zoneinfo
 from app.errors import AppError
 from app.modules.time.models import TimeEntry
 
@@ -64,17 +65,18 @@ def _month_bounds(value: Any) -> tuple[str, date, date]:
 
 
 # --- shared window / aggregation --------------------------------------------- #
-def _window(date_from: date | None, date_to: date | None) -> list[Any]:
-    """Interpret dates against ``started_at``. Times are wall-clock-as-UTC, so a plain
-    ``[from 00:00Z, to+1day 00:00Z)`` window matches what the timesheet shows."""
+async def _window(
+    ctx: RequestContext, date_from: date | None, date_to: date | None
+) -> list[Any]:
+    """Interpret dates against ``started_at`` on the **org's** calendar (§8): the same
+    ``[from 00:00, to + 1 day 00:00)`` local window the timesheet and the report use, so a
+    tool answers the day a person sees on the screen."""
+    lo, hi = day_window(date_from, date_to, await org_zoneinfo(ctx.session, ctx.org.id))
     conditions: list[Any] = []
-    if date_from is not None:
-        conditions.append(TimeEntry.started_at >= datetime.combine(date_from, time.min, tzinfo=UTC))
-    if date_to is not None:
-        conditions.append(
-            TimeEntry.started_at
-            < datetime.combine(date_to, time.min, tzinfo=UTC) + timedelta(days=1)
-        )
+    if lo is not None:
+        conditions.append(TimeEntry.started_at >= lo)
+    if hi is not None:
+        conditions.append(TimeEntry.started_at < hi)
     return conditions
 
 
@@ -96,7 +98,7 @@ async def _company_minutes(
             TimeEntry.org_id == ctx.org.id,
             TimeEntry.company_id == company_id,
             TimeEntry.ended_at.is_not(None),  # a running timer burns nothing
-            *_window(date_from, date_to),
+            *await _window(ctx, date_from, date_to),
         )
         .group_by(TimeEntry.project_id)
         .order_by(minutes_sum.desc())
@@ -126,8 +128,9 @@ async def _summary(ctx: RequestContext, args: dict[str, Any]) -> ToolResult:
         TimeEntry.org_id == ctx.org.id,
         TimeEntry.user_id == ctx.user.id,
         TimeEntry.ended_at.is_not(None),
-        *_window(date_from, date_to),
+        *await _window(ctx, date_from, date_to),
     ]
+    zone = await org_zoneinfo(ctx.session, ctx.org.id)
     total = int(
         await ctx.session.scalar(
             select(func.coalesce(func.sum(TimeEntry.minutes), 0)).where(*conditions)
@@ -154,7 +157,7 @@ async def _summary(ctx: RequestContext, args: dict[str, Any]) -> ToolResult:
             "task_id": str(e.task_id) if e.task_id is not None else None,
             "description": e.description,
             "minutes": e.minutes,
-            "date": e.started_at.astimezone(UTC).date().isoformat(),
+            "date": e.started_at.astimezone(zone).date().isoformat(),
         }
         for e in rows
     ]

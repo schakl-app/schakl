@@ -1,4 +1,5 @@
 import { fmtClockTime } from "$lib/core/format";
+import { getTimeZone } from "$lib/core/timezone";
 
 /** Format a duration in minutes as "Hh Mm" (e.g. 135 → "2h 15m", 40 → "40m"). */
 export function formatMinutes(total: number): string {
@@ -10,20 +11,32 @@ export function formatMinutes(total: number): string {
   return `${h}h ${m}m`;
 }
 
-// Entry times are stored as the wall-clock the user typed (as UTC), so render them in UTC to
-// round-trip exactly — a tenant works in one zone at a time (`getTimeZone()`, CLAUDE.md §8).
-const _timeFmt = new Intl.DateTimeFormat("nl-NL", {
-  hour: "2-digit",
-  minute: "2-digit",
-  timeZone: "UTC",
-});
+// An entry's clock is an instant and is read in the tenant's zone (`getTimeZone()`, CLAUDE.md
+// §8) — the same zone every other timestamp on screen is formatted in. It used to be pinned to
+// UTC on the argument that the row held "the wall clock the user typed, stamped as UTC": true
+// of a typed entry and false of a timer or of an agent that sent `12:40+02:00`, both of which
+// listed two hours early. One formatter per zone, since construction is the expensive half.
+const _timeFmt = new Map<string, Intl.DateTimeFormat>();
 
-/** ISO datetime → the user's clock preference (issue #13): "13:00", or "1:00 PM" on 12h.
- *  The UTC extraction keeps the stored wall-clock; `fmtClockTime` owns the 12/24h rendering —
+function timeFormatter(zone: string): Intl.DateTimeFormat {
+  let formatter = _timeFmt.get(zone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("nl-NL", {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: zone,
+    });
+    _timeFmt.set(zone, formatter);
+  }
+  return formatter;
+}
+
+/** ISO instant → the user's clock preference (issue #13): "13:00", or "1:00 PM" on 12h.
+ *  The org-zone extraction gives the wall clock; `fmtClockTime` owns the 12/24h rendering —
  *  never bolt a meridiem onto the 24-hour digits. */
 export function formatTime(iso: string | null | undefined): string {
   if (!iso) return "";
-  return fmtClockTime(_timeFmt.format(new Date(iso)));
+  return fmtClockTime(timeFormatter(getTimeZone()).format(new Date(iso)));
 }
 
 /** Minutes → decimal hours rounded to one place (e.g. 105 → 1.8). */
