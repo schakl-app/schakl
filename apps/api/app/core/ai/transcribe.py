@@ -33,6 +33,8 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
+import httpx
+
 from app.core.ai.audio import AudioClip
 from app.core.ai.providers import (
     OPENAI_BASE_URL,
@@ -61,6 +63,14 @@ _OPENAI_GPT_MAX_SECONDS = 1400
 #: Voxtral takes three hours; the same margin.
 _MISTRAL_MAX_SECONDS = 3 * 3600 - 120
 _MISTRAL_MAX_BYTES = 900 * 1024 * 1024
+#: A transcription is not a chat round trip. The shared client's 180 s read ceiling is sized for
+#: a completion that streams from its first token; a transcription answers nothing until the
+#: whole clip is done, and ``gpt-4o-transcribe-diarize`` on twenty minutes of a meeting is
+#: minutes of silence on the socket. At 180 s every recording over a quarter of an hour
+#: failed, and ones under two minutes never came close — so the ceiling is the provider's
+#: worst case for the largest part we send, not the chat client's. Write is generous for the
+#: same reason: a part can be tens of megabytes over an office uplink.
+_TRANSCRIBE_TIMEOUT = httpx.Timeout(connect=10.0, read=900.0, write=120.0, pool=10.0)
 
 
 def can_transcribe(provider: str | None) -> bool:
@@ -233,12 +243,18 @@ async def transcribe(
     """
     if not can_transcribe(config.provider):  # pragma: no cover - callers gate first
         raise AIProviderError(f"provider {config.provider!r} cannot transcribe")
-    response = await client().post(
-        f"{speech_base_url(config)}/audio/transcriptions",
-        headers={"authorization": f"Bearer {config.api_key}"},
-        data=_fields(config, language=language, diarize=diarize, timestamps=timestamps),
-        files={"file": (clip.filename, clip.data, clip.content_type)},
-    )
+    try:
+        response = await client().post(
+            f"{speech_base_url(config)}/audio/transcriptions",
+            headers={"authorization": f"Bearer {config.api_key}"},
+            data=_fields(config, language=language, diarize=diarize, timestamps=timestamps),
+            files={"file": (clip.filename, clip.data, clip.content_type)},
+            timeout=_TRANSCRIBE_TIMEOUT,
+        )
+    except httpx.HTTPError as exc:
+        # A timeout or a dropped connection is the provider not answering, and says so — it
+        # used to escape as a bare httpx exception, which every caller reads as a crash of ours.
+        raise AIProviderError(f"transcription request failed: {type(exc).__name__}") from exc
     await _raise_for_status(response)
     try:
         payload = response.json()

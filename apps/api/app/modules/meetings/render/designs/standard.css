@@ -70,7 +70,19 @@
 .avatar.sm { width: 22px; height: 22px; line-height: 20px; font-size: 7.5pt; }
 
 .roster { margin-bottom: 16px; }
-.people { margin-top: 6px; }
+.side-group { margin-top: 6px; }
+.side-group + .side-group { margin-top: 8px; }
+.side-title {
+  font-size: 7.5pt;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.side-group.side-agency .side-title { color: var(--accent); }
+.side-group.side-client .side-title { color: #333; }
+.side-group.side-other .side-title { color: var(--muted); }
+.people { margin-top: 2px; }
 .person {
   display: inline-block;
   vertical-align: top;
@@ -125,6 +137,13 @@
 .prose li + li { margin-top: 2px; }
 .prose h1, .prose h2, .prose h3 { font-size: 10pt; margin: 8px 0 3px; }
 .prose.small { font-size: 9pt; color: #333; margin-top: 2px; }
+.prose strong { font-weight: 700; }
+.prose blockquote { border-left: 2px solid var(--accent-mid); padding-left: 8px; color: #444; margin: 4px 0; }
+.prose table { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: 8.5pt; }
+.prose th, .prose td { border: 1px solid var(--rule); padding: 3px 6px; text-align: left; vertical-align: top; }
+.prose th { background: var(--wash); font-weight: 600; }
+.prose code { font-family: "SFMono-Regular", Menlo, Consolas, monospace; font-size: 8.5pt; background: var(--wash); padding: 0 3px; border-radius: 2px; }
+.prose img.md-img { display: block; max-width: 100%; height: auto; margin: 6px 0; border-radius: 4px; break-inside: avoid; }
 
 .topic { margin-bottom: 12px; }
 .topic h3 { font-size: 10.5pt; margin-bottom: 3px; }
@@ -132,21 +151,27 @@
 /* ---- decisions ---- */
 .decisions { list-style: none; padding: 0; }
 .decisions li { display: table; width: 100%; margin-bottom: 9px; }
+/* The number sits in its own cell and is an inline-block *inside* it: a table cell stretches
+ * to its row's height, so a round badge drawn on the cell itself turns into an oval the moment
+ * the decision runs to a second line. */
+.decisions .num-cell { display: table-cell; width: 20px; vertical-align: top; padding-top: 1px; }
 .decisions .num {
-  display: table-cell;
-  width: 24px;
-  height: 24px;
+  display: inline-block;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   background: var(--accent);
   color: #fff;
-  font-size: 8.5pt;
+  font-size: 7pt;
   font-weight: 700;
   text-align: center;
-  vertical-align: middle;
-  line-height: 24px;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
 }
-.decisions .body { display: table-cell; padding-left: 10px; vertical-align: top; }
-.decisions .text { font-weight: 600; line-height: 1.4; padding-top: 3px; }
+.decisions .body { display: table-cell; padding-left: 8px; vertical-align: top; }
+.decisions .text { font-weight: 500; line-height: 1.4; }
+.decisions .text strong { font-weight: 700; }
+.decisions .text p { margin: 0; }
 
 /* Where a claim was said and the words it rests on: quieter than the claim, never louder. An
  * unverified one carries an amber flag — kept, marked, never dropped (docs/MEETINGS.md). */
@@ -210,6 +235,7 @@ h3.side {
 /* ---- open questions ---- */
 .questions { padding-left: 18px; }
 .questions li { margin-bottom: 4px; }
+.questions li p { margin: 0; }
 
 /* ---- foot ---- */
 .doc-foot {

@@ -11,10 +11,11 @@ exactly as dictation does.
 
 from __future__ import annotations
 
-from arq import cron
+from arq import cron, func
 
 from app.core.trash import register_trash_dependent
 from app.modules.meetings.jobs import (
+    RUN_TIMEOUT_SECONDS,
     meetings_process,
     meetings_reap_stale,
     meetings_sweep_audio,
@@ -39,8 +40,8 @@ module = ModuleDescriptor(
     # words, the minutes — what an agent asks about a meeting.
     mcp_tools=MEETING_MCP_TOOLS,
     # The pipeline runs in the worker: minutes of provider time per meeting, and nobody is
-    # waiting on a request for it.
-    worker_functions=[meetings_process],
+    # waiting on a request for it — so it carries its own timeout rather than arq's five minutes.
+    worker_functions=[func(meetings_process, timeout=RUN_TIMEOUT_SECONDS)],
     cron_jobs=[
         # A run claimed by a worker that is no longer there has no other way back (#300).
         cron(meetings_reap_stale, minute={5, 20, 35, 50}),

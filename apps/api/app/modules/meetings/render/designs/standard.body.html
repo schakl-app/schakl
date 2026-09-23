@@ -68,9 +68,6 @@
       {% if project %}
         <td><span class="k">{{ labels.project }}</span><span class="v">{{ project }}</span></td>
       {% endif %}
-      {% if owner %}
-        <td><span class="k">{{ labels.recorded_by }}</span><span class="v">{{ owner }}</span></td>
-      {% endif %}
     </tr>
   </table>
 </header>
@@ -78,17 +75,21 @@
 {% if show.participants and participants %}
   <section class="roster keep">
     <h2>{{ labels.participants }}</h2>
-    <div class="people">
-      {% for person in participants %}
-        <div class="person">
-          {{ avatar(person, 'md') }}
-          <span class="who">
-            <span class="name">{{ person.name }}</span>
-            <span class="role">{{ person.side_label }}{% if person.speaker %} · {{ person.speaker }}{% endif %}</span>
-          </span>
+    {# Ours and theirs as two groups under their own names — which side somebody is on is
+       the first thing a reader of the attendance wants to know. #}
+    {% for group in roster_groups %}
+      <div class="side-group side-{{ group.side }}">
+        <p class="side-title">{{ group.title }}</p>
+        <div class="people">
+          {% for person in group.people %}
+            <div class="person">
+              {{ avatar(person, 'md') }}
+              <span class="who"><span class="name">{{ person.name }}</span></span>
+            </div>
+          {% endfor %}
         </div>
-      {% endfor %}
-    </div>
+      </div>
+    {% endfor %}
   </section>
 {% endif %}
 
@@ -117,9 +118,9 @@
     <ol class="decisions">
       {% for decision in decisions %}
         <li class="keep">
-          <span class="num">{{ loop.index }}</span>
+          <div class="num-cell"><span class="num">{{ loop.index }}</span></div>
           <div class="body">
-            <p class="text">{{ decision.text }}</p>
+            <div class="text prose">{{ decision.html }}</div>
             {{ evidence(decision) }}
           </div>
         </li>
@@ -167,7 +168,7 @@
   <section class="section">
     <h2>{{ labels.open_questions }}</h2>
     <ul class="questions">
-      {% for question in open_questions %}<li>{{ question }}</li>{% endfor %}
+      {% for question in open_questions_html %}<li class="prose">{{ question }}</li>{% endfor %}
     </ul>
   </section>
 {% endif %}

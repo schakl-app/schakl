@@ -78,7 +78,6 @@ _LABEL_KEYS = (
     "nobody",
     "client",
     "project",
-    "recorded_by",
     "duration",
     "confirmed",
     "draft",
@@ -176,8 +175,9 @@ def _person(
     }
 
 
-def _html(text: str | None) -> Markup:
-    return Markup(markdown_to_html(text) if text and text.strip() else "")
+def _html(text: str | None, images: dict[str, str] | None = None) -> Markup:
+    """Markdown → sanitised markup, drawing only the embedded images the caller resolved."""
+    return Markup(markdown_to_html(text, images=images) if text and text.strip() else "")
 
 
 def _evidence(item: Any, *, show: bool) -> dict[str, Any]:
@@ -193,7 +193,12 @@ def _evidence(item: Any, *, show: bool) -> dict[str, Any]:
 
 
 def group_by_owner(
-    items: list[Any], people: dict[str, dict[str, Any]], locale: str, *, evidence: bool
+    items: list[Any],
+    people: dict[str, dict[str, Any]],
+    locale: str,
+    *,
+    evidence: bool,
+    images: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     """Action items by side, each side by person — the shape the minutes print in
     (``service.group_action_items``), with every owner resolved to a printable person."""
@@ -219,7 +224,7 @@ def group_by_owner(
                     "entries": [
                         {
                             "title": item.title.strip(),
-                            "description_html": _html(item.description),
+                            "description_html": _html(item.description, images),
                             "due_label": short_date(item.due_date, locale),
                             "is_task": bool(item.create_task),
                             **_evidence(item, show=evidence),
@@ -236,6 +241,18 @@ def group_by_owner(
             }
         )
     return blocks
+
+
+def _speaker_name(label: Any, speakers: dict[str, str], locale: str) -> str:
+    """A transcript line's speaker as a person: the roster's name for the label, or — where
+    nobody was paired with it — "Spreker 2", never the provider's bare ``S2``."""
+    if not label:
+        return ""
+    label = str(label)
+    if speakers.get(label):
+        return speakers[label]
+    digits = "".join(ch for ch in label if ch.isdigit())
+    return translate("meetings.doc.speaker_n", locale, n=digits or label)
 
 
 def build_context(
@@ -264,6 +281,7 @@ def build_context(
     brand_color: str | None,
     footer_text: str | None,
     show_avatars: bool,
+    images: dict[str, str] | None = None,
     locale: str,
     zone: ZoneInfo,
     generated_at: datetime,
@@ -286,6 +304,22 @@ def build_context(
         if not show_avatars:
             person["avatar"] = None
         roster.append(person)
+    # Who is ours and who is theirs, said by grouping rather than by a word under each name:
+    # the agency's people under the agency's name, the client's under the client's.
+    side_titles = {
+        "agency": brand_name,
+        "client": client or translate("meetings.doc.role_client", locale),
+        "other": translate("meetings.doc.role_other", locale),
+    }
+    roster_groups = [
+        {
+            "side": side,
+            "title": side_titles[side],
+            "people": [p for p in roster if p["side"] == side],
+        }
+        for side in ("agency", "client", "other")
+        if any(p["side"] == side for p in roster)
+    ]
 
     if not show_avatars:
         people = {k: {**v, "avatar": None} for k, v in people.items()}
@@ -309,21 +343,28 @@ def build_context(
         "occurred_label": long_date(occurred_at, locale, zone),
         "duration_label": duration_label(duration_seconds, locale),
         "owner": owner_name or "",
+        "roster_groups": roster_groups,
         "client": client or "",
         "project": project or "",
         "participants": roster,
-        "summary_html": _html(draft.summary),
-        "topics": [{"heading": t.heading.strip(), "html": _html(t.text)} for t in draft.topics],
-        "decisions": [
-            {"text": d.text.strip(), **_evidence(d, show=evidence)} for d in draft.decisions
+        "summary_html": _html(draft.summary, images),
+        "topics": [
+            {"heading": t.heading.strip(), "html": _html(t.text, images)} for t in draft.topics
         ],
-        "action_blocks": group_by_owner(draft.action_items, people, locale, evidence=evidence),
+        "decisions": [
+            {"text": d.text.strip(), "html": _html(d.text, images), **_evidence(d, show=evidence)}
+            for d in draft.decisions
+        ],
+        "action_blocks": group_by_owner(
+            draft.action_items, people, locale, evidence=evidence, images=images
+        ),
         "action_count": len(draft.action_items),
         "open_questions": [q.strip() for q in draft.open_questions if q.strip()],
+        "open_questions_html": [_html(q, images) for q in draft.open_questions if q.strip()],
         "transcript": [
             {
                 "at_label": clock(float(s.get("start") or 0)),
-                "speaker": speakers.get(s.get("speaker") or "", s.get("speaker") or ""),
+                "speaker": _speaker_name(s.get("speaker"), speakers, locale),
                 "text": str(s.get("text") or ""),
             }
             for s in segments
