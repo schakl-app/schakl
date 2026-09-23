@@ -15,6 +15,7 @@ from app.core.ai.audio import AudioClip
 from app.core.ai.providers import AIProviderError, ProviderConfig
 from app.core.ai.transcribe import (
     Segment,
+    Transcript,
     _fields,
     parse_transcription,
     speech_base_url,
@@ -29,11 +30,15 @@ from app.modules.meetings.minutes import (
     transcript_document,
 )
 from app.modules.meetings.pipeline import (
+    OVERLAP_SECONDS,
     NeedsSplit,
     Part,
+    TranscribedRecording,
+    align_labels,
     fold_chunks,
     parts_needed,
     plan_parts,
+    plan_windows,
     relabel,
 )
 
@@ -74,7 +79,7 @@ def test_limits_follow_the_vendors_stated_ceilings() -> None:
     assert speech_limits(_config("mistral", "voxtral-mini-latest")).max_seconds > 10_000
     assert speech_limits(_config("mistral", "voxtral-mini-latest")).diarize
     gpt = speech_limits(_config("openai", "gpt-4o-transcribe"))
-    assert gpt.max_seconds == 1400 and not gpt.diarize and not gpt.timestamps
+    assert gpt.max_seconds == 1500 and not gpt.diarize and not gpt.timestamps
     whisper = speech_limits(_config("openai", "whisper-1"))
     assert whisper.max_seconds is None and whisper.timestamps and not whisper.diarize
     assert speech_base_url(_config("mistral", "x")).startswith("https://api.mistral.ai")
@@ -132,8 +137,12 @@ def test_one_request_when_it_fits_and_parts_when_it_does_not() -> None:
     voxtral = speech_limits(_config("mistral", "voxtral-mini-latest"))
     assert parts_needed(30 * 1024 * 1024, 2 * 3600, voxtral) == 1
     gpt = speech_limits(_config("openai", "gpt-4o-transcribe"))
-    # Two hours against a 1400 s cap: six parts by duration, whatever the size.
-    assert parts_needed(30 * 1024 * 1024, 2 * 3600, gpt) == 6
+    # Two hours against the 1500 s cap (with the pipeline's own margin): five parts by
+    # duration, whatever the size.
+    assert parts_needed(30 * 1024 * 1024, 2 * 3600, gpt) == 5
+    # A twenty-three-minute meeting is **one** request: it used to be two (a margin taken
+    # twice, 1400 × 0.97), which is what handed a two-person meeting four speaker labels.
+    assert parts_needed(6 * 1024 * 1024, 23 * 60, gpt) == 1
     whisper = speech_limits(_config("openai", "whisper-1"))
     # 100 MB against 24 MiB: five parts by bytes, no duration cap.
     assert parts_needed(100 * 1024 * 1024, None, whisper) == 5
@@ -148,32 +157,58 @@ def test_a_cut_without_ffmpeg_is_refused_in_one_sentence(monkeypatch) -> None:
     assert plan_parts(b"x" * 1000, "webm", 600, gpt) == [Part(data=b"x" * 1000, offset_seconds=0.0)]
 
 
-def test_a_cut_is_sized_so_no_sliver_is_left_past_the_last_mark(monkeypatch) -> None:
-    """1386 s against the 1400 s cap is two parts. Cut at ``1386 // 2`` the segment muxer wrote
-    693.008 + 693.007 + a 0.027 s third file; the mark is rounded up now."""
+def test_a_cut_recording_is_cut_with_an_overlap_where_the_provider_timestamps(monkeypatch) -> None:
+    """Forty minutes against the 1500 s cap is two parts, and the second starts
+    ``OVERLAP_SECONDS`` before the first ends — that overlap is what the speaker labels are
+    matched on afterwards. A text-only model gets edge-to-edge parts: nothing to align, and an
+    overlap would be the same minute transcribed twice."""
     monkeypatch.setattr(pipeline, "ffmpeg_available", lambda: True)
-    seen: list[int] = []
+    seen: list[list[tuple[float, float]]] = []
     monkeypatch.setattr(
-        pipeline, "split_with_ffmpeg", lambda data, ext, secs: seen.append(secs) or []
+        pipeline, "cut_with_ffmpeg", lambda data, ext, windows: seen.append(windows) or []
     )
-    gpt = speech_limits(_config("openai", "gpt-4o-transcribe-diarize"))
-    plan_parts(b"x" * 1000, "webm", 1386, gpt)
-    assert seen == [694]
+    diarize = speech_limits(_config("openai", "gpt-4o-transcribe-diarize"))
+    plan_parts(b"x" * 1000, "webm", 40 * 60, diarize)
+    (first, second) = seen[-1]
+    assert first[0] == 0.0
+    assert second[0] == pytest.approx(first[1] - OVERLAP_SECONDS)
+    assert second[0] + second[1] == pytest.approx(40 * 60)
+    text_only = speech_limits(_config("openai", "gpt-4o-transcribe"))
+    plan_parts(b"x" * 1000, "webm", 40 * 60, text_only)
+    (first, second) = seen[-1]
+    assert second[0] == pytest.approx(first[1])
 
 
-def test_a_sub_second_tail_from_the_muxer_is_never_sent(monkeypatch, tmp_path) -> None:
-    durations = {"part0000.webm": 693.008, "part0001.webm": 693.007, "part0002.webm": 0.027}
+def test_windows_cover_the_recording_and_leave_no_sliver() -> None:
+    """1386 s in two parts with a 45 s overlap is two parts of 717 s (the overlap is paid for
+    by the part length, ``plan_parts``): the second starts at 672 and ends at 1386, and a
+    third window of a fraction of a second is never planned."""
+    assert plan_windows(1386.0, 717, 45) == [(0.0, 717.0), (672.0, 714.0)]
+    # Edge to edge, no overlap: the old shape, the old sliver rule.
+    assert plan_windows(1386.0, 694, 0) == [(0.0, 694.0), (694.0, 692.0)]
+    assert plan_windows(600.0, 694, 45) == [(0.0, 600.0)]
+
+
+def test_a_sub_second_tail_from_the_cut_is_never_sent(monkeypatch) -> None:
+    durations = {"part0000.webm": 693.008, "part0001.webm": 0.027}
 
     def fake_run(args, **_kwargs):  # noqa: ANN001, ANN202
-        out = Path(args[-1]).parent
-        for name in durations:
-            (out / name).write_bytes(name.encode())
+        Path(args[-1]).write_bytes(Path(args[-1]).name.encode())
 
     monkeypatch.setattr(pipeline.subprocess, "run", fake_run)
     monkeypatch.setattr(pipeline, "_probe_duration", lambda path: durations[path.name])
-    parts = pipeline.split_with_ffmpeg(b"audio", "webm", 693)
-    assert [p.data for p in parts] == [b"part0000.webm", b"part0001.webm"]
-    assert parts[1].offset_seconds == pytest.approx(693.008)
+    parts = pipeline.cut_with_ffmpeg(b"audio", "webm", [(0.0, 693.0), (693.0, 0.5)])
+    assert [p.data for p in parts] == [b"part0000.webm"]
+    assert parts[0].length_seconds == pytest.approx(693.008)
+
+
+def test_a_remux_is_skipped_without_ffmpeg_and_for_a_finished_container(monkeypatch) -> None:
+    """A phone's m4a states its length already; a browser's WebM does not, but on a box with
+    no ffmpeg the bytes are kept as they came rather than refused."""
+    monkeypatch.setattr(pipeline, "ffmpeg_available", lambda: False)
+    assert pipeline.remux(b"webm", "webm") is None
+    monkeypatch.setattr(pipeline, "ffmpeg_available", lambda: True)
+    assert pipeline.remux(b"m4a", "m4a") is None
 
 
 async def test_a_provider_that_does_not_answer_is_a_provider_error(monkeypatch) -> None:
@@ -228,6 +263,80 @@ def test_speaker_labels_are_numbered_on_across_parts() -> None:
     assert second == [{"start": 1400.0, "end": 1401.0, "speaker": "S3", "text": "d"}]
     unlabeled, _ = relabel([Segment(0, 1, "e", None)], offset=0.0, next_label=1)
     assert unlabeled[0]["speaker"] is None
+
+
+def test_a_speaker_keeps_their_label_across_the_cut() -> None:
+    """The first part ends at 100 s; the second was cut from 55 s. In the 45 s both parts
+    transcribed, the second part's ``A`` spoke while S1 spoke and its ``B`` while S2 spoke —
+    so they *are* S1 and S2, a third voice heard only after the cut is S3, and the rows the
+    first part already carries are not repeated."""
+    previous = [
+        {"start": 0.0, "end": 50.0, "speaker": "S1", "text": "intro"},
+        {"start": 55.0, "end": 70.0, "speaker": "S1", "text": "een"},
+        {"start": 70.0, "end": 85.0, "speaker": "S2", "text": "twee"},
+        {"start": 85.0, "end": 100.0, "speaker": "S1", "text": "drie"},
+    ]
+    incoming = [
+        Segment(0.0, 15.0, "een", "A"),  # 55–70 absolute: S1's seconds
+        Segment(15.0, 30.0, "twee", "B"),  # 70–85: S2's
+        Segment(30.0, 44.0, "drie", "A"),  # 85–99: S1's
+        Segment(44.0, 60.0, "vier", "B"),  # straddles 100: mostly past it → kept, as S2
+        Segment(60.0, 80.0, "vijf", "C"),  # after the cut only: a new voice
+    ]
+    rows, nxt = align_labels(previous, incoming, offset=55.0, window_end=100.0, next_label=3)
+    assert [(r["speaker"], r["text"]) for r in rows] == [("S2", "vier"), ("S3", "vijf")]
+    assert rows[0]["start"] == 99.0 and nxt == 4
+
+
+def test_a_label_the_overlap_cannot_pair_gets_a_fresh_number() -> None:
+    """Two seconds of cross-talk with S1 is not evidence that ``A`` is S1: the failure
+    direction is the old one (a speaker split in two), never two people merged."""
+    previous = [{"start": 55.0, "end": 100.0, "speaker": "S1", "text": "monoloog"}]
+    incoming = [Segment(0.0, 1.5, "hm", "A"), Segment(50.0, 60.0, "later", "A")]
+    rows, nxt = align_labels(previous, incoming, offset=55.0, window_end=100.0, next_label=2)
+    assert [r["speaker"] for r in rows] == ["S2"] and nxt == 3
+
+
+async def test_overlapping_parts_are_read_as_one_transcript(monkeypatch) -> None:
+    """The whole thing over a fake provider: two parts, the labels aligned, the flat text
+    rebuilt from the rows so the overlap is never read twice, and the row says it aligned."""
+    parts = [
+        Part(data=b"one", offset_seconds=0.0, length_seconds=100.0),
+        Part(data=b"two", offset_seconds=55.0, length_seconds=60.0),
+    ]
+    monkeypatch.setattr(pipeline, "plan_parts", lambda *a, **k: parts)
+    answers = {
+        b"one": Transcript(
+            "hallo. ja.",
+            100,
+            (Segment(0, 50, "hallo", "spk0"), Segment(60, 95, "ja", "spk1")),
+        ),
+        b"two": Transcript(
+            "ja. dag.",
+            60,
+            (Segment(5, 40, "ja", "x"), Segment(48, 60, "dag", "x")),
+        ),
+    }
+
+    async def fake(config, clip, **_kw):  # noqa: ANN001, ANN003
+        return answers[clip.data]
+
+    monkeypatch.setattr(pipeline, "provider_transcribe", fake)
+    result: TranscribedRecording = await pipeline.transcribe_recording(
+        _config("openai", "gpt-4o-transcribe-diarize"),
+        b"audio",
+        "webm",
+        language="nl",
+        duration_seconds=115,
+    )
+    assert result.parts == 2 and result.aligned
+    assert [(r["speaker"], r["text"]) for r in result.segments] == [
+        ("S1", "hallo"),
+        ("S2", "ja"),
+        ("S2", "dag"),
+    ]
+    assert result.text == "hallo ja dag"
+    assert result.seconds == 115
 
 
 # --- the evidence check --------------------------------------------------------------- #

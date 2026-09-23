@@ -74,8 +74,10 @@ SUBMIT_MINUTES = ToolDef(
         "properties": {
             "title": {
                 "type": ["string", "null"],
-                "description": "What the meeting was about, in a handful of words, if the "
-                "given title is a placeholder. Null to keep the given title.",
+                "description": "What the meeting was about, in a handful of words (a subject, "
+                "never a sentence), if the given title is a placeholder or was generated — "
+                "'Bespreking met Nova Fietsen · 23-09-2026' is generated. Null to keep a title "
+                "somebody wrote.",
             },
             "summary": {
                 "type": "string",
@@ -167,6 +169,12 @@ SUBMIT_MINUTES = ToolDef(
                 "maxItems": 40,
                 "items": {"type": "string"},
                 "description": "What was raised and left unanswered.",
+            },
+            "time_note": {
+                "type": ["string", "null"],
+                "description": "One short line for a timesheet: what this meeting was, as a "
+                "colleague would write it beside the hours. Plain text, no markdown, at most "
+                "a dozen words.",
             },
         },
         "required": ["summary"],
@@ -469,6 +477,7 @@ def draft_from_call(
         decisions=decisions,
         action_items=items,
         open_questions=questions,
+        time_note=_text(submitted.get("time_note"), 200),
     )
 
 

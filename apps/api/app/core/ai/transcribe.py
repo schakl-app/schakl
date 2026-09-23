@@ -57,9 +57,12 @@ DEFAULT_SPEECH_MODELS: dict[str, str] = {
 
 #: OpenAI's ceiling per file; the dictation cap (``audio.MAX_AUDIO_BYTES``) sits just under it.
 _OPENAI_MAX_BYTES = 24 * 1024 * 1024
-#: ``gpt-4o-transcribe`` refuses audio over 1500 s; a margin so a recording cut *to* the cap
-#: does not land a few frames over it.
-_OPENAI_GPT_MAX_SECONDS = 1400
+#: ``gpt-4o-transcribe`` refuses audio over 1500 s — the vendor's own number, stated as such.
+#: The margin that keeps a part cut *to* the cap from landing a few frames over it lives in the
+#: pipeline (``_PART_MARGIN``), and it used to live here too: 1400 × 0.97 = 1358 s, so a
+#: twenty-three-minute meeting — well inside what the model takes — was cut in two and came
+#: back with four speakers for two people. One margin, in one place.
+_OPENAI_GPT_MAX_SECONDS = 1500
 #: Voxtral takes three hours; the same margin.
 _MISTRAL_MAX_SECONDS = 3 * 3600 - 120
 _MISTRAL_MAX_BYTES = 900 * 1024 * 1024

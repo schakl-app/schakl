@@ -144,66 +144,80 @@
   }
 </script>
 
-<div class="space-y-2 rounded-xl border border-dashed border-border p-3">
-  <label for={id} class="flex items-center gap-1.5 text-sm font-medium text-text">
-    <Sparkles size={14} class="text-brand" aria-hidden="true" />
-    {t("meetings.ai.revise_label")}
-  </label>
-  <div class="flex items-start gap-2">
+<!-- A card of its own, in the brand's tint: the one control on the desk that changes any part
+     of it in words. The field takes the width, the microphone sits inside it, and the buttons
+     go under it — a textarea squeezed between two buttons read as an afterthought. -->
+<section
+  class="rounded-xl border border-brand/30 bg-brand/5 p-4 shadow-sm"
+  aria-labelledby={`${id}-title`}
+>
+  <h2 id={`${id}-title`} class="flex items-center gap-2 text-sm font-semibold text-text">
+    <span
+      class="inline-flex size-6 items-center justify-center rounded-full bg-brand/15 text-brand"
+    >
+      <Sparkles size={13} aria-hidden="true" />
+    </span>
+    {t("meetings.ai.revise_title")}
+  </h2>
+  <label for={id} class="sr-only">{t("meetings.ai.revise_label")}</label>
+  <div class="relative mt-3">
     <textarea
       {id}
       bind:this={field}
       bind:value={instruction}
-      rows="2"
+      rows="3"
       disabled={busy}
       placeholder={t("meetings.ai.revise_placeholder")}
       {onkeydown}
-      class="min-w-0 flex-1 rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand disabled:opacity-60"
+      class="w-full resize-y rounded-lg border border-border bg-surface-raised px-3 py-2 pr-11 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand disabled:opacity-60"
     ></textarea>
     {#if canDictate}
-      <VoiceButton
-        {recorder}
-        onstart={() => void dictate()}
-        onstop={() => recorder.stop()}
-        disabled={busy || voiceStatus !== null}
-      />
+      <div class="absolute top-1.5 right-1.5">
+        <VoiceButton
+          {recorder}
+          onstart={() => void dictate()}
+          onstop={() => recorder.stop()}
+          disabled={busy || voiceStatus !== null}
+        />
+      </div>
     {/if}
+  </div>
+  <div class="mt-2 flex flex-wrap items-center justify-between gap-2">
+    <p class="text-xs text-text-muted">{t("meetings.ai.revise_hint")}</p>
     <Button
       type="button"
       size="sm"
-      variant="secondary"
       loading={busy}
       disabled={!instruction.trim()}
       onclick={() => apply()}
     >
+      <Sparkles size={13} />
       {t("meetings.ai.revise_submit")}
     </Button>
   </div>
   {#if busy}
-    <p class="text-xs text-text-muted" aria-live="polite">{t("meetings.ai.revise_busy")}</p>
+    <p class="mt-2 text-xs text-text-muted" aria-live="polite">{t("meetings.ai.revise_busy")}</p>
   {:else if voiceStatus}
-    <p class="text-xs text-text-muted" aria-live="polite">{t(voiceStatus)}</p>
+    <p class="mt-2 text-xs text-text-muted" aria-live="polite">{t(voiceStatus)}</p>
   {:else if budgetReached}
-    <p class="text-xs text-amber-700 dark:text-amber-400" role="alert">
+    <p class="mt-2 text-xs text-amber-700 dark:text-amber-400" role="alert">
       {t("ai.budget_notice")}
       <button type="button" class="ml-1 underline" onclick={() => apply(true)}>
         {t("ai.budget_proceed")}
       </button>
     </p>
   {:else if error}
-    <p class="text-xs text-red-600 dark:text-red-400" role="alert">{t(error)}</p>
+    <p class="mt-2 text-xs text-red-600 dark:text-red-400" role="alert">{t(error)}</p>
   {:else if limitNote}
-    <p class="text-xs text-text-muted" role="status">{limitNote}</p>
+    <p class="mt-2 text-xs text-text-muted" role="status">{limitNote}</p>
   {:else if nothingChanged}
-    <p class="text-xs text-text-muted" aria-live="polite">{t("meetings.ai.revise_nothing")}</p>
+    <p class="mt-2 text-xs text-text-muted" aria-live="polite">{t("meetings.ai.revise_nothing")}</p>
   {:else if summary}
-    <p class="text-xs text-text-muted" aria-live="polite">
+    <p class="mt-2 rounded-lg bg-surface-raised px-3 py-2 text-xs text-text" aria-live="polite">
       <Sparkles size={12} class="mr-1 inline text-brand" aria-hidden="true" />{summary}
       {#if truncated}
         <span class="text-amber-700 dark:text-amber-400">{t("meetings.ai.revise_truncated")}</span>
       {/if}
     </p>
-  {:else}
-    <p class="text-xs text-text-muted">{t("meetings.ai.revise_hint")}</p>
   {/if}
-</div>
+</section>

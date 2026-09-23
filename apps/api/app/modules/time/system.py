@@ -222,6 +222,28 @@ async def revise_entry(
     return entry
 
 
+async def entries_by_ids(ctx: EmitContext, ids: list[uuid.UUID]) -> list[dict[str, Any]]:
+    """The entries another module wrote through :func:`record_entry`, read back to be *said*
+    (the meetings page: "hours were booked for Sanne and Jan"). Tenant-scoped through the
+    context; the four columns a sentence needs and nothing a timesheet would."""
+    if not ids:
+        return []
+    rows = (
+        await ctx.session.execute(
+            select(TimeEntry).where(TimeEntry.org_id == ctx.org.id, TimeEntry.id.in_(ids))
+        )
+    ).scalars()
+    return [
+        {
+            "id": row.id,
+            "user_id": row.user_id,
+            "minutes": int(row.minutes or 0),
+            "started_at": row.started_at,
+        }
+        for row in rows
+    ]
+
+
 async def remove_entry(ctx: EmitContext, entry: TimeEntry) -> None:
     """Delete one entry on behalf of its owner.
 
