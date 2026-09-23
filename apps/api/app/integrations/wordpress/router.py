@@ -20,11 +20,19 @@ from fastapi import APIRouter, Depends, Query
 from app.core.entitlements import license_write_gate
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
+from app.integrations.wordpress.bridge import WordPressBridgeService
 from app.integrations.wordpress.schemas import (
     WordPressAbility,
     WordPressAbilityResult,
     WordPressAbilityRun,
     WordPressBrand,
+    WordPressBridgeDelete,
+    WordPressBridgeInfo,
+    WordPressBridgeMedia,
+    WordPressBridgeSchema,
+    WordPressBridgeTerm,
+    WordPressBridgeTermCreate,
+    WordPressBridgeTermList,
     WordPressContentCreate,
     WordPressContentList,
     WordPressContentRead,
@@ -33,14 +41,31 @@ from app.integrations.wordpress.schemas import (
     WordPressFormRead,
     WordPressFormRow,
     WordPressFormWrite,
+    WordPressLanguages,
     WordPressMediaList,
     WordPressMediaRow,
+    WordPressMediaUpload,
+    WordPressMenu,
+    WordPressMenuItemAdd,
+    WordPressMenuList,
+    WordPressOptionsPages,
+    WordPressOptionsRead,
+    WordPressOptionsWrite,
+    WordPressRecord,
+    WordPressRecordCreate,
+    WordPressRecordList,
+    WordPressRecordUpdate,
     WordPressRestCall,
     WordPressRestResult,
     WordPressSiteCreate,
     WordPressSiteRead,
     WordPressSiteSummary,
     WordPressSiteUpdate,
+    WordPressStringList,
+    WordPressStringResult,
+    WordPressStringUpdate,
+    WordPressTranslationCreate,
+    WordPressTranslations,
     WordPressVerifyResult,
 )
 from app.integrations.wordpress.service import WordPressService
@@ -410,3 +435,391 @@ async def call_site_rest(
     capped and says so when it was cut.
     """
     return await WordPressSurfaceService(ctx).rest_call(site_id, payload)
+
+
+# ------------------------------------------------------------------ the breik. Bridge plugin
+#
+# The same site, through the plugin that owns its ACF schema (docs/WORDPRESS.md §9). Every
+# route answers 409 `errors.wordpress_bridge_missing` on a site without the plugin, decided by
+# the call itself. The permission keys are the ones above: a read is `content.read`, a draft
+# is `content.write`, anything a visitor sees is `content.publish`, and a delete has its own.
+
+
+@router.get(
+    "/sites/{site_id}/bridge",
+    response_model=WordPressBridgeInfo,
+    dependencies=[require_permission("wordpress.site.read")],
+)
+async def bridge_info(
+    site_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressBridgeInfo:
+    """What the site is, through the breik. Bridge plugin: versions, **every** post type
+    (including ones hidden from the REST API), taxonomies, ACF options pages, menus, WPML
+    languages, the SEO plugin, and what the stored credential may do. The read to make first
+    on a site that has the plugin; 409 names the plugin on one that does not."""
+    return await WordPressBridgeService(ctx).info(site_id)
+
+
+@router.get(
+    "/sites/{site_id}/bridge/schema",
+    response_model=WordPressBridgeSchema,
+    dependencies=[require_permission("wordpress.content.read")],
+)
+async def bridge_schema(
+    site_id: uuid.UUID,
+    post_type: str | None = Query(None, max_length=40),
+    template: str | None = Query(None, max_length=120),
+    parent: int | None = Query(None),
+    wp_id: int | None = Query(None, description="An existing record: the groups that apply to it."),
+    options_page: str | None = Query(None, max_length=80),
+    taxonomy: str | None = Query(None, max_length=40),
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressBridgeSchema:
+    """The ACF field schema for a post type (optionally with template/parent), a record, an
+    options page or a taxonomy: every field's name, type, choices, sub fields, the conditions
+    that hide it, and the JSON the writer takes. Read before writing fields."""
+    return await WordPressBridgeService(ctx).schema(
+        site_id,
+        post_type=post_type,
+        template=template,
+        parent=parent,
+        wp_id=wp_id,
+        options_page=options_page,
+        taxonomy=taxonomy,
+    )
+
+
+@router.get(
+    "/sites/{site_id}/bridge/records",
+    response_model=WordPressRecordList,
+    dependencies=[require_permission("wordpress.content.read")],
+)
+async def bridge_list_records(
+    site_id: uuid.UUID,
+    post_type: str = Query("page", max_length=40),
+    search: str | None = Query(None, max_length=200),
+    status: str | None = Query(None, max_length=60, description="Comma-separated, or 'any'."),
+    lang: str | None = Query(None, max_length=10),
+    parent: int | None = Query(None),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressRecordList:
+    """Records of any post type through the plugin — REST-hidden types included — with the
+    page path, status, and WPML language and translation ids per row."""
+    return await WordPressBridgeService(ctx).list_records(
+        site_id,
+        post_type=post_type,
+        search=search,
+        status=status,
+        lang=lang,
+        parent=parent,
+        page=page,
+        per_page=per_page,
+    )
+
+
+@router.post(
+    "/sites/{site_id}/bridge/records",
+    response_model=WordPressRecord,
+    status_code=201,
+    dependencies=[require_permission("wordpress.content.write")],
+)
+async def bridge_create_record(
+    site_id: uuid.UUID,
+    payload: WordPressRecordCreate,
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressRecord:
+    """A new record with its ACF fields, validated against the site's schema before anything
+    is written; a refusal lists every problem with its path in `details.problems`. A live
+    status needs `wordpress.content.publish`."""
+    return await WordPressBridgeService(ctx).create_record(site_id, payload)
+
+
+@router.get(
+    "/sites/{site_id}/bridge/records/{wp_id}",
+    response_model=WordPressRecord,
+    dependencies=[require_permission("wordpress.content.read")],
+)
+async def bridge_get_record(
+    site_id: uuid.UUID,
+    wp_id: int,
+    mode: str = Query("compact", pattern="^(compact|visible|full|none)$"),
+    include_schema: bool = Query(False),
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressRecord:
+    """One record whole: core fields, taxonomies, SEO, the ACF `fields` (compact: per
+    page-builder row only what that row uses) and `references` for every id in them."""
+    return await WordPressBridgeService(ctx).get_record(
+        site_id, wp_id, mode=mode, include_schema=include_schema
+    )
+
+
+@router.patch(
+    "/sites/{site_id}/bridge/records/{wp_id}",
+    response_model=WordPressRecord,
+    dependencies=[require_permission("wordpress.content.write")],
+)
+async def bridge_update_record(
+    site_id: uuid.UUID,
+    wp_id: int,
+    payload: WordPressRecordUpdate,
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressRecord:
+    """Change a record: `fields` replaces named top-level ACF fields whole, `ops` edits one row
+    by path without resending the rest. Validated first; nothing written on a refusal.
+    Editing anything a visitor can see needs `wordpress.content.publish`."""
+    return await WordPressBridgeService(ctx).update_record(site_id, wp_id, payload)
+
+
+@router.delete(
+    "/sites/{site_id}/bridge/records/{wp_id}",
+    response_model=WordPressBridgeDelete,
+    dependencies=[require_permission("wordpress.content.delete")],
+)
+async def bridge_delete_record(
+    site_id: uuid.UUID,
+    wp_id: int,
+    force: bool = Query(False, description="Delete permanently instead of trashing."),
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressBridgeDelete:
+    """Trash a record (recoverable in the site's admin), or delete it for good."""
+    return await WordPressBridgeService(ctx).delete_record(site_id, wp_id, force=force)
+
+
+@router.post(
+    "/sites/{site_id}/bridge/media",
+    response_model=WordPressBridgeMedia,
+    status_code=201,
+    dependencies=[require_permission("wordpress.content.write")],
+)
+async def bridge_upload_media(
+    site_id: uuid.UUID,
+    payload: WordPressMediaUpload,
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressBridgeMedia:
+    """Upload a file to the site's media library from a URL or a base64 body, with alt text.
+    Returns the attachment; use its id in image fields or as `featured_media`."""
+    return await WordPressBridgeService(ctx).upload_media(site_id, payload)
+
+
+@router.get(
+    "/sites/{site_id}/bridge/terms",
+    response_model=WordPressBridgeTermList,
+    dependencies=[require_permission("wordpress.content.read")],
+)
+async def bridge_list_terms(
+    site_id: uuid.UUID,
+    taxonomy: str = Query(..., max_length=40),
+    search: str | None = Query(None, max_length=200),
+    lang: str | None = Query(None, max_length=10),
+    mode: str = Query("none", pattern="^(none|compact|visible|full)$"),
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressBridgeTermList:
+    """The terms of one taxonomy, with their WPML language and, on request, ACF fields."""
+    return await WordPressBridgeService(ctx).list_terms(
+        site_id, taxonomy=taxonomy, search=search, lang=lang, mode=mode
+    )
+
+
+@router.post(
+    "/sites/{site_id}/bridge/terms",
+    response_model=WordPressBridgeTerm,
+    status_code=201,
+    dependencies=[require_permission("wordpress.content.write")],
+)
+async def bridge_create_term(
+    site_id: uuid.UUID,
+    payload: WordPressBridgeTermCreate,
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressBridgeTerm:
+    """A new term, its ACF fields validated first; with WPML, in a language and optionally
+    as the translation of another term."""
+    return await WordPressBridgeService(ctx).create_term(site_id, payload)
+
+
+@router.get(
+    "/sites/{site_id}/bridge/options",
+    response_model=WordPressOptionsPages,
+    dependencies=[require_permission("wordpress.content.read")],
+)
+async def bridge_options_pages(
+    site_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressOptionsPages:
+    """The site's ACF options pages (company details, footer, partners …)."""
+    return await WordPressBridgeService(ctx).options_pages(site_id)
+
+
+@router.get(
+    "/sites/{site_id}/bridge/options/{page}",
+    response_model=WordPressOptionsRead,
+    dependencies=[require_permission("wordpress.content.read")],
+)
+async def bridge_options_get(
+    site_id: uuid.UUID,
+    page: str,
+    lang: str | None = Query(None, max_length=10),
+    mode: str = Query("compact", pattern="^(compact|visible|full)$"),
+    include_schema: bool = Query(False),
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressOptionsRead:
+    """The values on one options page, compact, with references; per language under WPML."""
+    return await WordPressBridgeService(ctx).options_get(
+        site_id, page, lang=lang, mode=mode, include_schema=include_schema
+    )
+
+
+@router.patch(
+    "/sites/{site_id}/bridge/options/{page}",
+    response_model=WordPressOptionsRead,
+    dependencies=[require_permission("wordpress.content.publish")],
+)
+async def bridge_options_update(
+    site_id: uuid.UUID,
+    page: str,
+    payload: WordPressOptionsWrite,
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressOptionsRead:
+    """Write ACF values on an options page. Live at once and site-wide, hence `publish`."""
+    return await WordPressBridgeService(ctx).options_update(site_id, page, payload)
+
+
+@router.get(
+    "/sites/{site_id}/bridge/menus",
+    response_model=WordPressMenuList,
+    dependencies=[require_permission("wordpress.content.read")],
+)
+async def bridge_menus(
+    site_id: uuid.UUID,
+    lang: str | None = Query(None, max_length=10),
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressMenuList:
+    """The navigation menus and the theme locations they fill."""
+    return await WordPressBridgeService(ctx).menus(site_id, lang=lang)
+
+
+@router.get(
+    "/sites/{site_id}/bridge/menus/{menu}",
+    response_model=WordPressMenu,
+    dependencies=[require_permission("wordpress.content.read")],
+)
+async def bridge_menu(
+    site_id: uuid.UUID,
+    menu: str,
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressMenu:
+    """One menu as a tree of items."""
+    return await WordPressBridgeService(ctx).menu(site_id, menu)
+
+
+@router.post(
+    "/sites/{site_id}/bridge/menus/{menu}/items",
+    response_model=WordPressMenu,
+    status_code=201,
+    dependencies=[require_permission("wordpress.content.publish")],
+)
+async def bridge_menu_add_item(
+    site_id: uuid.UUID,
+    menu: str,
+    payload: WordPressMenuItemAdd,
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressMenu:
+    """Add a record, a term or a custom link to a menu — live at once, hence `publish`."""
+    return await WordPressBridgeService(ctx).menu_add_item(site_id, menu, payload)
+
+
+@router.delete(
+    "/sites/{site_id}/bridge/menus/{menu}/items/{item_id}",
+    response_model=WordPressMenu,
+    dependencies=[require_permission("wordpress.content.publish")],
+)
+async def bridge_menu_remove_item(
+    site_id: uuid.UUID,
+    menu: str,
+    item_id: int,
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressMenu:
+    """Remove one item from a menu."""
+    return await WordPressBridgeService(ctx).menu_remove_item(site_id, menu, item_id)
+
+
+@router.get(
+    "/sites/{site_id}/bridge/languages",
+    response_model=WordPressLanguages,
+    dependencies=[require_permission("wordpress.content.read")],
+)
+async def bridge_languages(
+    site_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressLanguages:
+    """WPML: the active languages and the default; 409 on a site without WPML."""
+    return await WordPressBridgeService(ctx).languages(site_id)
+
+
+@router.get(
+    "/sites/{site_id}/bridge/records/{wp_id}/translations",
+    response_model=WordPressTranslations,
+    dependencies=[require_permission("wordpress.content.read")],
+)
+async def bridge_translations(
+    site_id: uuid.UUID,
+    wp_id: int,
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressTranslations:
+    """WPML: a record's translation group — per language the id, title, status and whether it
+    is the original."""
+    return await WordPressBridgeService(ctx).translations(site_id, wp_id)
+
+
+@router.post(
+    "/sites/{site_id}/bridge/records/{wp_id}/translations",
+    response_model=WordPressRecord | WordPressTranslations,
+    status_code=201,
+    dependencies=[require_permission("wordpress.content.write")],
+)
+async def bridge_translate(
+    site_id: uuid.UUID,
+    wp_id: int,
+    payload: WordPressTranslationCreate,
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressRecord | WordPressTranslations:
+    """WPML: create this record's translation in `lang`, linked to it — the source copied with
+    its references translated, your title/content/fields applied on top — or, with
+    `translation_id`, connect an existing record as the translation. A live status needs
+    `wordpress.content.publish`."""
+    return await WordPressBridgeService(ctx).translate(site_id, wp_id, payload)
+
+
+@router.get(
+    "/sites/{site_id}/bridge/strings",
+    response_model=WordPressStringList,
+    dependencies=[require_permission("wordpress.content.read")],
+)
+async def bridge_strings(
+    site_id: uuid.UUID,
+    domain: str | None = Query(None, max_length=120),
+    search: str | None = Query(None, max_length=200),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=1, le=200),
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressStringList:
+    """WPML String Translation: the registered strings with their translations per language."""
+    return await WordPressBridgeService(ctx).strings(
+        site_id, domain=domain, search=search, page=page, per_page=per_page
+    )
+
+
+@router.put(
+    "/sites/{site_id}/bridge/strings",
+    response_model=WordPressStringResult,
+    dependencies=[require_permission("wordpress.content.publish")],
+)
+async def bridge_string_update(
+    site_id: uuid.UUID,
+    payload: WordPressStringUpdate,
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressStringResult:
+    """WPML String Translation: set a string's translation — live at once, hence `publish`."""
+    return await WordPressBridgeService(ctx).string_update(site_id, payload)

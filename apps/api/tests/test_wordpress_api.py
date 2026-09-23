@@ -180,6 +180,7 @@ async def test_a_healthy_site_reports_every_surface(client_for, wp) -> None:
             "abilities": True,
             "rankmath_aiv": True,
             "mcp": True,
+            "bridge": True,
         }
         assert result["capability_errors"] == {}
         assert result["rankmath_version"] == "1.0.275"

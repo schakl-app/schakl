@@ -41,6 +41,7 @@
     capabilities_checked_at: string | null;
     mcp_server_path: string | null;
     rankmath_version: string | null;
+    bridge_version?: string | null;
     rankmath_ai_visibility: boolean;
     last_verified_at: string | null;
   };
@@ -70,7 +71,7 @@
    * (`/mcp/wordpress`, docs/WORDPRESS.md §7), and the adapter is only worth knowing about for
    * somebody who wants to point Claude Desktop at one site directly.
    */
-  const SURFACES = ["rest", "admin", "abilities", "rankmath_aiv", "mcp"] as const;
+  const SURFACES = ["rest", "admin", "abilities", "rankmath_aiv", "mcp", "bridge"] as const;
 
   /**
    * Glyph + word, never colour alone: the dev tenant's brand colour is gold, so a coloured dot
@@ -218,9 +219,29 @@
         <dd class="truncate font-mono text-xs text-text">{site.mcp_server_path}</dd>
       </div>
     {/if}
+    <!-- The breik. Bridge plugin: the version the last probe saw, or in words that it is not
+         there — because without it the page-builder, upload and translation tools answer 409,
+         and a row that said nothing would leave that to be discovered by an agent. -->
+    {#if site.capabilities_checked_at}
+      <div class="flex justify-between gap-4">
+        <dt class="text-muted">{t("wordpress.field.bridge")}</dt>
+        <dd class="text-text">
+          {#if site.bridge_version}
+            {site.bridge_version}
+          {:else}
+            <span class="text-amber-700">{t("wordpress.bridge_absent")}</span>
+          {/if}
+        </dd>
+      </div>
+    {/if}
   </dl>
   {#if site.status === "active"}
-    <p class="mt-2 text-xs text-muted">{t("wordpress.mcp_hint")}</p>
+    <p class="mt-2 text-xs text-muted">
+      {t("wordpress.mcp_hint")}
+      {#if site.bridge_version}
+        {t("wordpress.bridge_hint")}
+      {/if}
+    </p>
   {/if}
 
   <!-- What the credential was observed to reach, per surface, with the site's own words for

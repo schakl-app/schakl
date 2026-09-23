@@ -15296,6 +15296,351 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/wordpress/sites/{site_id}/bridge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bridge Info
+         * @description What the site is, through the breik. Bridge plugin: versions, **every** post type
+         *     (including ones hidden from the REST API), taxonomies, ACF options pages, menus, WPML
+         *     languages, the SEO plugin, and what the stored credential may do. The read to make first
+         *     on a site that has the plugin; 409 names the plugin on one that does not.
+         */
+        get: operations["bridge_info_api_v1_wordpress_sites__site_id__bridge_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}/bridge/languages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bridge Languages
+         * @description WPML: the active languages and the default; 409 on a site without WPML.
+         */
+        get: operations["bridge_languages_api_v1_wordpress_sites__site_id__bridge_languages_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}/bridge/media": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bridge Upload Media
+         * @description Upload a file to the site's media library from a URL or a base64 body, with alt text.
+         *     Returns the attachment; use its id in image fields or as `featured_media`.
+         */
+        post: operations["bridge_upload_media_api_v1_wordpress_sites__site_id__bridge_media_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}/bridge/menus": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bridge Menus
+         * @description The navigation menus and the theme locations they fill.
+         */
+        get: operations["bridge_menus_api_v1_wordpress_sites__site_id__bridge_menus_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}/bridge/menus/{menu}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bridge Menu
+         * @description One menu as a tree of items.
+         */
+        get: operations["bridge_menu_api_v1_wordpress_sites__site_id__bridge_menus__menu__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}/bridge/menus/{menu}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bridge Menu Add Item
+         * @description Add a record, a term or a custom link to a menu — live at once, hence `publish`.
+         */
+        post: operations["bridge_menu_add_item_api_v1_wordpress_sites__site_id__bridge_menus__menu__items_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}/bridge/menus/{menu}/items/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Bridge Menu Remove Item
+         * @description Remove one item from a menu.
+         */
+        delete: operations["bridge_menu_remove_item_api_v1_wordpress_sites__site_id__bridge_menus__menu__items__item_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}/bridge/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bridge Options Pages
+         * @description The site's ACF options pages (company details, footer, partners …).
+         */
+        get: operations["bridge_options_pages_api_v1_wordpress_sites__site_id__bridge_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}/bridge/options/{page}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bridge Options Get
+         * @description The values on one options page, compact, with references; per language under WPML.
+         */
+        get: operations["bridge_options_get_api_v1_wordpress_sites__site_id__bridge_options__page__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Bridge Options Update
+         * @description Write ACF values on an options page. Live at once and site-wide, hence `publish`.
+         */
+        patch: operations["bridge_options_update_api_v1_wordpress_sites__site_id__bridge_options__page__patch"];
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}/bridge/records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bridge List Records
+         * @description Records of any post type through the plugin — REST-hidden types included — with the
+         *     page path, status, and WPML language and translation ids per row.
+         */
+        get: operations["bridge_list_records_api_v1_wordpress_sites__site_id__bridge_records_get"];
+        put?: never;
+        /**
+         * Bridge Create Record
+         * @description A new record with its ACF fields, validated against the site's schema before anything
+         *     is written; a refusal lists every problem with its path in `details.problems`. A live
+         *     status needs `wordpress.content.publish`.
+         */
+        post: operations["bridge_create_record_api_v1_wordpress_sites__site_id__bridge_records_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}/bridge/records/{wp_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bridge Get Record
+         * @description One record whole: core fields, taxonomies, SEO, the ACF `fields` (compact: per
+         *     page-builder row only what that row uses) and `references` for every id in them.
+         */
+        get: operations["bridge_get_record_api_v1_wordpress_sites__site_id__bridge_records__wp_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Bridge Delete Record
+         * @description Trash a record (recoverable in the site's admin), or delete it for good.
+         */
+        delete: operations["bridge_delete_record_api_v1_wordpress_sites__site_id__bridge_records__wp_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Bridge Update Record
+         * @description Change a record: `fields` replaces named top-level ACF fields whole, `ops` edits one row
+         *     by path without resending the rest. Validated first; nothing written on a refusal.
+         *     Editing anything a visitor can see needs `wordpress.content.publish`.
+         */
+        patch: operations["bridge_update_record_api_v1_wordpress_sites__site_id__bridge_records__wp_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}/bridge/records/{wp_id}/translations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bridge Translations
+         * @description WPML: a record's translation group — per language the id, title, status and whether it
+         *     is the original.
+         */
+        get: operations["bridge_translations_api_v1_wordpress_sites__site_id__bridge_records__wp_id__translations_get"];
+        put?: never;
+        /**
+         * Bridge Translate
+         * @description WPML: create this record's translation in `lang`, linked to it — the source copied with
+         *     its references translated, your title/content/fields applied on top — or, with
+         *     `translation_id`, connect an existing record as the translation. A live status needs
+         *     `wordpress.content.publish`.
+         */
+        post: operations["bridge_translate_api_v1_wordpress_sites__site_id__bridge_records__wp_id__translations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}/bridge/schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bridge Schema
+         * @description The ACF field schema for a post type (optionally with template/parent), a record, an
+         *     options page or a taxonomy: every field's name, type, choices, sub fields, the conditions
+         *     that hide it, and the JSON the writer takes. Read before writing fields.
+         */
+        get: operations["bridge_schema_api_v1_wordpress_sites__site_id__bridge_schema_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}/bridge/strings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bridge Strings
+         * @description WPML String Translation: the registered strings with their translations per language.
+         */
+        get: operations["bridge_strings_api_v1_wordpress_sites__site_id__bridge_strings_get"];
+        /**
+         * Bridge String Update
+         * @description WPML String Translation: set a string's translation — live at once, hence `publish`.
+         */
+        put: operations["bridge_string_update_api_v1_wordpress_sites__site_id__bridge_strings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}/bridge/terms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bridge List Terms
+         * @description The terms of one taxonomy, with their WPML language and, on request, ACF fields.
+         */
+        get: operations["bridge_list_terms_api_v1_wordpress_sites__site_id__bridge_terms_get"];
+        put?: never;
+        /**
+         * Bridge Create Term
+         * @description A new term, its ACF fields validated first; with WPML, in a language and optionally
+         *     as the translation of another term.
+         */
+        post: operations["bridge_create_term_api_v1_wordpress_sites__site_id__bridge_terms_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/wordpress/sites/{site_id}/content": {
         parameters: {
             query?: never;
@@ -37988,6 +38333,189 @@ export interface components {
              */
             url: string;
         };
+        /** WordPressBridgeDelete */
+        WordPressBridgeDelete: {
+            /**
+             * Deleted
+             * @default false
+             */
+            deleted: boolean;
+            /** Id */
+            id: number;
+            /**
+             * Trashed
+             * @default false
+             */
+            trashed: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * WordPressBridgeInfo
+         * @description What the site is through the plugin: versions (WordPress, PHP, ACF, WPML), every post
+         *     type including ones hidden from ``wp/v2``, taxonomies, ACF options pages, menus,
+         *     languages, the SEO plugin, and what the stored credential's user may do.
+         */
+        WordPressBridgeInfo: {
+            /** Acf */
+            acf?: {
+                [key: string]: unknown;
+            } | null;
+            /** Base Url */
+            base_url: string;
+            /** Bridge Version */
+            bridge_version?: string | null;
+            /** Menus */
+            menus?: {
+                [key: string]: unknown;
+            }[];
+            /** Options Pages */
+            options_pages?: {
+                [key: string]: unknown;
+            }[];
+            /** Plugin */
+            plugin?: {
+                [key: string]: unknown;
+            };
+            /** Post Types */
+            post_types?: {
+                [key: string]: unknown;
+            }[];
+            /** Seo */
+            seo?: string | null;
+            /** Site */
+            site?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Site Id
+             * Format: uuid
+             */
+            site_id: string;
+            /** Taxonomies */
+            taxonomies?: {
+                [key: string]: unknown;
+            }[];
+            /** User */
+            user?: {
+                [key: string]: unknown;
+            };
+            /** Wpml */
+            wpml?: {
+                [key: string]: unknown;
+            } | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** WordPressBridgeMedia */
+        WordPressBridgeMedia: {
+            /**
+             * Alt
+             * @default
+             */
+            alt: string;
+            /** Height */
+            height?: number | null;
+            /** Id */
+            id: number;
+            /** Mime */
+            mime?: string | null;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+            /** Url */
+            url?: string | null;
+            /** Width */
+            width?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * WordPressBridgeSchema
+         * @description The ACF field groups that apply to a post type, a record, an options page or a
+         *     taxonomy: every field with name, type, label, required, choices, sub fields / layouts,
+         *     the conditions that hide it, and the JSON shape the writer takes (``value_format``).
+         */
+        WordPressBridgeSchema: {
+            /** Groups */
+            groups?: {
+                [key: string]: unknown;
+            }[];
+            /** Notes */
+            notes?: {
+                [key: string]: string;
+            };
+            /** Subject */
+            subject?: {
+                [key: string]: unknown;
+            };
+        } & {
+            [key: string]: unknown;
+        };
+        /** WordPressBridgeTerm */
+        WordPressBridgeTerm: {
+            /** Fields */
+            fields?: {
+                [key: string]: unknown;
+            } | null;
+            /** Id */
+            id: number;
+            /** Lang */
+            lang?: string | null;
+            /** Name */
+            name: string;
+            /** Parent */
+            parent?: number | null;
+            /** Slug */
+            slug: string;
+            /** Taxonomy */
+            taxonomy: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** WordPressBridgeTermCreate */
+        WordPressBridgeTermCreate: {
+            /** Description */
+            description?: string | null;
+            /**
+             * Fields
+             * @description ACF values keyed by field name.
+             */
+            fields?: {
+                [key: string]: unknown;
+            } | null;
+            /** Lang */
+            lang?: string | null;
+            /** Name */
+            name: string;
+            /** Parent */
+            parent?: number | null;
+            /** Slug */
+            slug?: string | null;
+            /** Taxonomy */
+            taxonomy: string;
+            /**
+             * Translation Of
+             * @description WPML: the source term's term_taxonomy_id.
+             */
+            translation_of?: number | null;
+        };
+        /** WordPressBridgeTermList */
+        WordPressBridgeTermList: {
+            /** Items */
+            items?: components["schemas"]["WordPressBridgeTerm"][];
+            /** Taxonomy */
+            taxonomy: string;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+        } & {
+            [key: string]: unknown;
+        };
         /**
          * WordPressContentCreate
          * @description A new record. ``draft`` unless told otherwise, because a create that publishes by
@@ -38296,6 +38824,19 @@ export interface components {
             /** Title */
             title?: string | null;
         };
+        /** WordPressLanguages */
+        WordPressLanguages: {
+            /** Current */
+            current?: string | null;
+            /** Default Language */
+            default_language?: string | null;
+            /** Languages */
+            languages?: {
+                [key: string]: unknown;
+            }[];
+        } & {
+            [key: string]: unknown;
+        };
         /** WordPressMediaList */
         WordPressMediaList: {
             /** Items */
@@ -38328,6 +38869,422 @@ export interface components {
             title: string;
             /** Width */
             width?: number | null;
+        };
+        /**
+         * WordPressMediaUpload
+         * @description Add a file to the site's media library from a public URL (fetched by the site) or a
+         *     base64 body. A URL already in the site's own library is reused rather than copied.
+         */
+        WordPressMediaUpload: {
+            /**
+             * Alt
+             * @description Alt text — always give an image one.
+             */
+            alt?: string | null;
+            /**
+             * Attach To
+             * @description Record id the file belongs to.
+             */
+            attach_to?: number | null;
+            /**
+             * Base64
+             * @description The file body, base64 (a data: URL is accepted).
+             */
+            base64?: string | null;
+            /** Caption */
+            caption?: string | null;
+            /** Description */
+            description?: string | null;
+            /**
+             * Filename
+             * @description Name with extension; derived when omitted.
+             */
+            filename?: string | null;
+            /** Lang */
+            lang?: string | null;
+            /** Mime */
+            mime?: string | null;
+            /**
+             * Set Featured
+             * @description Also make it that record's featured image.
+             * @default false
+             */
+            set_featured: boolean;
+            /** Title */
+            title?: string | null;
+            /**
+             * Url
+             * @description Public http(s) URL to fetch.
+             */
+            url?: string | null;
+        };
+        /** WordPressMenu */
+        WordPressMenu: {
+            /** Id */
+            id: number;
+            /** Items */
+            items?: {
+                [key: string]: unknown;
+            }[];
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * WordPressMenuItemAdd
+         * @description Add a record, a term or a custom link to a menu. Live at once.
+         */
+        WordPressMenuItemAdd: {
+            /**
+             * Object Id
+             * @description A record id to link.
+             */
+            object_id?: number | null;
+            /**
+             * Parent
+             * @description Parent menu item id.
+             */
+            parent?: number | null;
+            /** Position */
+            position?: number | null;
+            /**
+             * Target
+             * @default false
+             */
+            target: boolean;
+            /** Taxonomy */
+            taxonomy?: string | null;
+            /** Term Id */
+            term_id?: number | null;
+            /** Title */
+            title?: string | null;
+            /**
+             * Url
+             * @description A custom link (needs a title).
+             */
+            url?: string | null;
+        };
+        /** WordPressMenuList */
+        WordPressMenuList: {
+            /** Items */
+            items?: {
+                [key: string]: unknown;
+            }[];
+            /** Locations */
+            locations?: string[];
+        } & {
+            [key: string]: unknown;
+        };
+        /** WordPressOptionsPages */
+        WordPressOptionsPages: {
+            /** Items */
+            items?: {
+                [key: string]: unknown;
+            }[];
+        } & {
+            [key: string]: unknown;
+        };
+        /** WordPressOptionsRead */
+        WordPressOptionsRead: {
+            /** Fields */
+            fields?: {
+                [key: string]: unknown;
+            };
+            /** Page */
+            page: string;
+            /** References */
+            references?: {
+                [key: string]: unknown;
+            };
+            /** Title */
+            title?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * WordPressOptionsWrite
+         * @description Write ACF values on an options page — live at once, site-wide.
+         */
+        WordPressOptionsWrite: {
+            /**
+             * Fields
+             * @description ACF values keyed by field name; each named top-level field is replaced whole (a repeater by its full list of rows). Rows are objects of sub field names; flexible rows carry "_layout". Image/file/gallery values take an attachment id, a URL, or {"upload": {"url"|"base64", "filename", "alt", "title"}}. Read the schema first.
+             */
+            fields?: {
+                [key: string]: unknown;
+            } | null;
+            /** Lang */
+            lang?: string | null;
+            /**
+             * Ops
+             * @description Surgical edits applied to the stored values before validation, so one row changes without resending the rest: {"op": "set"|"merge"|"append"|"insert"|"remove"|"move", "path": "blokken_blokken[2].titel", "value"?, "index"?, "from"?, "to"?}.
+             */
+            ops?: {
+                [key: string]: unknown;
+            }[] | null;
+        };
+        /**
+         * WordPressRecord
+         * @description One record whole. ``fields`` is the ACF tree in the requested mode — ``compact`` keeps,
+         *     per page-builder row, only the fields the editor shows for that row and only the ones
+         *     that hold something — and ``references`` resolves every attachment, post and term id the
+         *     values name (url, alt, title, type).
+         */
+        WordPressRecord: {
+            /**
+             * Content
+             * @default
+             */
+            content: string;
+            /** Fields */
+            fields?: {
+                [key: string]: unknown;
+            } | null;
+            /** Fields Mode */
+            fields_mode?: string | null;
+            /** Id */
+            id: number;
+            /** Link */
+            link?: string | null;
+            /** Post Type */
+            post_type: string;
+            /** References */
+            references?: {
+                [key: string]: unknown;
+            };
+            /** Schema */
+            schema?: {
+                [key: string]: unknown;
+            } | unknown[] | null;
+            /** Seo */
+            seo?: {
+                [key: string]: unknown;
+            } | null;
+            /** Status */
+            status: string;
+            /** Taxonomies */
+            taxonomies?: {
+                [key: string]: unknown;
+            };
+            /** Title */
+            title: string;
+            /** Translations */
+            translations?: {
+                [key: string]: unknown;
+            } | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * WordPressRecordCreate
+         * @description A new record of any post type, through the plugin: validated against the ACF schema
+         *     before anything is written, so a refusal carries every problem with its path and leaves
+         *     nothing behind.
+         */
+        WordPressRecordCreate: {
+            /**
+             * Content
+             * @description Main content (HTML).
+             */
+            content?: string | null;
+            /**
+             * Date
+             * @description ISO 8601; with status future, when it goes live.
+             */
+            date?: string | null;
+            /** Excerpt */
+            excerpt?: string | null;
+            /**
+             * Featured Media
+             * @description Attachment id, URL, or {"upload": {...}}.
+             */
+            featured_media?: number | string | {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Fields
+             * @description ACF values keyed by field name; each named top-level field is replaced whole (a repeater by its full list of rows). Rows are objects of sub field names; flexible rows carry "_layout". Image/file/gallery values take an attachment id, a URL, or {"upload": {"url"|"base64", "filename", "alt", "title"}}. Read the schema first.
+             */
+            fields?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Lang
+             * @description WPML language code for the new record.
+             */
+            lang?: string | null;
+            /** Menu Order */
+            menu_order?: number | null;
+            /**
+             * Meta
+             * @description Plain post meta; null deletes a key.
+             */
+            meta?: {
+                [key: string]: unknown;
+            } | null;
+            /** Parent */
+            parent?: number | null;
+            /**
+             * Post Type
+             * @description Post type slug (from the bridge info).
+             */
+            post_type: string;
+            /**
+             * Seo
+             * @description Rank Math / Yoast meta: {title, description, focus_keyword, canonical, noindex}.
+             */
+            seo?: {
+                [key: string]: unknown;
+            } | null;
+            /** Slug */
+            slug?: string | null;
+            /**
+             * Status
+             * @description draft (default) | pending | publish | private | future.
+             * @default draft
+             */
+            status: string;
+            /**
+             * Template
+             * @description Page template file name.
+             */
+            template?: string | null;
+            /**
+             * Terms
+             * @description Terms per taxonomy: {"category": [3, "Nieuws"]} — ids, names or slugs.
+             */
+            terms?: {
+                [key: string]: (number | string)[];
+            } | null;
+            /** Title */
+            title: string;
+            /**
+             * Translation Of
+             * @description WPML: the id this record translates.
+             */
+            translation_of?: number | null;
+        };
+        /** WordPressRecordList */
+        WordPressRecordList: {
+            /** Items */
+            items?: components["schemas"]["WordPressRecordRow"][];
+            /**
+             * Page
+             * @default 1
+             */
+            page: number;
+            /**
+             * Pages
+             * @default 0
+             */
+            pages: number;
+            /**
+             * Per Page
+             * @default 20
+             */
+            per_page: number;
+            /** Post Type */
+            post_type: string;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** WordPressRecordRow */
+        WordPressRecordRow: {
+            /** Id */
+            id: number;
+            /** Lang */
+            lang?: string | null;
+            /** Link */
+            link?: string | null;
+            /** Modified */
+            modified?: string | null;
+            /** Path */
+            path?: string[];
+            /** Post Type */
+            post_type: string;
+            /** Slug */
+            slug: string;
+            /** Status */
+            status: string;
+            /** Title */
+            title: string;
+            /** Translations */
+            translations?: {
+                [key: string]: number;
+            };
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * WordPressRecordUpdate
+         * @description Change a record through the plugin. Absent keys are left alone; ``fields`` replaces
+         *     the named top-level ACF fields whole; ``ops`` edits inside the stored values by path.
+         */
+        WordPressRecordUpdate: {
+            /** Content */
+            content?: string | null;
+            /** Date */
+            date?: string | null;
+            /** Excerpt */
+            excerpt?: string | null;
+            /** Featured Media */
+            featured_media?: number | string | {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Fields
+             * @description ACF values keyed by field name; each named top-level field is replaced whole (a repeater by its full list of rows). Rows are objects of sub field names; flexible rows carry "_layout". Image/file/gallery values take an attachment id, a URL, or {"upload": {"url"|"base64", "filename", "alt", "title"}}. Read the schema first.
+             */
+            fields?: {
+                [key: string]: unknown;
+            } | null;
+            /** Menu Order */
+            menu_order?: number | null;
+            /** Meta */
+            meta?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Mode
+             * @description Read mode of the returned record: compact | visible | full | none.
+             */
+            mode?: string | null;
+            /**
+             * Ops
+             * @description Surgical edits applied to the stored values before validation, so one row changes without resending the rest: {"op": "set"|"merge"|"append"|"insert"|"remove"|"move", "path": "blokken_blokken[2].titel", "value"?, "index"?, "from"?, "to"?}.
+             */
+            ops?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Parent */
+            parent?: number | null;
+            /** Seo */
+            seo?: {
+                [key: string]: unknown;
+            } | null;
+            /** Slug */
+            slug?: string | null;
+            /**
+             * Status
+             * @description draft | pending | publish | private | future.
+             */
+            status?: string | null;
+            /** Template */
+            template?: string | null;
+            /** Terms */
+            terms?: {
+                [key: string]: (number | string)[];
+            } | null;
+            /** Title */
+            title?: string | null;
         };
         /**
          * WordPressRestCall
@@ -38399,6 +39356,8 @@ export interface components {
             active: boolean;
             /** Base Url */
             base_url: string;
+            /** Bridge Version */
+            bridge_version?: string | null;
             /** Capabilities */
             capabilities?: {
                 [key: string]: boolean;
@@ -38513,6 +39472,134 @@ export interface components {
             /** Username */
             username?: string | null;
         };
+        /** WordPressStringList */
+        WordPressStringList: {
+            /** Items */
+            items?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** WordPressStringResult */
+        WordPressStringResult: {
+            /** Id */
+            id: number;
+            /** Lang */
+            lang: string;
+            /**
+             * Updated
+             * @default true
+             */
+            updated: boolean;
+            /** Value */
+            value: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * WordPressStringUpdate
+         * @description WPML String Translation: set a string's translation in a language.
+         */
+        WordPressStringUpdate: {
+            /** Domain */
+            domain?: string | null;
+            /**
+             * Id
+             * @description String id (from the list).
+             */
+            id?: number | null;
+            /** Lang */
+            lang: string;
+            /** Name */
+            name?: string | null;
+            /** Value */
+            value: string;
+        };
+        /**
+         * WordPressTranslationCreate
+         * @description WPML: create a record's translation in another language, linked to it. The source is
+         *     copied first (core fields, terms, featured image, ACF fields with every referenced id
+         *     swapped for its translation where one exists), then what you send is applied on top —
+         *     so send the translated title, content and fields and nothing else. Pass
+         *     ``translation_id`` instead to link an *existing* record as the translation.
+         */
+        WordPressTranslationCreate: {
+            /** Content */
+            content?: string | null;
+            /**
+             * Copy
+             * @description all (default) | none.
+             */
+            copy?: string | null;
+            /** Excerpt */
+            excerpt?: string | null;
+            /**
+             * Fields
+             * @description ACF values keyed by field name; each named top-level field is replaced whole (a repeater by its full list of rows). Rows are objects of sub field names; flexible rows carry "_layout". Image/file/gallery values take an attachment id, a URL, or {"upload": {"url"|"base64", "filename", "alt", "title"}}. Read the schema first.
+             */
+            fields?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Lang
+             * @description Target language code.
+             */
+            lang: string;
+            /**
+             * Ops
+             * @description Surgical edits applied to the stored values before validation, so one row changes without resending the rest: {"op": "set"|"merge"|"append"|"insert"|"remove"|"move", "path": "blokken_blokken[2].titel", "value"?, "index"?, "from"?, "to"?}.
+             */
+            ops?: {
+                [key: string]: unknown;
+            }[] | null;
+            /**
+             * Overwrite
+             * @description Update an existing translation instead of refusing.
+             * @default false
+             */
+            overwrite: boolean;
+            /** Seo */
+            seo?: {
+                [key: string]: unknown;
+            } | null;
+            /** Slug */
+            slug?: string | null;
+            /**
+             * Status
+             * @description draft (default) | pending | publish | private.
+             */
+            status?: string | null;
+            /** Title */
+            title?: string | null;
+            /**
+             * Translation Id
+             * @description Connect this existing record as the translation instead of creating one.
+             */
+            translation_id?: number | null;
+        };
+        /** WordPressTranslations */
+        WordPressTranslations: {
+            /** Id */
+            id: number;
+            /** Lang */
+            lang?: string | null;
+            /** Languages */
+            languages?: string[];
+            /** Post Type */
+            post_type: string;
+            /** Translations */
+            translations?: {
+                [key: string]: unknown;
+            };
+        } & {
+            [key: string]: unknown;
+        };
         /**
          * WordPressVerifyResult
          * @description What a verify learned.
@@ -38525,6 +39612,8 @@ export interface components {
         WordPressVerifyResult: {
             /** Brand Count */
             brand_count?: number | null;
+            /** Bridge Version */
+            bridge_version?: string | null;
             /** Capabilities */
             capabilities?: {
                 [key: string]: boolean;
@@ -69144,6 +70233,770 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WordPressBrand"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_info_api_v1_wordpress_sites__site_id__bridge_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressBridgeInfo"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_languages_api_v1_wordpress_sites__site_id__bridge_languages_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressLanguages"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_upload_media_api_v1_wordpress_sites__site_id__bridge_media_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WordPressMediaUpload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressBridgeMedia"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_menus_api_v1_wordpress_sites__site_id__bridge_menus_get: {
+        parameters: {
+            query?: {
+                lang?: string | null;
+            };
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressMenuList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_menu_api_v1_wordpress_sites__site_id__bridge_menus__menu__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+                menu: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressMenu"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_menu_add_item_api_v1_wordpress_sites__site_id__bridge_menus__menu__items_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+                menu: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WordPressMenuItemAdd"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressMenu"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_menu_remove_item_api_v1_wordpress_sites__site_id__bridge_menus__menu__items__item_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+                menu: string;
+                item_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressMenu"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_options_pages_api_v1_wordpress_sites__site_id__bridge_options_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressOptionsPages"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_options_get_api_v1_wordpress_sites__site_id__bridge_options__page__get: {
+        parameters: {
+            query?: {
+                lang?: string | null;
+                mode?: string;
+                include_schema?: boolean;
+            };
+            header?: never;
+            path: {
+                site_id: string;
+                page: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressOptionsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_options_update_api_v1_wordpress_sites__site_id__bridge_options__page__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+                page: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WordPressOptionsWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressOptionsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_list_records_api_v1_wordpress_sites__site_id__bridge_records_get: {
+        parameters: {
+            query?: {
+                post_type?: string;
+                search?: string | null;
+                /** @description Comma-separated, or 'any'. */
+                status?: string | null;
+                lang?: string | null;
+                parent?: number | null;
+                page?: number;
+                per_page?: number;
+            };
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressRecordList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_create_record_api_v1_wordpress_sites__site_id__bridge_records_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WordPressRecordCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressRecord"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_get_record_api_v1_wordpress_sites__site_id__bridge_records__wp_id__get: {
+        parameters: {
+            query?: {
+                mode?: string;
+                include_schema?: boolean;
+            };
+            header?: never;
+            path: {
+                site_id: string;
+                wp_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressRecord"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_delete_record_api_v1_wordpress_sites__site_id__bridge_records__wp_id__delete: {
+        parameters: {
+            query?: {
+                /** @description Delete permanently instead of trashing. */
+                force?: boolean;
+            };
+            header?: never;
+            path: {
+                site_id: string;
+                wp_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressBridgeDelete"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_update_record_api_v1_wordpress_sites__site_id__bridge_records__wp_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+                wp_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WordPressRecordUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressRecord"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_translations_api_v1_wordpress_sites__site_id__bridge_records__wp_id__translations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+                wp_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressTranslations"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_translate_api_v1_wordpress_sites__site_id__bridge_records__wp_id__translations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+                wp_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WordPressTranslationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressRecord"] | components["schemas"]["WordPressTranslations"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_schema_api_v1_wordpress_sites__site_id__bridge_schema_get: {
+        parameters: {
+            query?: {
+                post_type?: string | null;
+                template?: string | null;
+                parent?: number | null;
+                /** @description An existing record: the groups that apply to it. */
+                wp_id?: number | null;
+                options_page?: string | null;
+                taxonomy?: string | null;
+            };
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressBridgeSchema"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_strings_api_v1_wordpress_sites__site_id__bridge_strings_get: {
+        parameters: {
+            query?: {
+                domain?: string | null;
+                search?: string | null;
+                page?: number;
+                per_page?: number;
+            };
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressStringList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_string_update_api_v1_wordpress_sites__site_id__bridge_strings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WordPressStringUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressStringResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_list_terms_api_v1_wordpress_sites__site_id__bridge_terms_get: {
+        parameters: {
+            query: {
+                taxonomy: string;
+                search?: string | null;
+                lang?: string | null;
+                mode?: string;
+            };
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressBridgeTermList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_create_term_api_v1_wordpress_sites__site_id__bridge_terms_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WordPressBridgeTermCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressBridgeTerm"];
                 };
             };
             /** @description Validation Error */

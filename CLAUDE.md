@@ -1535,6 +1535,27 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   table holds **WordPress administrator credentials** — hence admin-only `manage`, never `client`,
   never folded into `websites.website.write`, and a disconnect that forgets the credential without
   revoking it at the far end.
+- **A page builder's rules live on the site, so the site grows a plugin that states them**
+  (`breik-bridge`, a separate repository; `docs/WORDPRESS.md` §9). Editing a breik. page through
+  ACF's own REST integration failed on every write, and the cause was not ours to fix from the
+  credential's side: the pages are a repeater of typed rows with thirty conditional siblings,
+  ACF's REST validation ignores conditional logic, a repeater is re-posted whole and saves
+  positionally, and a post type without `show_in_rest` does not exist. So the **breik. Bridge**
+  plugin owns four things on the site — the schema (field groups → a normalised tree with the
+  conditions), a compact reader (per row only what the editor shows, every id resolved), a
+  validating writer (conditions evaluated in PHP, every problem reported by path, rows emitted
+  whole, written by field key, inline uploads deferred until the payload validates) and WPML —
+  and exposes one catalog through three doors: REST, a stateless MCP endpoint, and Abilities.
+  schakl reaches it as **22 routes on the `wordpress` router keyed on the credential row**
+  (`bridge.py`), the same 22 tools at one site or four hundred. Three rules generalise.
+  **"Not installed" is decided by the call, never by the stored version** — a bridge route on a
+  bare site is core's `rest_no_route`, mapped to a 409 that names the plugin; `bridge_version`
+  is what the panel prints. **A refusal from a system that knows the rule is carried, not
+  translated**: `WordPressError.details` rides into the envelope's `details` so
+  `problems[].path` survives, because a sentence naming the field without the row index sends
+  an agent hunting (§9's `details` rule, applied to somebody else's validator). And **deleting
+  is its own key** (`wordpress.content.delete`, admin by default): a key an assistant holds
+  should be able to say "may edit, never delete", which `write` + `publish` cannot.
 - **A client site is a parameter, never a tool** (`wordpress` §7, `docs/WORDPRESS.md`). The ask
   was forty clients' WordPress installs, reachable by agency staff from schakl's MCP, on sites
   that register no abilities at all. The tempting shape — schakl as an MCP *client* proxying each
