@@ -62,6 +62,10 @@ CONTENT_TYPES: dict[str, str] = {
     "wav": "audio/wav",
     "mp3": "audio/mpeg",
 }
+#: A part shorter than this is the segment muxer's rounding, not speech: cutting 1386 s at
+#: 693 s writes 693.008 + 693.007 + a 0.027 s third file, and that sliver went to the provider
+#: as a request of its own. Dropped rather than sent — it holds no word anybody said.
+_MIN_PART_SECONDS = 1.0
 #: What ffmpeg's segment muxer is told to write per container.
 _SEGMENT_FORMATS: dict[str, str] = {
     "webm": "webm",
@@ -162,10 +166,12 @@ def split_with_ffmpeg(data: bytes, extension: str, part_seconds: int) -> list[Pa
         parts: list[Part] = []
         offset = 0.0
         for path in sorted(Path(tmp).glob(f"part*.{extension}")):
-            parts.append(Part(data=path.read_bytes(), offset_seconds=offset))
             # The cut is at the first frame at or after the mark, so the next part starts where
             # this one measured — ask rather than assume ``part_seconds``.
             measured = _probe_duration(path)
+            if parts and measured is not None and measured < _MIN_PART_SECONDS:
+                continue
+            parts.append(Part(data=path.read_bytes(), offset_seconds=offset))
             offset += measured if measured else float(part_seconds)
         return parts
 
@@ -191,7 +197,8 @@ def plan_parts(
                 return [Part(data=data, offset_seconds=0.0)]
     if not duration:
         raise NeedsSplit()
-    part_seconds = max(60, int(duration // n))
+    # Rounded *up*, with a second to spare: rounding down left a sliver past the last cut.
+    part_seconds = max(60, math.ceil(duration / n) + 1)
     if limits.max_seconds is not None:
         part_seconds = min(part_seconds, int(limits.max_seconds * _PART_MARGIN))
     return split_with_ffmpeg(data, extension, part_seconds)

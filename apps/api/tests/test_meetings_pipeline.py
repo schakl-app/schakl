@@ -5,10 +5,14 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
+from pathlib import Path
 
+import httpx
 import pytest
 
-from app.core.ai.providers import ProviderConfig
+from app.core.ai import transcribe as transcribe_module
+from app.core.ai.audio import AudioClip
+from app.core.ai.providers import AIProviderError, ProviderConfig
 from app.core.ai.transcribe import (
     Segment,
     _fields,
@@ -142,6 +146,61 @@ def test_a_cut_without_ffmpeg_is_refused_in_one_sentence(monkeypatch) -> None:
         plan_parts(b"x" * 1000, "webm", 2 * 3600, gpt)
     # …and never for a recording that fits: the sentence is about this recording, not ffmpeg.
     assert plan_parts(b"x" * 1000, "webm", 600, gpt) == [Part(data=b"x" * 1000, offset_seconds=0.0)]
+
+
+def test_a_cut_is_sized_so_no_sliver_is_left_past_the_last_mark(monkeypatch) -> None:
+    """1386 s against the 1400 s cap is two parts. Cut at ``1386 // 2`` the segment muxer wrote
+    693.008 + 693.007 + a 0.027 s third file; the mark is rounded up now."""
+    monkeypatch.setattr(pipeline, "ffmpeg_available", lambda: True)
+    seen: list[int] = []
+    monkeypatch.setattr(
+        pipeline, "split_with_ffmpeg", lambda data, ext, secs: seen.append(secs) or []
+    )
+    gpt = speech_limits(_config("openai", "gpt-4o-transcribe-diarize"))
+    plan_parts(b"x" * 1000, "webm", 1386, gpt)
+    assert seen == [694]
+
+
+def test_a_sub_second_tail_from_the_muxer_is_never_sent(monkeypatch, tmp_path) -> None:
+    durations = {"part0000.webm": 693.008, "part0001.webm": 693.007, "part0002.webm": 0.027}
+
+    def fake_run(args, **_kwargs):  # noqa: ANN001, ANN202
+        out = Path(args[-1]).parent
+        for name in durations:
+            (out / name).write_bytes(name.encode())
+
+    monkeypatch.setattr(pipeline.subprocess, "run", fake_run)
+    monkeypatch.setattr(pipeline, "_probe_duration", lambda path: durations[path.name])
+    parts = pipeline.split_with_ffmpeg(b"audio", "webm", 693)
+    assert [p.data for p in parts] == [b"part0000.webm", b"part0001.webm"]
+    assert parts[1].offset_seconds == pytest.approx(693.008)
+
+
+async def test_a_provider_that_does_not_answer_is_a_provider_error(monkeypatch) -> None:
+    """A read timeout used to escape as a bare httpx exception, which the meeting run filed as
+    a crash of ours (``meetings.error.failed``) — every recording over a quarter of an hour."""
+
+    class _Silent:
+        async def post(self, *_args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+            # A transcription is given more than the chat client's 180 s.
+            assert kwargs["timeout"].read >= 900
+            raise httpx.ReadTimeout("no answer")
+
+    monkeypatch.setattr(transcribe_module, "client", lambda: _Silent())
+    clip = AudioClip(data=b"x", content_type="audio/webm", extension="webm")
+    with pytest.raises(AIProviderError, match="ReadTimeout"):
+        await transcribe_module.transcribe(
+            _config("openai", "gpt-4o-transcribe-diarize"), clip, language="nl"
+        )
+
+
+def test_a_meeting_run_outlives_arqs_five_minute_default() -> None:
+    from app.modules.meetings import jobs
+    from app.registry import registry
+
+    (fn,) = registry.get("meetings").worker_functions
+    assert fn.name == "meetings_process"
+    assert 30 * 60 <= fn.timeout_s < jobs.STALE_AFTER_MINUTES * 60
 
 
 def test_folding_refuses_a_recording_over_the_ceiling(monkeypatch) -> None:

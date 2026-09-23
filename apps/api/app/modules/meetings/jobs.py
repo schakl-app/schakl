@@ -74,6 +74,12 @@ logger = logging.getLogger("schakl.meetings")
 #: A run still claimed after this is claimed by nobody. Long: a three-hour recording through a
 #: provider that takes a while is a legitimate forty minutes.
 STALE_AFTER_MINUTES = 90
+#: How long arq lets one run take. Its own default is five minutes for every job in the worker,
+#: which a transcription of a quarter of an hour already exceeds — and a job arq times out is
+#: cancelled mid-request and never retried, so the row sat on ``transcribing`` until the reaper
+#: failed it. Under :data:`STALE_AFTER_MINUTES` on purpose: a run that does outlive this is
+#: cancelled first and then reaped, never reaped while it is still working.
+RUN_TIMEOUT_SECONDS = 80 * 60
 #: A ``recording`` row silent for this long is a recorder that is gone. A tab posts one piece a
 #: minute and retries a piece that will not land for ten (``web/.../upload.ts``), so the longest
 #: honest silence from a *live* recorder is that budget plus a piece — twenty minutes is past it
@@ -539,6 +545,7 @@ __all__ = [
     "LOST_EVENT",
     "READY_EVENT",
     "RECORDING_STALE_AFTER_MINUTES",
+    "RUN_TIMEOUT_SECONDS",
     "STALE_AFTER_MINUTES",
     "meetings_process",
     "meetings_reap_stale",
