@@ -15349,8 +15349,8 @@ export interface paths {
         };
         /**
          * Bridge Info
-         * @description What the site is, through the schakl WordPress MCP Bridge plugin: versions, **every** post type
-         *     (including ones hidden from the REST API), taxonomies, ACF options pages, menus, WPML
+         * @description What the site is, through the schakl WordPress MCP Bridge plugin: versions, **every**
+         *     post type (including ones hidden from the REST API), taxonomies, ACF options pages, menus, WPML
          *     languages, the SEO plugin, and what the stored credential may do. The read to make first
          *     on a site that has the plugin; 409 names the plugin on one that does not.
          */
