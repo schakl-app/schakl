@@ -2,6 +2,53 @@
 
 _Releases v0.25.0 through v0.41.0 are written up on their GitHub Releases; this file resumes at v0.42.0._
 
+## v0.53.0 — 2026-09-23
+
+The WordPress integration can now edit the pages breik. builds. The breik. Bridge plugin runs
+on the client's site, and schakl reaches it with the Application Password it already stores for
+that site. An agent can then read and write ACF page builders, post types that WordPress keeps
+out of its REST API, uploads and WPML translations. None of that worked through ACF's own REST
+integration: it ignores conditional logic, saves a repeater by position, cannot see a post type
+without `show_in_rest`, and takes uploads only as multipart.
+
+One migration, additive: `c7e2a9b4d6f1` (`wordpress_add_bridge_version`, revises
+`f1b6d3a8c2e4`, the new head) adds a nullable `bridge_version` column to `wordpress_sites`. One
+new permission key, `wordpress.content.delete` (admin by default), which gates trashing or
+deleting a record through the bridge. There are 22 new endpoints under
+`/wordpress/sites/{site_id}/bridge`: the plugin's info, the schema, records (list, create, get,
+update, delete), media upload, terms, options pages, menus and menu items, and WPML languages,
+translations and strings. The same 22 tools appear in `/mcp/wordpress` whatever the site count.
+No new environment variables. The typed client is regenerated.
+
+### WordPress
+
+- **The bridge.** A breik.-built page is a repeater of typed rows with thirty conditional
+  siblings. The plugin owns the schema, a compact reader and a validating writer that takes
+  surgical operations and inline uploads, so an agent changes one row without re-posting the
+  whole page.
+- **"Not installed" is a 409 that names the plugin.** A site without the plugin answers
+  WordPress core's `rest_no_route`. The site probe now checks a sixth capability, the bridge,
+  and stores the plugin's version, which the website's WordPress panel shows.
+- **The site's own refusal is passed on as it came.** When the plugin rejects a write, every
+  problem comes back in `details.problems[]` with its field path.
+- **The audience decides the permission.** Writing a draft needs `wordpress.content.write`, and
+  writing anything visitors can see needs `wordpress.content.publish`. Whether a record is live
+  is read from the plugin's own record. Options pages, menus and string translations always need
+  publish. Trashing needs the new `wordpress.content.delete`, so a key held by an assistant can
+  edit but never delete.
+- **Every write is in the activity trail.** Seven new trail actions: `content_deleted`,
+  `media_uploaded`, `term_created`, `options_updated`, `menu_updated`, `translation_created` and
+  `string_translated`.
+
+### Upgrade notes
+
+- The migration is additive and runs unattended on upgrade.
+- `wordpress.content.delete` is granted to `admin` on first start. Grant it to other roles, or
+  add it to an MCP key, only where deleting pages on a client's site is intended.
+- The bridge routes need the breik. Bridge plugin installed on the WordPress site. Until it is,
+  they answer 409 and the panel says the plugin is missing. The existing WordPress routes do not
+  need the plugin.
+
 ## v0.52.0 — 2026-09-23
 
 A recording that nobody is feeding is now ended by the server, and a meeting row exists only
