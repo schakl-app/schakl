@@ -140,6 +140,76 @@ class FakeWordPress:
         }
         #: Every write the fake received, so a test can assert the body a route sent.
         self.writes: list[tuple[str, dict]] = []
+
+        # --- the breik. Bridge plugin (docs/WORDPRESS.md §9) ---------------------------- #
+        #: Installed and answering `breik/v1`. Off, every bridge route is core's
+        #: `rest_no_route` — the exact answer a site without the plugin gives.
+        self.has_bridge = True
+        self.bridge_version = "1.0.0"
+        #: Records the plugin serves, keyed by id, in its own canonical shape: `fields` is the
+        #: name-keyed ACF tree (compact), `references` what the ids resolve to. One page in the
+        #: shape of a breik. page builder (a `blokken_blokken` repeater of typed rows).
+        self.bridge_records: dict[int, dict] = {
+            8262: {
+                "id": 8262, "post_type": "page", "title": "Arbeidsongeschiktheidsverzekering",
+                "slug": "aov", "status": "publish", "link": "https://klant.nl/aov/",
+                "modified": "2026-09-21T12:20:14+02:00", "parent": 7813,
+                "path": ["Particulier", "Verzekeringen"], "content": "", "excerpt": "",
+                "taxonomies": {}, "seo": {"provider": "rank_math", "title": "AOV | Klant"},
+                "featured_media": None, "lang": "nl",
+                "fields": {
+                    "kleur": "auto",
+                    "blokken_blokken": [
+                        {"type": "10", "achtergrond": "0", "afbeelding_of_video": "0",
+                         "afbeelding_0_1": 7793, "titel_0_1_2": "Eerst het risico begrijpen"},
+                        {"type": "15", "achtergrond": "0",
+                         "werkwijzeblok": {"titel": "Zo werken wij", "stappen": [
+                             {"titel": "We brengen je situatie in kaart"}]}},
+                    ],
+                },
+                "references": {"attachments": {"7793": {
+                    "id": 7793, "url": "https://klant.nl/wp-content/uploads/aov.jpg",
+                    "alt": "Adviesgesprek", "title": "aov", "mime": "image/jpeg",
+                    "width": 1600, "height": 900}}},
+            },
+            7813: {
+                "id": 7813, "post_type": "page", "title": "Verzekeringen", "slug": "verzekeringen",
+                "status": "publish", "link": "https://klant.nl/verzekeringen/",
+                "modified": "2026-06-22T14:27:07+02:00", "parent": 7809, "path": ["Particulier"],
+                "content": "", "excerpt": "", "taxonomies": {}, "seo": None,
+                "featured_media": None, "lang": "nl", "fields": {"kleur": "green"},
+                "references": {},
+            },
+            9001: {
+                "id": 9001, "post_type": "dienst", "title": "Hypotheekadvies", "slug": "hypotheek",
+                "status": "draft", "link": "https://klant.nl/?p=9001",
+                "modified": "2026-09-22T09:00:00+02:00", "parent": None, "path": [],
+                "content": "", "excerpt": "", "taxonomies": {}, "seo": None,
+                "featured_media": None, "lang": "nl", "fields": {"intro": "Intro"},
+                "references": {},
+            },
+        }
+        #: The one ACF schema the fake describes: `kleur` (a select with three choices) and
+        #: the page builder, whose rows carry a `type` and a title shown only for type 10.
+        self.bridge_choices = {"kleur": ["auto", "green", "blue"]}
+        self.bridge_media: dict[int, dict] = {}
+        self.bridge_terms: dict[int, dict] = {
+            144: {"id": 144, "taxonomy": "faq_categories", "name": "AOV", "slug": "aov",
+                  "parent": None, "lang": "nl"},
+        }
+        self.bridge_options: dict[str, dict] = {
+            "bedrijfsinformatie": {"telefoon": "0113-123456", "partners": []},
+        }
+        self.bridge_menu_items: list[dict] = [
+            {"id": 501, "title": "Home", "url": "https://klant.nl/", "type": "post_type",
+             "object": "page", "object_id": 1, "parent": None, "order": 1, "children": []},
+        ]
+        self.bridge_strings: dict[int, dict] = {
+            7: {"id": 7, "domain": "theme", "name": "Lees meer", "value": "Lees meer",
+                "lang": "nl", "translations": {}},
+        }
+        #: Every bridge call, `(method, subpath, body)`, so a test can assert what was sent.
+        self.bridge_calls: list[tuple[str, str, object]] = []
         #: Abilities beyond Rank Math's: one read-only, one write. `acf/field-groups` is what
         #: ACF 6.8 registers; the write one stands in for `acf/create-field-group`.
         self.extra_abilities: list[dict] = [
@@ -240,6 +310,11 @@ class FakeWordPress:
                 "rest_not_logged_in", "You are not currently logged in.", 401
             )
 
+        if path.startswith("/wp-json/breik/v1"):
+            if not self.has_bridge:
+                return _wp_error("rest_no_route", "No route was found matching the URL.", 404)
+            return self._bridge_route(request, path[len("/wp-json/breik/v1"):])
+
         if (request.method, path) in self.extra_routes:
             if request.method != "GET":
                 import json as _json_mod
@@ -272,6 +347,354 @@ class FakeWordPress:
             return _json(self._plugins())
         if path.startswith("/wp-json/rankmath/v1/ai-visibility"):
             return self._ai_visibility(request, path)
+
+        return _wp_error("rest_no_route", "No route was found matching the URL.", 404)
+
+    # --- the breik. Bridge plugin --------------------------------------------------------- #
+    @staticmethod
+    def _bridge_error(code: str, message: str, status: int, details: dict | None = None):
+        """The plugin's own envelope: ``{code, message, status, details}``."""
+        return httpx.Response(
+            status,
+            json={"code": code, "message": message, "status": status, "details": details or {}},
+        )
+
+    def _bridge_validate(self, fields: dict) -> list[dict]:
+        """A sliver of the plugin's writer: choices on `kleur`, a required title on a type-10
+        row. Enough to prove the *problems* shape travels; the real rules live in the plugin
+        and are tested there."""
+        problems: list[dict] = []
+        kleur = fields.get("kleur")
+        if kleur is not None and kleur not in self.bridge_choices["kleur"]:
+            problems.append({
+                "path": "kleur", "field": "kleur", "code": "invalid_choice",
+                "message": f'"{kleur}" is not one of the choices.',
+                "details": {"choices": self.bridge_choices["kleur"]},
+            })
+        for i, row in enumerate(fields.get("blokken_blokken") or []):
+            if not isinstance(row, dict):
+                continue
+            if row.get("type") == "10" and not row.get("titel_0_1_2"):
+                problems.append({
+                    "path": f"blokken_blokken[{i}].titel_0_1_2", "field": "titel_0_1_2",
+                    "code": "required", "message": '"Titel" is required in this row.',
+                })
+        return problems
+
+    def _bridge_schema_groups(self) -> list[dict]:
+        return [{
+            "key": "group_builder", "title": "Pagina-opbouw",
+            "fields": [
+                {"name": "kleur", "key": "field_kleur", "type": "select", "label": "Kleur",
+                 "required": False,
+                 "choices": dict.fromkeys(self.bridge_choices["kleur"], ""),
+                 "value_format": "one choice value (string)"},
+                {"name": "blokken_blokken", "key": "field_blokken", "type": "repeater",
+                 "label": "Blokken", "required": False,
+                 "value_format": "array of rows, each an object of sub field names",
+                 "sub_fields": [
+                     {"name": "type", "key": "field_type", "type": "select",
+                      "label": "Type", "required": True,
+                      "choices": {"10": "Afbeelding + tekst", "15": "Werkwijze"}},
+                     {"name": "titel_0_1_2", "key": "field_titel", "type": "text",
+                      "label": "Titel", "required": True,
+                      "conditions": [[{"field": "type", "operator": "==", "value": "10"}]]},
+                 ]},
+            ],
+        }]
+
+    def _bridge_record(self, row: dict, mode: str, include_schema: bool = False) -> dict:
+        out = {k: v for k, v in row.items() if k not in ("fields", "references", "trid")}
+        if mode != "none":
+            out["fields"] = row["fields"]
+            out["fields_mode"] = mode
+            out["references"] = row.get("references", {})
+            if include_schema:
+                out["schema"] = self._bridge_schema_groups()
+        if self.multilingual:
+            out["translations"] = {row.get("lang", "nl"): {"id": row["id"], "this": True}}
+        return out
+
+    def _bridge_row(self, row: dict) -> dict:
+        keys = ("id", "post_type", "title", "slug", "status", "link", "modified", "parent", "path")
+        out = {k: row.get(k) for k in keys}
+        if self.multilingual:
+            out["lang"] = row.get("lang", "nl")
+            out["translations"] = {row.get("lang", "nl"): row["id"]}
+        return out
+
+    def _bridge_route(self, request: httpx.Request, sub: str) -> httpx.Response:  # noqa: C901
+        import json as _json_mod
+
+        body = _json_mod.loads(request.content or b"null") if request.method != "GET" else None
+        self.bridge_calls.append((request.method, sub, body))
+        q = request.url.params
+        parts = [p for p in sub.split("/") if p]
+        body = body if isinstance(body, dict) else {}
+
+        if sub == "/info":
+            return _json({
+                "plugin": {
+                    "name": "breik. Bridge", "version": self.bridge_version, "author": "breik.",
+                },
+                "site": {"name": "Klant BV", "url": "https://klant.nl/", "wp_version": "7.1.2",
+                         "php_version": "8.3.0", "locale": "nl_NL", "timezone": "Europe/Amsterdam"},
+                "acf": {"version": "6.8.10", "pro": True},
+                "wpml": {"default_language": "nl", "languages": [{"code": "nl"}, {"code": "en"}]}
+                if self.multilingual else None,
+                "seo": "rank_math",
+                "post_types": [
+                    {"slug": "page", "label": "Pagina's", "rest": True, "acf_groups": 1},
+                    {"slug": "post", "label": "Berichten", "rest": True, "acf_groups": 0},
+                    {"slug": "dienst", "label": "Diensten", "rest": False, "acf_groups": 1},
+                ],
+                "taxonomies": [{"slug": "faq_categories", "label": "Categorieën"}],
+                "options_pages": [{"slug": "bedrijfsinformatie", "title": "Bedrijfsinformatie"}],
+                "menus": [{"id": 1, "name": "Hoofdmenu", "slug": "hoofdmenu"}],
+                "user": {"id": 1, "login": self.username, "capabilities": {"manage_options": True}},
+            })
+
+        if sub == "/schema":
+            if q.get("post_type") not in (None, "page", "dienst") and not q.get("id"):
+                return self._bridge_error("not_found", "That post type was not found.", 404,
+                                          {"post_type": q.get("post_type")})
+            return _json({
+                "subject": dict(q),
+                "groups": self._bridge_schema_groups(),
+                "notes": {"conditions": "…"},
+            })
+
+        if sub == "/content" and request.method == "GET":
+            post_type = q.get("post_type", "page")
+            if post_type not in ("page", "post", "dienst"):
+                return self._bridge_error(
+                    "not_found", "That post type was not found.", 404,
+                    {"post_type": post_type, "known": ["page", "post", "dienst"]},
+                )
+            statuses = set((q.get("status") or "publish,future,draft,pending,private").split(","))
+            search = (q.get("search") or "").lower()
+            rows = [
+                r for r in self.bridge_records.values()
+                if r["post_type"] == post_type
+                and ("any" in statuses or r["status"] in statuses)
+                and (not search or search in r["title"].lower())
+                and (not q.get("lang") or q.get("lang") == "all" or r.get("lang") == q.get("lang"))
+            ]
+            per_page, page = int(q.get("per_page", "20")), int(q.get("page", "1"))
+            chunk = rows[(page - 1) * per_page: page * per_page]
+            return _json({"items": [self._bridge_row(r) for r in chunk], "total": len(rows),
+                          "page": page, "per_page": per_page,
+                          "pages": -(-len(rows) // per_page), "post_type": post_type})
+
+        if sub == "/content" and request.method == "POST":
+            if not body.get("title"):
+                return self._bridge_error("invalid_input", "A title is required.", 400,
+                                          {"field": "title"})
+            problems = self._bridge_validate(body.get("fields") or {})
+            if problems:
+                return self._bridge_error(
+                    "validation_failed", "The fields could not be saved.", 422,
+                    {"problems": problems})
+            wp_id = max(list(self.bridge_records) + [9000]) + 1
+            row = {
+                "id": wp_id, "post_type": body.get("post_type", "page"), "title": body["title"],
+                "slug": body.get("slug") or f"item-{wp_id}",
+                "status": body.get("status", "draft"), "link": f"https://klant.nl/?p={wp_id}",
+                "modified": "2026-09-23T10:00:00+02:00", "parent": body.get("parent"),
+                "path": [], "content": body.get("content", ""), "excerpt": "",
+                "taxonomies": {}, "seo": body.get("seo"), "featured_media": None,
+                "lang": body.get("lang", "nl"), "fields": body.get("fields") or {},
+                "references": {},
+            }
+            self.bridge_records[wp_id] = row
+            return _json(self._bridge_record(row, "compact"))
+
+        if len(parts) >= 2 and parts[0] == "content" and parts[1].isdigit():
+            wp_id = int(parts[1])
+            row = self.bridge_records.get(wp_id)
+            if row is None:
+                return self._bridge_error("not_found", f"Record {wp_id} was not found.", 404,
+                                          {"id": wp_id})
+            if request.method == "GET":
+                return _json(self._bridge_record(
+                    row, q.get("fields", "compact"), q.get("include_schema") == "true"
+                ))
+            if request.method == "PATCH":
+                import copy as _copy
+
+                # Deep: a refused payload must leave the stored rows exactly as they were.
+                fields = _copy.deepcopy(row["fields"])
+                for name, value in (body.get("fields") or {}).items():
+                    fields[name] = value
+                for op in body.get("ops") or []:
+                    # Just enough of the path grammar to prove ops travel and are validated.
+                    kind, path = op.get("op"), str(op.get("path", ""))
+                    if kind == "append":
+                        fields.setdefault(path, []).append(op.get("value"))
+                    elif kind == "merge" and "[" in path:
+                        name, idx = path[:-1].split("[")
+                        fields[name][int(idx)].update(op.get("value") or {})
+                    elif kind == "set":
+                        fields[path] = op.get("value")
+                    else:
+                        return self._bridge_error("invalid_input", f"ops: unknown op {kind}", 422,
+                                                  {"op": kind})
+                problems = self._bridge_validate(fields)
+                if problems:
+                    return self._bridge_error(
+                        "validation_failed", "The fields could not be saved.", 422,
+                        {"problems": problems})
+                row["fields"] = fields
+                for key in ("title", "status", "content", "slug", "seo"):
+                    if key in body:
+                        row[key] = body[key]
+                self.writes.append((sub, body))
+                return _json(self._bridge_record(row, body.get("mode") or "compact"))
+            if request.method == "DELETE":
+                force = bool(body.get("force"))
+                del self.bridge_records[wp_id]
+                return _json({"id": wp_id, "trashed": not force, "deleted": force})
+
+        if sub == "/media" and request.method == "POST":
+            if not body.get("url") and not body.get("base64"):
+                return self._bridge_error("invalid_input", "An upload needs a url or base64.", 400)
+            filename = body.get("filename") or "upload.png"
+            if filename.endswith(".php"):
+                return self._bridge_error("mime_not_allowed", "This site does not accept that.",
+                                          422, {"filename": filename})
+            wp_id = max(list(self.bridge_media) + [7800]) + 1
+            att = {"id": wp_id, "url": f"https://klant.nl/wp-content/uploads/{filename}",
+                   "alt": body.get("alt", ""), "title": body.get("title", ""),
+                   "mime": "image/png", "width": 800, "height": 600}
+            self.bridge_media[wp_id] = att
+            if body.get("attach_to") and body.get("set_featured"):
+                rec = self.bridge_records.get(int(body["attach_to"]))
+                if rec:
+                    rec["featured_media"] = wp_id
+            return _json(att)
+
+        if sub == "/terms" and request.method == "GET":
+            rows = [t for t in self.bridge_terms.values() if t["taxonomy"] == q.get("taxonomy")]
+            return _json({"items": rows, "total": len(rows), "taxonomy": q.get("taxonomy")})
+        if sub == "/terms" and request.method == "POST":
+            wp_id = max(list(self.bridge_terms) + [200]) + 1
+            term = {"id": wp_id, "taxonomy": body["taxonomy"], "name": body["name"],
+                    "slug": body.get("slug") or body["name"].lower(), "parent": body.get("parent"),
+                    "lang": body.get("lang", "nl")}
+            self.bridge_terms[wp_id] = term
+            return _json(term)
+
+        if sub == "/options" and request.method == "GET":
+            return _json({"items": [{"slug": s, "title": s.title(), "post_id": "options",
+                                     "capability": "edit_posts", "acf_groups": 1}
+                                    for s in self.bridge_options]})
+        if len(parts) == 2 and parts[0] == "options":
+            page = parts[1]
+            if page not in self.bridge_options:
+                return self._bridge_error("not_found", "That options page was not found.", 404,
+                                          {"page": page, "known": list(self.bridge_options)})
+            if request.method == "PATCH":
+                for name, value in (body.get("fields") or {}).items():
+                    self.bridge_options[page][name] = value
+                self.writes.append((sub, body))
+            return _json({"page": page, "title": page.title(), "post_id": "options",
+                          "fields": self.bridge_options[page], "fields_mode": "compact",
+                          "references": {}})
+
+        if sub == "/menus" and request.method == "GET":
+            return _json({
+                "items": [{"id": 1, "name": "Hoofdmenu", "slug": "hoofdmenu",
+                           "count": len(self.bridge_menu_items), "locations": ["primary"]}],
+                "locations": ["primary"],
+            })
+        if len(parts) >= 2 and parts[0] == "menus":
+            if parts[1] not in ("1", "hoofdmenu"):
+                return self._bridge_error("not_found", "That menu was not found.", 404)
+            menu = {"id": 1, "name": "Hoofdmenu", "slug": "hoofdmenu"}
+            if len(parts) == 3 and request.method == "POST":
+                item_id = max([i["id"] for i in self.bridge_menu_items] + [500]) + 1
+                self.bridge_menu_items.append({
+                    "id": item_id, "title": body.get("title") or "Nieuw", "url": body.get("url"),
+                    "type": "custom" if body.get("url") else "post_type", "object": "page",
+                    "object_id": body.get("object_id"), "parent": body.get("parent"),
+                    "order": len(self.bridge_menu_items) + 1, "children": []})
+                return _json({**menu, "items": self.bridge_menu_items, "added": item_id})
+            if len(parts) == 4 and request.method == "DELETE":
+                item_id = int(parts[3])
+                before = len(self.bridge_menu_items)
+                self.bridge_menu_items = [i for i in self.bridge_menu_items if i["id"] != item_id]
+                if len(self.bridge_menu_items) == before:
+                    return self._bridge_error("not_found", "That menu item was not found.", 404)
+                return _json({**menu, "items": self.bridge_menu_items, "removed": item_id})
+            return _json({**menu, "items": self.bridge_menu_items})
+
+        if parts and parts[0] == "wpml":
+            if not self.multilingual:
+                return self._bridge_error(
+                    "unavailable", "WPML is not available on this site: WPML is not active.", 409,
+                    {"missing": "WPML"})
+            if sub == "/wpml/languages":
+                return _json({"default_language": "nl", "current": "nl",
+                              "languages": [{"code": "nl", "default": True}, {"code": "en"}],
+                              "string_translation": True})
+            if sub == "/wpml/strings" and request.method == "GET":
+                rows = list(self.bridge_strings.values())
+                return _json({"items": rows, "total": len(rows), "page": 1, "per_page": 50})
+            if sub == "/wpml/strings" and request.method == "PUT":
+                row = self.bridge_strings.get(int(body.get("id") or 0))
+                if not row:
+                    return self._bridge_error("not_found", "That string was not found.", 404)
+                row["translations"][body["lang"]] = {"value": body["value"], "complete": True}
+                return _json({"id": row["id"], "lang": body["lang"], "value": body["value"],
+                              "updated": True})
+            if len(parts) >= 3 and parts[1] == "translations" and parts[2].isdigit():
+                wp_id = int(parts[2])
+                source = self.bridge_records.get(wp_id)
+                if source is None:
+                    return self._bridge_error("not_found", f"Record {wp_id} was not found.", 404)
+                group = {r.get("lang", "nl"): {"id": r["id"], "title": r["title"],
+                                               "status": r["status"], "this": r["id"] == wp_id}
+                         for r in self.bridge_records.values()
+                         if r.get("trid", r["id"]) == source.get("trid", wp_id)}
+                if request.method == "GET":
+                    return _json({"id": wp_id, "post_type": source["post_type"],
+                                  "lang": source.get("lang", "nl"), "translations": group,
+                                  "languages": ["nl", "en"]})
+                if len(parts) == 4 and parts[3] == "connect":
+                    other = self.bridge_records.get(int(body.get("translation_id") or 0))
+                    if not other:
+                        return self._bridge_error("invalid_input", "translation_id?", 400)
+                    other["trid"] = source.get("trid", wp_id)
+                    other["lang"] = body.get("lang") or other.get("lang")
+                    return _json({"id": wp_id, "post_type": source["post_type"],
+                                  "lang": source.get("lang", "nl"),
+                                  "translations": {**group, other["lang"]: {"id": other["id"]}},
+                                  "languages": ["nl", "en"]})
+                lang = body.get("lang")
+                if lang not in ("nl", "en"):
+                    return self._bridge_error("invalid_input", f'Unknown language "{lang}".', 400,
+                                              {"languages": ["nl", "en"]})
+                if lang in group:
+                    return self._bridge_error(
+                        "translation_exists", "A translation exists already.", 409,
+                        {"id": group[lang]["id"], "lang": lang})
+                problems = self._bridge_validate(body.get("fields") or {})
+                if problems:
+                    return self._bridge_error(
+                        "validation_failed", "The fields could not be saved.", 422,
+                        {"problems": problems})
+                new_id = max(list(self.bridge_records) + [9000]) + 1
+                fields = dict(source["fields"]) if body.get("copy") != "none" else {}
+                fields.update(body.get("fields") or {})
+                row = {**source, "id": new_id, "title": body.get("title", source["title"]),
+                       "status": body.get("status", "draft"), "lang": lang,
+                       "link": f"https://klant.nl/{lang}/?p={new_id}", "fields": fields,
+                       "trid": source.get("trid", wp_id)}
+                self.bridge_records[new_id] = row
+                out = self._bridge_record(row, "compact")
+                out["source"] = {"id": wp_id, "lang": source.get("lang", "nl")}
+                out["created"] = True
+                return _json(out)
 
         return _wp_error("rest_no_route", "No route was found matching the URL.", 404)
 

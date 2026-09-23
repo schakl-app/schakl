@@ -145,6 +145,7 @@ def _read(site: WordPressSite, labels: Labels | None = None) -> WordPressSiteRea
         domain_name=domain_name,
         rankmath_version=site.rankmath_version,
         rankmath_ai_visibility=supports_ai_visibility(site.rankmath_version),
+        bridge_version=site.bridge_version,
         last_verified_at=site.last_verified_at,
         password_configured=bool(site.app_password_encrypted),
         created_at=site.created_at,
@@ -523,6 +524,10 @@ class WordPressService:
             site.rankmath_version = observed["rankmath_version"]
         elif observed.get("rankmath_absent"):
             site.rankmath_version = None
+        if isinstance(observed.get("bridge_version"), str):
+            site.bridge_version = observed["bridge_version"]
+        elif observed.get("bridge_absent"):
+            site.bridge_version = None
 
         await self.ctx.session.flush()
         await self.ctx.session.refresh(site)  # server-side ``updated_at`` — see ``update``
@@ -535,6 +540,7 @@ class WordPressService:
             rankmath_version=site.rankmath_version,
             rankmath_ai_visibility=supports_ai_visibility(site.rankmath_version),
             mcp_server_path=site.mcp_server_path,
+            bridge_version=site.bridge_version,
             brand_count=brand_count if isinstance(brand_count, int) else None,
             error=issue,
         )

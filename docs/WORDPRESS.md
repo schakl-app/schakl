@@ -529,10 +529,9 @@ the escape hatch.
 
 ## 8. Not built yet
 
-- **Media upload.** Reachable through the passthrough only as JSON, which `wp/v2/media` does
-  not take. A `multipart` route is excluded from the tool surface by method
-  (`docs/MCP.md`) and would need the base64 JSON twin `POST /files/inline` has. Reads only for
-  now: an ACF image id resolves through `GET /media/{id}`.
+- **Media upload through `wp/v2`.** `wp/v2/media` takes multipart, which no MCP tool can
+  send; the bridge's `POST /sites/{id}/bridge/media` (§9) is the JSON twin, and the only upload
+  path there is. Reads through `wp/v2` stay: an ACF image id resolves through `GET /media/{id}`.
 - **An MCP client to the adapter.** Not needed for anything above, and §8 says why. It would
   only ever be worth it for a server that exposes tools that are *not* abilities, which the
   adapter cannot do. If it is ever built: **confused-deputy (§12) applies in the other
@@ -544,3 +543,106 @@ the escape hatch.
   `avg_sentiment: 0.4595` back at them.
 - **Writes.** Creating a brand, editing prompts, `POST /brands/{id}/generate-queries`.
 - **An Instellingen overview** of every connected site. The panel is the working surface today.
+
+## 9. The breik. Bridge plugin — the site's own schema, reached from here
+
+`/mcp/wordpress`'s content routes (§7) reach a site through what core's `wp/v2` offers, and
+the first month of using them on a breik.-built site found where that stops. The pages are not
+blocks: every breik. theme builds a page out of an ACF **repeater** (`blokken_blokken`) whose
+rows carry a `type` select (`10` = image + text, `15` = werkwijze, `3` = slider …) and thirty
+sibling fields of which each type shows four, all defined per site in the database. Four
+things fail on that shape, and none of them is fixable from this side of the credential:
+
+- **ACF's REST validation ignores conditional logic.** A required field the editor hides for
+  a type-15 row is still required to `PATCH /wp/v2/pages/{id}` with an `acf` body, so every
+  page-builder write answers *validation failed* — the fault this work was filed about.
+- **A repeater is all or nothing.** Changing one row means re-posting every row, and ACF saves
+  positionally, so a row that omits a sub field inherits whatever used to sit at that index.
+- **A post type without `show_in_rest` does not exist**, and the vangessel theme's
+  `pre_get_posts` hook (`posts_per_page = -1` for every non-admin query) makes core's own
+  list answer *"page 1 does not exist"* on a site with sixty pages.
+- **Nothing says what the fields are.** An agent had to infer the site's structure from one
+  record, and `afbeelding_0_1: null` beside `afbeelding_of_video: "0"` on a type-15 row says
+  nothing about which of the two is meaningful.
+
+So the fix is a WordPress plugin, **breik. Bridge** (its own repository, `breik-bridge`,
+author breik., PHP 7.4+, GPL), and it owns the four things on the site: the **schema**
+(`acf_get_field_groups` → a normalised tree with names, types, choices, sub fields, layouts,
+the conditions that hide a field, and a one-line `value_format` per type), a **reader**
+(name-keyed canonical values, ISO dates, typed booleans; `compact` keeps per row only the
+fields the editor would show for that row's values and only the ones holding something; every
+attachment, post and term id resolved in `references`), a **writer** (conditional logic
+evaluated in PHP against the row, so a hidden required field is not required and a shown one
+is, named by path; every problem reported and none raised; rows emitted whole with the
+editor's defaults for what was omitted; written by field **key** through `update_field()`,
+which is what stores the reference meta `get_field()` needs; inline `{"upload": …}` deferred
+until the payload validates) and **WPML** (languages, translation groups, a linked translation
+created from the source with every referenced id swapped for its translation, connecting an
+existing record, String Translation). It exposes one operation catalog through three doors —
+REST `breik/v1`, a stateless MCP endpoint at `/wp-json/breik/v1/mcp` (JSON-RPC over POST,
+`GET` answers 405 `Allow: POST`, the `RefuseStandaloneStream` rule one product over), and the
+Abilities API where WordPress is new enough — so a site that already routes agents through
+the adapter gets it without a second endpoint. Unit tests run without WordPress (a Lookup seam
+fakes attachments, posts, terms and uploads); the plumbing was proven on a WordPress 7.1 +
+ACF 6.8 container with a REST-hidden post type and the vangessel `pre_get_posts` hook in place.
+
+### What schakl adds, and the rules it keeps
+
+`bridge.py` is the surface: **22 routes under `/sites/{id}/bridge/…`**, one per plugin
+operation, which is 22 tools in `/mcp/wordpress` whether the agency holds one site or four
+hundred (§7's rule, and `test_the_bridge_tools_ride_the_wordpress_section` counts them).
+
+| Route | Permission | What |
+|---|---|---|
+| `GET /bridge` | `site.read` | versions, every post type (REST-hidden ones say `rest: false`), taxonomies, options pages, menus, languages, the SEO plugin, the credential's capabilities |
+| `GET /bridge/schema?post_type=\|wp_id=\|options_page=\|taxonomy=` | `content.read` | the field tree that applies |
+| `GET` / `POST /bridge/records` · `GET` / `PATCH` / `DELETE /bridge/records/{wp_id}` | `content.read` / `write` / `publish` / **`delete`** | records with `fields` (compact) and `references`; `fields` replaces whole, `ops` edits by path |
+| `POST /bridge/media` | `content.write` | URL or base64 in, attachment out — the JSON twin `wp/v2/media` never had |
+| `GET` / `POST /bridge/terms` | `content.read` / `write` | terms with ACF fields and WPML |
+| `GET /bridge/options[/{page}]` · `PATCH /bridge/options/{page}` | `content.read` / **`publish`** | ACF options pages, live at once |
+| `GET /bridge/menus[/{menu}]` · `POST` / `DELETE …/items` | `content.read` / **`publish`** | menus, live at once |
+| `GET /bridge/languages` · `GET` / `POST /bridge/records/{wp_id}/translations` | `content.read` / `write` (+ `publish`) | WPML: the group, create a translation, connect one |
+| `GET` / `PUT /bridge/strings` | `content.read` / **`publish`** | String Translation |
+
+Four rules, three of them §7's restated because they were easy to lose one namespace over:
+
+- **"Not installed" is decided by the call, never by the stored version.** Every bridge route
+  on a site without the plugin answers core's `rest_no_route` and becomes a 409
+  `errors.wordpress_bridge_missing` naming `breik-bridge` in `details`. The probe grew a sixth
+  capability (`bridge`) and `wordpress_sites.bridge_version` (migration `c7e2a9b4d6f1`,
+  additive) for the panel to print — an observation like `rankmath_version`, cleared by a probe
+  that reached the site and found no plugin, left alone by one that could not reach it.
+- **The plugin's refusal is carried, not translated.** `WordPressError` grew `details`, and a
+  422 from the plugin lands as `errors.wordpress_bridge_rejected` with `details.problems`
+  untouched — `{path: "blokken_blokken[2].titel_0_1_2", code: "required"}`, `{path: "kleur",
+  code: "invalid_choice", details: {choices: […]}}`. That is §9's machine-readable half; a
+  translated sentence naming the field without the row index would send an agent hunting.
+- **The audience decides the permission, read off the plugin's record.** A member drafts;
+  editing anything a visitor can see, or setting a live status, is `content.publish`, decided
+  by a `fields=none` read before the write. Options, menus and strings are live the moment
+  they save and carry `publish` at the route. Deleting is its own key,
+  `wordpress.content.delete` (admin by default) — the person who may draft a page is not
+  thereby the person who may remove one, and a key an assistant holds should be able to say
+  "may edit, never delete".
+- **Every write is a trail line on the site row** (§16): `content_created` / `content_updated`
+  (with `via: breik-bridge` and the touched fields or `ops×n`), `content_deleted`,
+  `media_uploaded`, `term_created`, `options_updated`, `menu_updated`,
+  `translation_created`, `string_translated`.
+
+Two wire facts worth keeping. `WordPressTranslationCreate.copy_source` is the plugin's `copy`
+under an alias, because `copy` is a `BaseModel` method, and `_clean()` dumps `by_alias` so the
+plugin sees its own name (the test asserts `copy_source` never travels). And the fake serves
+the plugin's namespace with the plugin's own envelope and a sliver of its validation, so a
+change to the mapping is caught here — while the validation rules themselves are tested in the
+plugin, which is where they live.
+
+### Checklist for the first live site
+
+The plugin ran end to end on a container; it has not yet run on a client's production. On
+`breik.dev/vangessel` (connected, ACF PRO 6.8.10, Classic Editor, no WPML): install the zip,
+`POST /sites/{id}/verify` and read `bridge: true` + the version; `GET /bridge/schema?post_type=page`
+and compare the `blokken_blokken` conditions with the editor's; `GET /bridge/records/8262`
+compact and check the type-15 rows read as their four fields; a `PATCH` with one `merge` op
+and confirm in wp-admin that the other rows survived and the image on row 0 is still there.
+WPML has met no live site yet — `itis-nl.com` carries it — so `languages`, `translate` and
+`strings` are written from WPML's hook documentation and stay defensive until they have.

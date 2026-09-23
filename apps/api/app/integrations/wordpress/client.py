@@ -91,6 +91,10 @@ CONTENT_BASE = "/wp-json/wp/v2"
 #: ``contact-form-functions.php``), because the two are not symmetric and a body posted in the
 #: read's shape is silently ignored.
 CF7_BASE = "/wp-json/contact-form-7/v1/contact-forms"
+#: The breik. Bridge plugin's namespace (a separate repository, ``breik-bridge``): the structured
+#: door onto ACF page builders, REST-hidden post types, media uploads and WPML that core's
+#: ``wp/v2`` cannot offer. Its absence is a plugin not installed, never a fault of the credential.
+BRIDGE_PATH = "/wp-json/breik/v1"
 #: The two core abilities WordPress 6.9 registers read-only, ``show_in_rest``. Together they say
 #: what core's REST never does on its own: the WordPress and PHP versions.
 CORE_SITE_INFO = "core/get-site-info"
@@ -110,6 +114,7 @@ CAPABILITIES: tuple[str, ...] = (
     "abilities",
     "rankmath_aiv",
     "mcp",
+    "bridge",
 )
 
 
@@ -117,7 +122,12 @@ class WordPressError(RuntimeError):
     """A call failed. ``message`` is the site's own error text — never the credential."""
 
     def __init__(
-        self, message: str, *, status: int | None = None, code: str | None = None
+        self,
+        message: str,
+        *,
+        status: int | None = None,
+        code: str | None = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(message)
         self.status = status
@@ -125,6 +135,11 @@ class WordPressError(RuntimeError):
         #: ``aiv_unauthorized``) — the only reliable way to tell "this route does not exist"
         #: from "you may not call it", which are opposite diagnoses that share a 4xx.
         self.code = code
+        #: The machine-readable half of the site's refusal, where it sent one. The breik.
+        #: Bridge answers a validation refusal with ``details.problems`` — path, field, code,
+        #: the allowed choices — which is exactly what an agent needs to correct the call and
+        #: exactly what a message string cannot carry (§9's ``details`` rule).
+        self.details: dict[str, Any] = details or {}
 
 
 class WordPressAuthError(WordPressError):
@@ -210,6 +225,13 @@ def set_transport(transport: httpx.AsyncBaseTransport | None) -> None:
     """Install (or clear) the transport every client uses. Tests only."""
     global _transport
     _transport = transport
+
+
+def _error_details(body: Any) -> dict[str, Any]:
+    """The ``details`` object a bridge refusal carries, or ``{}``."""
+    if isinstance(body, dict) and isinstance(body.get("details"), dict):
+        return body["details"]
+    return {}
 
 
 def _error_from_body(body: Any, status: int) -> tuple[str, str | None]:
@@ -369,9 +391,12 @@ class WordPressClient:
             return (body, response.headers) if with_headers else body
 
         text, code = _error_from_body(body, response.status_code)
+        details = _error_details(body)
         if response.status_code in (401, 403):
-            raise WordPressAuthError(text, status=response.status_code, code=code)
-        raise WordPressError(text, status=response.status_code, code=code)
+            raise WordPressAuthError(
+                text, status=response.status_code, code=code, details=details
+            )
+        raise WordPressError(text, status=response.status_code, code=code, details=details)
 
     # --- the four surfaces ---------------------------------------------------------------- #
     async def rest_index(self) -> dict[str, Any]:
@@ -522,6 +547,24 @@ class WordPressClient:
         body = await self.request("GET", f"{AIV_BASE}/brands/{brand_id}/queries")
         return _unwrap(body)
 
+    # --- the breik. Bridge plugin --------------------------------------------------------- #
+    async def bridge(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        json: Any = None,
+    ) -> Any:
+        """One call to the bridge plugin's own REST namespace, relative to ``breik/v1``.
+
+        The plugin answers every refusal as ``{code, message, status, details}``; ``_send``
+        turns that into a :class:`WordPressError` whose ``details`` the bridge service carries
+        into schakl's envelope untouched, because a validation problem's *path* is the one
+        thing the caller needs and the one thing a translated sentence cannot hold.
+        """
+        return await self.request(method, f"{BRIDGE_PATH}{path}", params=params, json=json)
+
     # --- the probe ------------------------------------------------------------------------ #
     async def probe_capabilities(self) -> tuple[dict[str, bool], dict[str, str], dict[str, Any]]:
         """What this credential reaches, why each refusal happened, and what the site is.
@@ -641,6 +684,20 @@ class WordPressClient:
                 data = _unwrap(overview)
                 brands = data.get("brands")
                 observed["brand_count"] = len(brands) if isinstance(brands, list) else 0
+
+            # 6. The breik. Bridge plugin. Its `info` is the cheapest read it offers and says
+            #    which version answered; a `rest_no_route` here is "not installed", which the
+            #    panel says in words, and the version clears itself when a probe that reached
+            #    the site finds the plugin gone (the observation rule, once more).
+            info = await probe("bridge", f"{BRIDGE_PATH}/info")
+            plugin = info.get("plugin") if isinstance(info, dict) else None
+            caps["bridge"] = isinstance(plugin, dict)
+            if caps["bridge"]:
+                errors.pop("bridge", None)
+                version = plugin.get("version")
+                observed["bridge_version"] = version if isinstance(version, str) else ""
+            elif caps.get("rest"):
+                observed["bridge_absent"] = True
 
         return caps, errors, observed
 

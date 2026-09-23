@@ -58,6 +58,11 @@ WORDPRESS_PERMISSIONS: list[PermissionSpec] = [
     # the broadcast. Admin-only by default, and the key an agency withholds from an MCP key
     # it lets an assistant hold.
     PermissionSpec("wordpress.content.publish", position=50),
+    # Trashing or deleting a record through the breik. Bridge. Its own key rather than a
+    # refinement of `write`, for the trash module's reason: the person who may draft a page
+    # is not thereby the person who may remove one, and a key an assistant holds should be
+    # able to say "may edit, may never delete". Admin-only by default.
+    PermissionSpec("wordpress.content.delete", position=55),
     # --- Contact Form 7 -------------------------------------------------------------------- #
     PermissionSpec(
         "wordpress.forms.read",

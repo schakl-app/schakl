@@ -22,7 +22,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.integrations.wordpress.client import normalise_base_url
 
@@ -60,6 +60,8 @@ class WordPressSiteRead(BaseModel):
     #: Whether this Rank Math is new enough to have AI Visibility at all (≥ 1.0.273). Resolved
     #: server-side so the panel never re-implements a version comparison in two languages.
     rankmath_ai_visibility: bool = False
+    #: The breik. Bridge plugin's version where the last probe found it; ``None`` where not.
+    bridge_version: str | None = None
 
     last_verified_at: datetime | None = None
     #: Whether a password is stored at all. The password itself never leaves the server.
@@ -125,6 +127,7 @@ class WordPressVerifyResult(BaseModel):
     rankmath_version: str | None = None
     rankmath_ai_visibility: bool = False
     mcp_server_path: str | None = None
+    bridge_version: str | None = None
     #: How many Rank Math brands this site tracks, where AI Visibility answered. ``None`` where
     #: it did not — zero brands and no Rank Math are different sentences.
     brand_count: int | None = None
@@ -454,3 +457,356 @@ class WordPressRestResult(BaseModel):
     truncated: bool = False
     shown: int | None = None
     dropped: list[str] = Field(default_factory=list)
+
+
+# ------------------------------------------------------------------ the breik. Bridge plugin
+#
+# The plugin is the contract and this file mirrors it (docs/WORDPRESS.md §9). Request bodies are
+# typed because they become the MCP tools' input schemas — a model reads these descriptions to
+# decide what to send. Responses are open models with the few fields every caller reads named,
+# because the plugin's shape (a record's `fields`, its `references`, a schema's groups) is
+# already documented once, in the plugin, and a second copy that could drift would be worse
+# than none.
+
+
+class _BridgeOpen(BaseModel):
+    """A response the plugin shaped; extra keys pass through untouched."""
+
+    model_config = ConfigDict(extra="allow")
+
+
+class WordPressBridgeInfo(_BridgeOpen):
+    """What the site is through the plugin: versions (WordPress, PHP, ACF, WPML), every post
+    type including ones hidden from ``wp/v2``, taxonomies, ACF options pages, menus,
+    languages, the SEO plugin, and what the stored credential's user may do."""
+
+    site_id: uuid.UUID
+    base_url: str
+    bridge_version: str | None = None
+    plugin: dict[str, Any] = Field(default_factory=dict)
+    site: dict[str, Any] = Field(default_factory=dict)
+    acf: dict[str, Any] | None = None
+    wpml: dict[str, Any] | None = None
+    seo: str | None = None
+    post_types: list[dict[str, Any]] = Field(default_factory=list)
+    taxonomies: list[dict[str, Any]] = Field(default_factory=list)
+    options_pages: list[dict[str, Any]] = Field(default_factory=list)
+    menus: list[dict[str, Any]] = Field(default_factory=list)
+    user: dict[str, Any] = Field(default_factory=dict)
+
+
+class WordPressBridgeSchema(_BridgeOpen):
+    """The ACF field groups that apply to a post type, a record, an options page or a
+    taxonomy: every field with name, type, label, required, choices, sub fields / layouts,
+    the conditions that hide it, and the JSON shape the writer takes (``value_format``)."""
+
+    subject: dict[str, Any] = Field(default_factory=dict)
+    groups: list[dict[str, Any]] = Field(default_factory=list)
+    notes: dict[str, str] = Field(default_factory=dict)
+
+
+class WordPressRecordRow(_BridgeOpen):
+    id: int
+    post_type: str
+    title: str
+    slug: str
+    status: str
+    link: str | None = None
+    modified: str | None = None
+    #: Parent chain as titles, root first — how a page list reads on a hierarchical type.
+    path: list[str] = Field(default_factory=list)
+    lang: str | None = None
+    #: WPML: ``{lang: id}`` for the translation group.
+    translations: dict[str, int] = Field(default_factory=dict)
+
+
+class WordPressRecordList(_BridgeOpen):
+    items: list[WordPressRecordRow] = Field(default_factory=list)
+    total: int = 0
+    page: int = 1
+    per_page: int = 20
+    pages: int = 0
+    post_type: str
+
+
+class WordPressRecord(_BridgeOpen):
+    """One record whole. ``fields`` is the ACF tree in the requested mode — ``compact`` keeps,
+    per page-builder row, only the fields the editor shows for that row and only the ones
+    that hold something — and ``references`` resolves every attachment, post and term id the
+    values name (url, alt, title, type)."""
+
+    id: int
+    post_type: str
+    title: str
+    status: str
+    link: str | None = None
+    content: str = ""
+    fields: dict[str, Any] | None = None
+    fields_mode: str | None = None
+    references: dict[str, Any] = Field(default_factory=dict)
+    taxonomies: dict[str, Any] = Field(default_factory=dict)
+    seo: dict[str, Any] | None = None
+    translations: dict[str, Any] | None = None
+    schema_: dict[str, Any] | list[Any] | None = Field(default=None, alias="schema")
+
+
+_FIELDS_DOC = (
+    "ACF values keyed by field name; each named top-level field is replaced whole (a repeater "
+    "by its full list of rows). Rows are objects of sub field names; flexible rows carry "
+    "\"_layout\". Image/file/gallery values take an attachment id, a URL, or "
+    "{\"upload\": {\"url\"|\"base64\", \"filename\", \"alt\", \"title\"}}. Read the schema first."
+)
+_OPS_DOC = (
+    "Surgical edits applied to the stored values before validation, so one row changes "
+    "without resending the rest: {\"op\": \"set\"|\"merge\"|\"append\"|\"insert\"|\"remove\"|"
+    "\"move\", \"path\": \"blokken_blokken[2].titel\", \"value\"?, \"index\"?, \"from\"?, "
+    "\"to\"?}."
+)
+
+
+class WordPressRecordCreate(BaseModel):
+    """A new record of any post type, through the plugin: validated against the ACF schema
+    before anything is written, so a refusal carries every problem with its path and leaves
+    nothing behind."""
+
+    post_type: str = Field(max_length=40, description="Post type slug (from the bridge info).")
+    title: str = Field(max_length=500)
+    status: str = Field(
+        "draft", description="draft (default) | pending | publish | private | future."
+    )
+    content: str | None = Field(None, description="Main content (HTML).")
+    excerpt: str | None = None
+    slug: str | None = None
+    parent: int | None = None
+    template: str | None = Field(None, description="Page template file name.")
+    menu_order: int | None = None
+    date: str | None = Field(
+        None, description="ISO 8601; with status future, when it goes live."
+    )
+    featured_media: int | str | dict[str, Any] | None = Field(
+        None, description="Attachment id, URL, or {\"upload\": {...}}."
+    )
+    terms: dict[str, list[int | str]] | None = Field(
+        None,
+        description="Terms per taxonomy: {\"category\": [3, \"Nieuws\"]} — ids, names or slugs.",
+    )
+    seo: dict[str, Any] | None = Field(
+        None,
+        description=(
+            "Rank Math / Yoast meta: {title, description, focus_keyword, canonical, noindex}."
+        ),
+    )
+    meta: dict[str, Any] | None = Field(None, description="Plain post meta; null deletes a key.")
+    fields: dict[str, Any] | None = Field(None, description=_FIELDS_DOC)
+    lang: str | None = Field(None, description="WPML language code for the new record.")
+    translation_of: int | None = Field(None, description="WPML: the id this record translates.")
+
+
+class WordPressRecordUpdate(BaseModel):
+    """Change a record through the plugin. Absent keys are left alone; ``fields`` replaces
+    the named top-level ACF fields whole; ``ops`` edits inside the stored values by path."""
+
+    title: str | None = Field(None, max_length=500)
+    status: str | None = Field(None, description="draft | pending | publish | private | future.")
+    content: str | None = None
+    excerpt: str | None = None
+    slug: str | None = None
+    parent: int | None = None
+    template: str | None = None
+    menu_order: int | None = None
+    date: str | None = None
+    featured_media: int | str | dict[str, Any] | None = None
+    terms: dict[str, list[int | str]] | None = None
+    seo: dict[str, Any] | None = None
+    meta: dict[str, Any] | None = None
+    fields: dict[str, Any] | None = Field(None, description=_FIELDS_DOC)
+    ops: list[dict[str, Any]] | None = Field(None, description=_OPS_DOC)
+    mode: str | None = Field(
+        None, description="Read mode of the returned record: compact | visible | full | none."
+    )
+
+
+class WordPressBridgeDelete(_BridgeOpen):
+    id: int
+    trashed: bool = False
+    deleted: bool = False
+
+
+class WordPressMediaUpload(BaseModel):
+    """Add a file to the site's media library from a public URL (fetched by the site) or a
+    base64 body. A URL already in the site's own library is reused rather than copied."""
+
+    url: str | None = Field(None, description="Public http(s) URL to fetch.")
+    base64: str | None = Field(None, description="The file body, base64 (a data: URL is accepted).")
+    filename: str | None = Field(None, description="Name with extension; derived when omitted.")
+    mime: str | None = None
+    title: str | None = None
+    alt: str | None = Field(None, description="Alt text — always give an image one.")
+    caption: str | None = None
+    description: str | None = None
+    attach_to: int | None = Field(None, description="Record id the file belongs to.")
+    set_featured: bool = Field(False, description="Also make it that record's featured image.")
+    lang: str | None = None
+
+    @model_validator(mode="after")
+    def _one_source(self) -> WordPressMediaUpload:
+        if not self.url and not self.base64:
+            raise ValueError("errors.wordpress_upload_source")
+        return self
+
+
+class WordPressBridgeMedia(_BridgeOpen):
+    id: int
+    url: str | None = None
+    alt: str = ""
+    title: str = ""
+    mime: str | None = None
+    width: int | None = None
+    height: int | None = None
+
+
+class WordPressBridgeTerm(_BridgeOpen):
+    id: int
+    taxonomy: str
+    name: str
+    slug: str
+    parent: int | None = None
+    lang: str | None = None
+    fields: dict[str, Any] | None = None
+
+
+class WordPressBridgeTermList(_BridgeOpen):
+    items: list[WordPressBridgeTerm] = Field(default_factory=list)
+    total: int = 0
+    taxonomy: str
+
+
+class WordPressBridgeTermCreate(BaseModel):
+    taxonomy: str = Field(max_length=40)
+    name: str = Field(max_length=200)
+    slug: str | None = None
+    parent: int | None = None
+    description: str | None = None
+    fields: dict[str, Any] | None = Field(None, description="ACF values keyed by field name.")
+    lang: str | None = None
+    translation_of: int | None = Field(
+        None, description="WPML: the source term's term_taxonomy_id."
+    )
+
+
+class WordPressOptionsPages(_BridgeOpen):
+    items: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class WordPressOptionsRead(_BridgeOpen):
+    page: str
+    title: str | None = None
+    fields: dict[str, Any] = Field(default_factory=dict)
+    references: dict[str, Any] = Field(default_factory=dict)
+
+
+class WordPressOptionsWrite(BaseModel):
+    """Write ACF values on an options page — live at once, site-wide."""
+
+    fields: dict[str, Any] | None = Field(None, description=_FIELDS_DOC)
+    ops: list[dict[str, Any]] | None = Field(None, description=_OPS_DOC)
+    lang: str | None = None
+
+    @model_validator(mode="after")
+    def _something(self) -> WordPressOptionsWrite:
+        if not self.fields and not self.ops:
+            raise ValueError("errors.nothing_to_update")
+        return self
+
+
+class WordPressMenuList(_BridgeOpen):
+    items: list[dict[str, Any]] = Field(default_factory=list)
+    locations: list[str] = Field(default_factory=list)
+
+
+class WordPressMenu(_BridgeOpen):
+    id: int
+    name: str
+    slug: str
+    items: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class WordPressMenuItemAdd(BaseModel):
+    """Add a record, a term or a custom link to a menu. Live at once."""
+
+    object_id: int | None = Field(None, description="A record id to link.")
+    term_id: int | None = None
+    taxonomy: str | None = None
+    url: str | None = Field(None, description="A custom link (needs a title).")
+    title: str | None = None
+    parent: int | None = Field(None, description="Parent menu item id.")
+    position: int | None = None
+    target: bool = False
+
+
+class WordPressLanguages(_BridgeOpen):
+    default_language: str | None = None
+    languages: list[dict[str, Any]] = Field(default_factory=list)
+    current: str | None = None
+
+
+class WordPressTranslations(_BridgeOpen):
+    id: int
+    post_type: str
+    lang: str | None = None
+    translations: dict[str, Any] = Field(default_factory=dict)
+    languages: list[str] = Field(default_factory=list)
+
+
+class WordPressTranslationCreate(BaseModel):
+    """WPML: create a record's translation in another language, linked to it. The source is
+    copied first (core fields, terms, featured image, ACF fields with every referenced id
+    swapped for its translation where one exists), then what you send is applied on top —
+    so send the translated title, content and fields and nothing else. Pass
+    ``translation_id`` instead to link an *existing* record as the translation."""
+
+    lang: str = Field(max_length=10, description="Target language code.")
+    translation_id: int | None = Field(
+        None, description="Connect this existing record as the translation instead of creating one."
+    )
+    title: str | None = None
+    content: str | None = None
+    excerpt: str | None = None
+    slug: str | None = None
+    model_config = ConfigDict(populate_by_name=True)
+
+    status: str | None = Field(
+        None, description="draft (default) | pending | publish | private."
+    )
+    #: Named `copy_source` because `copy` is a BaseModel method; the plugin reads `copy`.
+    copy_source: str | None = Field(
+        None, alias="copy", description="all (default) | none."
+    )
+    overwrite: bool = Field(
+        False, description="Update an existing translation instead of refusing."
+    )
+    seo: dict[str, Any] | None = None
+    fields: dict[str, Any] | None = Field(None, description=_FIELDS_DOC)
+    ops: list[dict[str, Any]] | None = Field(None, description=_OPS_DOC)
+
+
+class WordPressStringList(_BridgeOpen):
+    items: list[dict[str, Any]] = Field(default_factory=list)
+    total: int = 0
+
+
+class WordPressStringUpdate(BaseModel):
+    """WPML String Translation: set a string's translation in a language."""
+
+    id: int | None = Field(None, description="String id (from the list).")
+    domain: str | None = None
+    name: str | None = None
+    lang: str = Field(max_length=10)
+    value: str
+
+
+class WordPressStringResult(_BridgeOpen):
+    id: int
+    lang: str
+    value: str
+    updated: bool = True
