@@ -15,7 +15,7 @@ No migration, no new environment variable, no schema change. One new notificatio
 (`meetings.error.abandoned`) and five on the screens and in the inbox. The API surface is
 unchanged, so the typed client and the public reference are untouched.
 
-### Build
+### Build and CI
 
 - **The web build no longer runs out of memory, and stops getting closer to it with every
   translated string.** Paraglide compiled one module per message — 8200 of them across two
@@ -24,6 +24,10 @@ unchanged, so the typed client and the public reference are untouched.
   compiles one module per locale, which costs nothing (`t()` indexes a namespace import
   dynamically, so every message was already in the bundle). Peak memory 15.9 GB → 4.4 GB, build
   8m24s → 31s. No change to what ships.
+- **Four time-module tests asked UTC which day it was.** Each posted an aware `started_at` and
+  then asked a day-shaped question with UTC's date, while the API buckets an instant in the
+  tenant's zone — so they were green by day and red for the two hours a night between local and
+  UTC midnight. They use `conftest.org_today()` now, as CLAUDE.md §8 already required.
 
 ### Meetings
 
