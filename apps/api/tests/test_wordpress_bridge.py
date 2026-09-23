@@ -1,4 +1,4 @@
-"""The breik. Bridge plugin as a surface (docs/WORDPRESS.md §9).
+"""The schakl WordPress MCP Bridge plugin as a surface (docs/WORDPRESS.md §9).
 
 What these pin, beyond "the route answers":
 
@@ -82,7 +82,7 @@ async def test_a_site_without_the_plugin_answers_409_naming_it(client_for, wp) -
             assert res.status_code == 409, (path, res.text)
             body = res.json()["error"]
             assert body["message"] == "errors.wordpress_bridge_missing"
-            assert body["details"]["plugin"] == "breik-bridge"
+            assert body["details"]["plugin"] == "schakl-wordpress-mcp-bridge"
 
 
 # ---------------------------------------------------------------- reads
@@ -211,7 +211,7 @@ async def test_a_member_drafts_and_may_not_publish_or_edit_live(client_for, wp) 
         assert "content_updated" in actions
         assert "content_deleted" in actions
         created = next(row for row in trail if row["action"] == "content_created")
-        assert created["payload"]["via"] == "breik-bridge"
+        assert created["payload"]["via"] == "schakl-wordpress-mcp-bridge"
         assert created["payload"]["title"] == "Nieuwe dienst"
 
 

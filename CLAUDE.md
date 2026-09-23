@@ -1536,11 +1536,11 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   never folded into `websites.website.write`, and a disconnect that forgets the credential without
   revoking it at the far end.
 - **A page builder's rules live on the site, so the site grows a plugin that states them**
-  (`breik-bridge`, a separate repository; `docs/WORDPRESS.md` §9). Editing a breik. page through
+  (`schakl-wordpress-mcp-bridge`, a separate repository; `docs/WORDPRESS.md` §9). Editing a page-builder page through
   ACF's own REST integration failed on every write, and the cause was not ours to fix from the
   credential's side: the pages are a repeater of typed rows with thirty conditional siblings,
   ACF's REST validation ignores conditional logic, a repeater is re-posted whole and saves
-  positionally, and a post type without `show_in_rest` does not exist. So the **breik. Bridge**
+  positionally, and a post type without `show_in_rest` does not exist. So the **schakl WordPress MCP Bridge**
   plugin owns four things on the site — the schema (field groups → a normalised tree with the
   conditions), a compact reader (per row only what the editor shows, every id resolved), a
   validating writer (conditions evaluated in PHP, every problem reported by path, rows emitted

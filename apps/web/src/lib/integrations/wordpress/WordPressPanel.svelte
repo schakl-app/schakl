@@ -219,7 +219,7 @@
         <dd class="truncate font-mono text-xs text-text">{site.mcp_server_path}</dd>
       </div>
     {/if}
-    <!-- The breik. Bridge plugin: the version the last probe saw, or in words that it is not
+    <!-- The schakl WordPress MCP Bridge plugin: the version the last probe saw, or in words that it is not
          there — because without it the page-builder, upload and translation tools answer 409,
          and a row that said nothing would leave that to be discovered by an agent. -->
     {#if site.capabilities_checked_at}

@@ -176,11 +176,11 @@ class WordPressSite(
     #: A version string we could not observe would be a stored fact nobody checked.
     rankmath_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
-    #: The breik. Bridge plugin's version where it answered ``breik/v1/info``; NULL where the
-    #: last probe that reached the site found no plugin. An observation, like the two above:
-    #: the panel prints it, the service reads the *call* to decide anything (a bridge route
-    #: on a site without the plugin is a 409 decided by that call's ``rest_no_route``, never by
-    #: this column, which may be stale by a deploy).
+    #: The schakl WordPress MCP Bridge plugin's version where it answered ``schakl/v1/info``; NULL
+    #: where the last probe that reached the site found no plugin. An observation, like the two
+    #: above: the panel prints it, the service reads the *call* to decide anything (a bridge route
+    #: on a site without the plugin is a 409 decided by that call's ``rest_no_route``, never by this
+    #: column, which may be stale by a deploy).
     bridge_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     last_verified_at: Mapped[datetime | None] = mapped_column(

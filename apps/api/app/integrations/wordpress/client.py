@@ -91,10 +91,11 @@ CONTENT_BASE = "/wp-json/wp/v2"
 #: ``contact-form-functions.php``), because the two are not symmetric and a body posted in the
 #: read's shape is silently ignored.
 CF7_BASE = "/wp-json/contact-form-7/v1/contact-forms"
-#: The breik. Bridge plugin's namespace (a separate repository, ``breik-bridge``): the structured
-#: door onto ACF page builders, REST-hidden post types, media uploads and WPML that core's
-#: ``wp/v2`` cannot offer. Its absence is a plugin not installed, never a fault of the credential.
-BRIDGE_PATH = "/wp-json/breik/v1"
+#: The schakl WordPress MCP Bridge plugin's namespace (a separate repository,
+#: ``schakl-wordpress-mcp-bridge``): the structured door onto ACF page builders, REST-hidden post
+#: types, media uploads and WPML that core's ``wp/v2`` cannot offer. Its absence is a plugin not
+#: installed, never a fault of the credential.
+BRIDGE_PATH = "/wp-json/schakl/v1"
 #: The two core abilities WordPress 6.9 registers read-only, ``show_in_rest``. Together they say
 #: what core's REST never does on its own: the WordPress and PHP versions.
 CORE_SITE_INFO = "core/get-site-info"
@@ -135,8 +136,8 @@ class WordPressError(RuntimeError):
         #: ``aiv_unauthorized``) — the only reliable way to tell "this route does not exist"
         #: from "you may not call it", which are opposite diagnoses that share a 4xx.
         self.code = code
-        #: The machine-readable half of the site's refusal, where it sent one. The breik.
-        #: Bridge answers a validation refusal with ``details.problems`` — path, field, code,
+        #: The machine-readable half of the site's refusal, where it sent one. The bridge
+        #: plugin answers a validation refusal with ``details.problems`` — path, field, code,
         #: the allowed choices — which is exactly what an agent needs to correct the call and
         #: exactly what a message string cannot carry (§9's ``details`` rule).
         self.details: dict[str, Any] = details or {}
@@ -547,7 +548,7 @@ class WordPressClient:
         body = await self.request("GET", f"{AIV_BASE}/brands/{brand_id}/queries")
         return _unwrap(body)
 
-    # --- the breik. Bridge plugin --------------------------------------------------------- #
+    # --- the schakl WordPress MCP Bridge plugin ------------------------------------------- #
     async def bridge(
         self,
         method: str,
@@ -556,7 +557,7 @@ class WordPressClient:
         params: dict[str, Any] | None = None,
         json: Any = None,
     ) -> Any:
-        """One call to the bridge plugin's own REST namespace, relative to ``breik/v1``.
+        """One call to the bridge plugin's own REST namespace, relative to ``schakl/v1``.
 
         The plugin answers every refusal as ``{code, message, status, details}``; ``_send``
         turns that into a :class:`WordPressError` whose ``details`` the bridge service carries
@@ -685,9 +686,9 @@ class WordPressClient:
                 brands = data.get("brands")
                 observed["brand_count"] = len(brands) if isinstance(brands, list) else 0
 
-            # 6. The breik. Bridge plugin. Its `info` is the cheapest read it offers and says
-            #    which version answered; a `rest_no_route` here is "not installed", which the
-            #    panel says in words, and the version clears itself when a probe that reached
+            # 6. The schakl WordPress MCP Bridge plugin. Its `info` is the cheapest read it offers
+            #    and says which version answered; a `rest_no_route` here is "not installed", which
+            #    the panel says in words, and the version clears itself when a probe that reached
             #    the site finds the plugin gone (the observation rule, once more).
             info = await probe("bridge", f"{BRIDGE_PATH}/info")
             plugin = info.get("plugin") if isinstance(info, dict) else None
