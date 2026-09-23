@@ -64,9 +64,17 @@ from app.modules.meetings.pipeline import (
     CONTENT_TYPES,
     MAX_RECORDING_BYTES,
     fold_chunks,
+    probe_duration,
+    remux,
     transcribe_recording,
 )
-from app.modules.meetings.service import CHUNK_PREFIX, drop_audio, org_locale, participants_of
+from app.modules.meetings.service import (
+    CHUNK_PREFIX,
+    agency_name,
+    drop_audio,
+    org_locale,
+    participants_of,
+)
 from app.modules.meetings.settings import load_settings
 
 logger = logging.getLogger("schakl.meetings")
@@ -177,6 +185,16 @@ async def _fold(ctx, session: AsyncSession, row: Meeting) -> tuple[bytes, str]: 
             await asyncio.to_thread(lambda p=piece, b=backend: b.open(p.storage_key).read())
         )
     data = fold_chunks(chunks)
+    # A browser's streamed WebM states no length and carries no cues, so the player draws no
+    # total and cannot be scrubbed; a copy remux writes both. Kept as it came where ffmpeg is
+    # absent or refuses — the page has the browser's own workaround for that.
+    rewritten = await asyncio.to_thread(remux, data, extension)
+    if rewritten:
+        data = rewritten
+    if not row.duration_seconds:
+        measured = await asyncio.to_thread(probe_duration, data, extension)
+        if measured:
+            row.duration_seconds = int(round(measured))
     content_type = CONTENT_TYPES.get(extension, "application/octet-stream")
     stored = await store_system_file(
         ctx,
@@ -238,6 +256,7 @@ async def run_pipeline(
             segments = [s for s in (transcript.get("segments") or []) if isinstance(s, dict)]
             text = row.transcript_text or ""
             parts = int(transcript.get("parts") or 1)
+            aligned = bool(transcript.get("aligned"))
             speech_model = transcript.get("model")
         else:
             await _set_status(session, org_id, row, MeetingStatus.TRANSCRIBING.value)
@@ -265,11 +284,13 @@ async def run_pipeline(
             if row is None:
                 return
             segments, text, parts = transcribed.segments, transcribed.text, transcribed.parts
+            aligned = transcribed.aligned
             speech_model = config.model
             row.transcript = {
                 "segments": segments,
                 "model": speech_model,
                 "parts": parts,
+                "aligned": aligned,
                 # Stated on the row: a transcript with no labels is a *model* that answers
                 # text only, and the screen names it rather than drawing an empty roster.
                 "diarized": any(s.get("speaker") for s in segments),
@@ -303,17 +324,22 @@ async def run_pipeline(
             today=today,
             now=datetime.now(zone),
             locale=locale,
-            agency=await _agency_name(session, org),
+            agency=await agency_name(session, org),
             duration=row.duration_seconds,
             house_rules=house_rules,
         )
         # ``complete`` released and re-bound the session; the row object is still ours.
         row = await _load(session, org_id, meeting_id) or row
+        if row.title_auto and (draft.title or "").strip():
+            # The recorder left the title box empty and the words are in: the meeting is
+            # named after what it was about, once. A title a person typed is never touched.
+            row.title = draft.title.strip()[:255]
         row.minutes = draft.model_dump(mode="json")
         row.transcript = {
             "segments": segments,
             "model": speech_model,
             "parts": parts,
+            "aligned": aligned,
             "diarized": any(s.get("speaker") for s in segments),
             "chat_model": chat.model,
         }
@@ -386,13 +412,6 @@ async def _fail(
     )
     if row is not None:
         await _set_status(session, org_id, row, MeetingStatus.FAILED.value, error_key=error_key)
-
-
-async def _agency_name(session: AsyncSession, org: Org) -> str:
-    from app.core.models import OrgSettings
-
-    brand = await session.scalar(select(OrgSettings.brand_name).where(OrgSettings.org_id == org.id))
-    return brand or org.name or "the agency"
 
 
 async def meetings_process(

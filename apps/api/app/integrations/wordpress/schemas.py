@@ -60,7 +60,8 @@ class WordPressSiteRead(BaseModel):
     #: Whether this Rank Math is new enough to have AI Visibility at all (≥ 1.0.273). Resolved
     #: server-side so the panel never re-implements a version comparison in two languages.
     rankmath_ai_visibility: bool = False
-    #: The breik. Bridge plugin's version where the last probe found it; ``None`` where not.
+    #: The schakl WordPress MCP Bridge plugin's version where the last probe found it;
+    #: ``None`` where not.
     bridge_version: str | None = None
 
     last_verified_at: datetime | None = None
@@ -459,7 +460,7 @@ class WordPressRestResult(BaseModel):
     dropped: list[str] = Field(default_factory=list)
 
 
-# ------------------------------------------------------------------ the breik. Bridge plugin
+# ----------------------------------------------------------- the schakl WordPress MCP Bridge plugin
 #
 # The plugin is the contract and this file mirrors it (docs/WORDPRESS.md §9). Request bodies are
 # typed because they become the MCP tools' input schemas — a model reads these descriptions to

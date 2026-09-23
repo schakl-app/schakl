@@ -9493,6 +9493,50 @@ export interface paths {
         patch: operations["update_meeting_api_v1_meetings__meeting_id__patch"];
         trace?: never;
     };
+    "/api/v1/meetings/{meeting_id}/action-items/draft-task": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Draft Task For Action Item
+         * @description Schakl fills in the task form for one action item of the minutes — title, what exactly,
+         *     the steps the meeting listed, the deadline that was spoken, who took it on — grounded in
+         *     the transcript around it. A draft: nothing is created until it is posted below.
+         */
+        post: operations["draft_task_for_action_item_api_v1_meetings__meeting_id__action_items_draft_task_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meetings/{meeting_id}/action-items/task": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Task For Action Item
+         * @description Make the task for one action item now, with its steps and links in one call, as the
+         *     caller (the tasks module's own rules apply). The item remembers its task, the confirm
+         *     files it on the contact moment, and a meeting already confirmed files it at once.
+         */
+        post: operations["create_task_for_action_item_api_v1_meetings__meeting_id__action_items_task_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/meetings/{meeting_id}/ai/revise": {
         parameters: {
             query?: never;
@@ -15305,8 +15349,8 @@ export interface paths {
         };
         /**
          * Bridge Info
-         * @description What the site is, through the breik. Bridge plugin: versions, **every** post type
-         *     (including ones hidden from the REST API), taxonomies, ACF options pages, menus, WPML
+         * @description What the site is, through the schakl WordPress MCP Bridge plugin: versions, **every**
+         *     post type (including ones hidden from the REST API), taxonomies, ACF options pages, menus, WPML
          *     languages, the SEO plugin, and what the stored credential may do. The read to make first
          *     on a site that has the plugin; 409 names the plugin on one that does not.
          */
@@ -27427,6 +27471,7 @@ export interface components {
         MeetingConfirm: {
             /** Interaction Kind */
             interaction_kind?: string | null;
+            log_time?: components["schemas"]["MeetingLogTime"] | null;
             minutes: components["schemas"]["MinutesDraft"];
         };
         /** MeetingConfirmResult */
@@ -27442,6 +27487,8 @@ export interface components {
             }[];
             /** Task Ids */
             task_ids: string[];
+            /** Time Entries */
+            time_entries?: components["schemas"]["MeetingTimeEntry"][];
         };
         /** MeetingCreate */
         MeetingCreate: {
@@ -27465,7 +27512,7 @@ export interface components {
             /** @default microphone */
             source: components["schemas"]["MeetingSource"];
             /** Title */
-            title: string;
+            title?: string | null;
         };
         /**
          * MeetingDesignSource
@@ -27489,10 +27536,25 @@ export interface components {
             /** Audio File Id */
             audio_file_id?: string | null;
             /**
+             * Can Create Task
+             * @default false
+             */
+            can_create_task: boolean;
+            /**
              * Can Delete
              * @default false
              */
             can_delete: boolean;
+            /**
+             * Can Log Time Any
+             * @default false
+             */
+            can_log_time_any: boolean;
+            /**
+             * Can Log Time Own
+             * @default false
+             */
+            can_log_time_own: boolean;
             /**
              * Can Write
              * @default false
@@ -27568,8 +27630,20 @@ export interface components {
             status: components["schemas"]["MeetingStatus"];
             /** Task Ids */
             task_ids?: string[];
+            /** Time Entries */
+            time_entries?: components["schemas"]["MeetingTimeEntry"][];
             /** Title */
             title: string;
+            /**
+             * Title Auto
+             * @default false
+             */
+            title_auto: boolean;
+            /**
+             * Transcript Aligned
+             * @default false
+             */
+            transcript_aligned: boolean;
             /** Transcript Model */
             transcript_model?: string | null;
             /**
@@ -27599,6 +27673,23 @@ export interface components {
             items: components["schemas"]["MeetingRow"][];
             /** Total */
             total?: number | null;
+        };
+        /**
+         * MeetingLogTime
+         * @description "Ook de uren registreren" for a meeting (#175's ride-along, #314's gates): one time entry
+         *     per colleague named, for the meeting's duration, filed on the contact moment the confirm
+         *     writes. The reviewer sees every entry it will write — who, how long, the line beside it —
+         *     before pressing confirm, because hours written for a colleague are on *their* timesheet.
+         */
+        MeetingLogTime: {
+            /** Billable */
+            billable?: boolean | null;
+            /** Description */
+            description?: string | null;
+            /** Minutes */
+            minutes?: number | null;
+            /** User Ids */
+            user_ids: string[];
         };
         /**
          * MeetingParticipant
@@ -27722,6 +27813,11 @@ export interface components {
             status: components["schemas"]["MeetingStatus"];
             /** Title */
             title: string;
+            /**
+             * Title Auto
+             * @default false
+             */
+            title_auto: boolean;
         };
         /** MeetingSectionCatalogEntry */
         MeetingSectionCatalogEntry: {
@@ -27851,6 +27947,121 @@ export interface components {
              * Format: date-time
              */
             status_at: string;
+        };
+        /**
+         * MeetingTaskCreate
+         * @description The reviewed draft of one action item, posted as the task it becomes.
+         *
+         *     The tasks module's own create shape, minus the client: a meeting's task is always the
+         *     meeting's client's (or its project's), and the service pins it. A contact of the client may
+         *     hold it instead of a colleague — the "waiting on the client" shape (#273).
+         */
+        MeetingTaskCreate: {
+            /** Allocated Minutes */
+            allocated_minutes?: number | null;
+            /** Assignee Contact Id */
+            assignee_contact_id?: string | null;
+            /** Assignee User Id */
+            assignee_user_id?: string | null;
+            /** Checklist Items */
+            checklist_items?: components["schemas"]["MeetingTaskStep"][];
+            /** Checklist Title */
+            checklist_title?: string | null;
+            /** Description */
+            description?: string | null;
+            /**
+             * Due Date
+             * Format: date
+             */
+            due_date: string;
+            /** Index */
+            index: number;
+            /** Label Ids */
+            label_ids?: string[];
+            /** Links */
+            links?: components["schemas"]["MeetingTaskLink"][];
+            /** Priority */
+            priority?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /**
+             * Requires Interaction
+             * @default false
+             */
+            requires_interaction: boolean;
+            /** Status */
+            status?: string | null;
+            /** Title */
+            title: string;
+            /**
+             * Visible To Client
+             * @default false
+             */
+            visible_to_client: boolean;
+        };
+        /**
+         * MeetingTaskCreated
+         * @description The task made from an action item, and the meeting as it now stands.
+         */
+        MeetingTaskCreated: {
+            meeting: components["schemas"]["MeetingDetail"];
+            /**
+             * Task Id
+             * Format: uuid
+             */
+            task_id: string;
+        };
+        /**
+         * MeetingTaskDraftRequest
+         * @description Ask schakl to draft the task for one action item of the stored minutes.
+         */
+        MeetingTaskDraftRequest: {
+            /** Index */
+            index: number;
+            /**
+             * Override Budget
+             * @default false
+             */
+            override_budget: boolean;
+        };
+        /** MeetingTaskLink */
+        MeetingTaskLink: {
+            /** Title */
+            title?: string | null;
+            /** Url */
+            url: string;
+        };
+        /** MeetingTaskStep */
+        MeetingTaskStep: {
+            /** Description */
+            description?: string | null;
+            /** Title */
+            title: string;
+        };
+        /**
+         * MeetingTimeEntry
+         * @description One booked entry, as the page says it: whose, how long, and the row to open.
+         */
+        MeetingTimeEntry: {
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Minutes */
+            minutes: number;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+            /** User Name */
+            user_name: string;
         };
         /**
          * MeetingTranscribeRequest
@@ -28233,6 +28444,8 @@ export interface components {
             owner_label?: string | null;
             /** Quote */
             quote?: string | null;
+            /** Task Id */
+            task_id?: string | null;
             /** Title */
             title: string;
             /**
@@ -28276,6 +28489,8 @@ export interface components {
              * @default
              */
             summary: string;
+            /** Time Note */
+            time_note?: string | null;
             /** Title */
             title?: string | null;
             /** Topics */
@@ -58545,6 +58760,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MeetingDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    draft_task_for_action_item_api_v1_meetings__meeting_id__action_items_draft_task_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MeetingTaskDraftRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskParseResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_task_for_action_item_api_v1_meetings__meeting_id__action_items_task_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MeetingTaskCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingTaskCreated"];
                 };
             };
             /** @description Validation Error */

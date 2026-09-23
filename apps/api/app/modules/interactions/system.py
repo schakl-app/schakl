@@ -34,6 +34,20 @@ from app.modules.interactions.models import (
 MAPPING_FIELDS = ("company_id", "project_id", "task_id", "contact_id")
 
 
+async def kind_label(ctx: EmitContext, key: str) -> dict[str, Any] | None:
+    """A kind's own ``label_i18n`` — what a module logging hours *as* a contact moment's kind
+    hands the time module, so the mirrored entry type reads identically (#182). ``None`` for a
+    key this org does not have."""
+    from app.modules.interactions.models import InteractionKindDef
+
+    row = await ctx.session.scalar(
+        select(InteractionKindDef).where(
+            InteractionKindDef.org_id == ctx.org.id, InteractionKindDef.key == key
+        )
+    )
+    return dict(row.label_i18n or {}) if row is not None else None
+
+
 async def record_email(
     ctx: EmitContext,
     *,

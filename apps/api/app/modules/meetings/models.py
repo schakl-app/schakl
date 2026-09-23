@@ -121,6 +121,12 @@ class Meeting(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, AuditableMixi
         return false()
 
     title: Mapped[str] = mapped_column(String(255), nullable=False)
+    #: The title was generated because the recorder left the box empty ("Bespreking met Nova
+    #: Fietsen · 23-09-2026"). While true, the minutes may name the meeting once the words are
+    #: in; a title a person typed or edited is theirs and is never replaced.
+    title_auto: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
     kind: Mapped[str] = mapped_column(
         String(20), nullable=False, default=MeetingKind.PHYSICAL.value
     )
@@ -193,6 +199,10 @@ class Meeting(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, AuditableMixi
     #: The tasks confirm created, as ids — a list, because a meeting produces several and the
     #: ids are all the detail page needs to link them.
     task_ids: Mapped[list[Any] | None] = mapped_column(JSONB, nullable=True)
+    #: The time entries a confirm booked for the colleagues at the table (``confirm``'s
+    #: ``log_time``), as ids — so the page can say *whose* hours were written and link them,
+    #: because hours nobody asked to see written are a surprise on a timesheet.
+    time_entry_ids: Mapped[list[Any] | None] = mapped_column(JSONB, nullable=True)
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 

@@ -141,14 +141,14 @@ class FakeWordPress:
         #: Every write the fake received, so a test can assert the body a route sent.
         self.writes: list[tuple[str, dict]] = []
 
-        # --- the breik. Bridge plugin (docs/WORDPRESS.md §9) ---------------------------- #
-        #: Installed and answering `breik/v1`. Off, every bridge route is core's
+        # --- the schakl WordPress MCP Bridge plugin (docs/WORDPRESS.md §9) --------------- #
+        #: Installed and answering `schakl/v1`. Off, every bridge route is core's
         #: `rest_no_route` — the exact answer a site without the plugin gives.
         self.has_bridge = True
         self.bridge_version = "1.0.0"
         #: Records the plugin serves, keyed by id, in its own canonical shape: `fields` is the
         #: name-keyed ACF tree (compact), `references` what the ids resolve to. One page in the
-        #: shape of a breik. page builder (a `blokken_blokken` repeater of typed rows).
+        #: shape of the themes' page builder (a `blokken_blokken` repeater of typed rows).
         self.bridge_records: dict[int, dict] = {
             8262: {
                 "id": 8262, "post_type": "page", "title": "Arbeidsongeschiktheidsverzekering",
@@ -310,10 +310,10 @@ class FakeWordPress:
                 "rest_not_logged_in", "You are not currently logged in.", 401
             )
 
-        if path.startswith("/wp-json/breik/v1"):
+        if path.startswith("/wp-json/schakl/v1"):
             if not self.has_bridge:
                 return _wp_error("rest_no_route", "No route was found matching the URL.", 404)
-            return self._bridge_route(request, path[len("/wp-json/breik/v1"):])
+            return self._bridge_route(request, path[len("/wp-json/schakl/v1"):])
 
         if (request.method, path) in self.extra_routes:
             if request.method != "GET":
@@ -350,7 +350,7 @@ class FakeWordPress:
 
         return _wp_error("rest_no_route", "No route was found matching the URL.", 404)
 
-    # --- the breik. Bridge plugin --------------------------------------------------------- #
+    # --- the schakl WordPress MCP Bridge plugin ------------------------------------------ #
     @staticmethod
     def _bridge_error(code: str, message: str, status: int, details: dict | None = None):
         """The plugin's own envelope: ``{code, message, status, details}``."""
@@ -435,7 +435,9 @@ class FakeWordPress:
         if sub == "/info":
             return _json({
                 "plugin": {
-                    "name": "breik. Bridge", "version": self.bridge_version, "author": "breik.",
+                    "name": "schakl WordPress MCP Bridge",
+                    "version": self.bridge_version,
+                    "author": "schakl.",
                 },
                 "site": {"name": "Klant BV", "url": "https://klant.nl/", "wp_version": "7.1.2",
                          "php_version": "8.3.0", "locale": "nl_NL", "timezone": "Europe/Amsterdam"},

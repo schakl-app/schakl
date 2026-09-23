@@ -437,7 +437,7 @@ async def call_site_rest(
     return await WordPressSurfaceService(ctx).rest_call(site_id, payload)
 
 
-# ------------------------------------------------------------------ the breik. Bridge plugin
+# ----------------------------------------------------------- the schakl WordPress MCP Bridge plugin
 #
 # The same site, through the plugin that owns its ACF schema (docs/WORDPRESS.md §9). Every
 # route answers 409 `errors.wordpress_bridge_missing` on a site without the plugin, decided by
@@ -454,8 +454,8 @@ async def bridge_info(
     site_id: uuid.UUID,
     ctx: RequestContext = Depends(require_context),
 ) -> WordPressBridgeInfo:
-    """What the site is, through the breik. Bridge plugin: versions, **every** post type
-    (including ones hidden from the REST API), taxonomies, ACF options pages, menus, WPML
+    """What the site is, through the schakl WordPress MCP Bridge plugin: versions, **every**
+    post type (including ones hidden from the REST API), taxonomies, ACF options pages, menus, WPML
     languages, the SEO plugin, and what the stored credential may do. The read to make first
     on a site that has the plugin; 409 names the plugin on one that does not."""
     return await WordPressBridgeService(ctx).info(site_id)

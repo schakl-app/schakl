@@ -1,13 +1,14 @@
-"""The breik. Bridge plugin as a surface: ACF page builders, hidden post types, media, WPML.
+"""The schakl WordPress MCP Bridge plugin as a surface: ACF page builders, hidden post types,
+media, WPML.
 
 ``surface.py`` reaches a site through what core's ``wp/v2`` offers, and docs/WORDPRESS.md §7
 records where that stops: an ACF page builder is a repeater of typed rows with conditional
 siblings, ACF's own REST layer validates without evaluating the conditions, a repeater can only
 be re-posted whole, a post type without ``show_in_rest`` does not exist, and ``wp/v2/media``
-takes multipart, which no MCP tool can send. The **breik. Bridge** plugin (its own repository,
-``breik-bridge``) owns those four things on the site — the schema, a compact reader, a
-validating writer with surgical ``ops``, and inline uploads — and this file is how a
-connected site's plugin is reached under the credential schakl already holds.
+takes multipart, which no MCP tool can send. The **schakl WordPress MCP Bridge** plugin (its
+own repository, ``schakl-wordpress-mcp-bridge``) owns those four things on the site — the
+schema, a compact reader, a validating writer with surgical ``ops``, and inline uploads — and
+this file is how a connected site's plugin is reached under the credential schakl already holds.
 
 Three rules beyond ``surface.py``'s four.
 
@@ -71,7 +72,7 @@ from app.integrations.wordpress.service import ENTITY_TYPE
 from app.integrations.wordpress.surface import WordPressSurfaceService
 
 #: The plugin's own slug, named in the 409 so an admin knows what to install.
-BRIDGE_PLUGIN = "breik-bridge"
+BRIDGE_PLUGIN = "schakl-wordpress-mcp-bridge"
 
 _MAX_PER_PAGE = 100
 

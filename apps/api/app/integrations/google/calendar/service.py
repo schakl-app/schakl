@@ -12,19 +12,26 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import httpx
 from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.models import Org
 from app.core.tenancy import RequestContext
 from app.core.timezone import org_zoneinfo
+from app.errors import AppError
 from app.integrations.google.calendar.models import (
     CalendarEventLink,
     GoogleCalendarChannel,
     GoogleCalendarEvent,
     WatchStatus,
 )
-from app.integrations.google.client import acting_as, mark_connection_error
+from app.integrations.google.client import (
+    acting_as,
+    describe_api_error,
+    mark_connection_error,
+    oauth_client_hint,
+)
 from app.integrations.google.models import ConnectionStatus, GoogleConnection
 
 logger = logging.getLogger("schakl.google.calendar")
@@ -375,7 +382,13 @@ async def _fetch_calendar_list(
     ctx: RequestContext, connection: GoogleConnection, *, refresh: bool = False
 ) -> list[dict[str, Any]]:
     """The viewer's ``calendarList``, Redis-cached briefly — an account-page read must not
-    cost Google a round trip on every open. ``calendar.events`` covers this read."""
+    cost Google a round trip on every open.
+
+    ``calendar.events`` does **not** cover this read, whatever #440 assumed: a connection
+    consented with that scope alone is refused with a 403, which used to escape as a 500 and
+    left the account page without its calendar section and without a word about why. The
+    consent now asks ``calendar.calendarlist.readonly`` beside it, and a grant made before
+    that is told to reconnect."""
     import json
 
     from app.core.cache import get_redis
@@ -396,8 +409,13 @@ async def _fetch_calendar_list(
             params: dict[str, Any] = {"maxResults": 250}
             if page_token:
                 params["pageToken"] = page_token
-            response = await client.get(f"{CALENDAR_API}/users/me/calendarList", params=params)
-            response.raise_for_status()
+            try:
+                response = await client.get(
+                    f"{CALENDAR_API}/users/me/calendarList", params=params
+                )
+                response.raise_for_status()
+            except httpx.HTTPError as exc:
+                raise await _calendar_list_refused(ctx, exc) from exc
             body = response.json()
             for item in body.get("items", []):
                 if not item.get("id"):
@@ -420,6 +438,22 @@ async def _fetch_calendar_list(
     except Exception:  # noqa: BLE001 — the cache is a convenience
         pass
     return entries
+
+
+async def _calendar_list_refused(ctx: RequestContext, exc: Exception) -> AppError:
+    """Google's refusal of the calendar-list read, as a sentence the viewer can act on."""
+    detail = describe_api_error(exc)
+    hint = await oauth_client_hint(ctx.session, ctx.org.id)
+    logger.warning("calendarList refused (%s): %s", hint, detail or exc)
+    if detail is not None and detail.scope_insufficient:
+        return AppError(
+            "google_calendar_list_scope_missing",
+            "errors.google_calendar_list_scope_missing",
+            status_code=409,
+        )
+    return AppError(
+        "google_calendar_unavailable", "errors.google_calendar_unavailable", status_code=502
+    )
 
 
 async def list_calendars(ctx: RequestContext) -> list[dict[str, Any]]:

@@ -85,7 +85,6 @@
     micSupported = recordingSupported();
     tabSupported = supportsTabAudio();
     if (!micSupported) source = "upload";
-    if (!title) title = t("meetings.record.default_title", { date: fmtNumericDate(orgToday()) });
     return () => void leave();
   });
 
@@ -120,6 +119,20 @@
     splitProjectOptions(data.projects, { selectedId: projectId, companyId }),
   );
   const retentionDays = $derived(data.retentionDays);
+  /**
+   * What the meeting is called when the box is left empty — the API names it after the client
+   * and the day (`MeetingService._auto_title`, the same keys), then after what was discussed
+   * once the minutes are in. Drawn as the placeholder, so the person sees the name they are
+   * about to get without having to type it.
+   */
+  const autoTitle = $derived(
+    companyName
+      ? t("meetings.title.auto_with_client", {
+          client: companyName,
+          date: fmtNumericDate(orgToday()),
+        })
+      : t("meetings.title.auto", { date: fmtNumericDate(orgToday()) }),
+  );
   // Off means the checkbox is not drawn and the API does not refuse (the org's policy).
   const consentRequired = $derived(data.consentRequired);
 
@@ -138,7 +151,7 @@
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        title: title.trim(),
+        title: title.trim() || null,
         kind,
         source,
         company_id: companyId || null,
@@ -191,10 +204,6 @@
    * leaves nothing to clean up.
    */
   async function startRecording() {
-    if (!title.trim()) {
-      fieldError = "errors.required";
-      return;
-    }
     error = null;
     fieldError = null;
     if (!(await recorder.arm(source as CaptureSource))) {
@@ -224,10 +233,6 @@
 
   async function startUpload() {
     if (!file) return;
-    if (!title.trim()) {
-      fieldError = "errors.required";
-      return;
-    }
     const id = await createMeeting();
     if (!id) return;
     phase = "uploading";
@@ -247,12 +252,8 @@
   function onfile(event: Event) {
     const input = event.currentTarget as HTMLInputElement;
     file = input.files?.[0] ?? null;
-    if (
-      file &&
-      title.trim() === t("meetings.record.default_title", { date: fmtNumericDate(orgToday()) })
-    ) {
-      title = file.name.replace(/\.[a-z0-9]+$/i, "");
-    }
+    // An upload usually has a name already; it is offered, never forced.
+    if (file && !title.trim()) title = file.name.replace(/\.[a-z0-9]+$/i, "");
   }
 
   const inputClass =
@@ -302,7 +303,7 @@
 {:else if phase === "recording" || phase === "finishing"}
   <!-- The live surface: one number, one sentence about what is safe, one button. -->
   <div class="rounded-xl border border-border bg-surface-raised p-6 text-center">
-    <p class="text-sm text-text-muted">{title}</p>
+    <p class="text-sm text-text-muted">{title.trim() || autoTitle}</p>
     <p class="mt-2 text-4xl font-semibold tabular-nums text-text" aria-live="off">
       {formatClock(recorder.elapsed)}
     </p>
@@ -374,7 +375,14 @@
       <label for="meeting-title" class="mb-1 block text-sm font-medium text-text"
         >{t("meetings.field.title")}</label
       >
-      <input id="meeting-title" name="title" bind:value={title} class={inputClass} required />
+      <input
+        id="meeting-title"
+        name="title"
+        bind:value={title}
+        class={inputClass}
+        placeholder={autoTitle}
+      />
+      <p class="mt-1 text-xs text-text-muted">{t("meetings.record.title_hint")}</p>
     </div>
 
     <div class="grid gap-4 sm:grid-cols-2">

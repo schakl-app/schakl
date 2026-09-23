@@ -16,6 +16,7 @@ import uuid
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
+import httpx
 from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -503,8 +504,20 @@ async def _fetch_calendar_list(
         url: str = "/me/calendars"
         params: dict[str, Any] | None = {"$select": "id,name,isDefaultCalendar,canEdit"}
         while True:
-            response = await client.get(url, params=params)
-            response.raise_for_status()
+            try:
+                response = await client.get(url, params=params)
+                response.raise_for_status()
+            except httpx.HTTPError as exc:
+                # A refusal is Microsoft's answer, not a crash of ours: it used to escape as a 500
+                # and the account page drew no calendar section and no reason.
+                logger.warning("microsoft calendar list refused: %s", exc)
+                from app.errors import AppError
+
+                raise AppError(
+                    "microsoft_calendar_unavailable",
+                    "errors.microsoft_calendar_unavailable",
+                    status_code=502,
+                ) from exc
             body = response.json()
             for item in body.get("value", []):
                 if not item.get("id"):

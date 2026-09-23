@@ -23,7 +23,9 @@
   import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
   import ArrowLeft from "@lucide/svelte/icons/arrow-left";
   import Check from "@lucide/svelte/icons/check";
+  import Clock from "@lucide/svelte/icons/clock";
   import Download from "@lucide/svelte/icons/download";
+  import ExternalLink from "@lucide/svelte/icons/external-link";
   import Plus from "@lucide/svelte/icons/plus";
   import RefreshCw from "@lucide/svelte/icons/refresh-cw";
   import Sparkles from "@lucide/svelte/icons/sparkles";
@@ -34,7 +36,7 @@
   import { invalidate } from "$app/navigation";
   import { page } from "$app/state";
   import { aiEnabled } from "$lib/core/ai";
-  import { fmtDateTime } from "$lib/core/format";
+  import { fmtDateTime, fmtDayMonth } from "$lib/core/format";
   import { t, tn } from "$lib/core/i18n";
   import { pollWhile } from "$lib/core/poll.svelte";
   import { returnHref } from "$lib/core/screen-position.svelte";
@@ -60,6 +62,7 @@
   import MeetingAIRevise from "$lib/modules/meetings/MeetingAIRevise.svelte";
   import MeetingExportDialog from "$lib/modules/meetings/MeetingExportDialog.svelte";
   import MeetingStatusPill from "$lib/modules/meetings/MeetingStatusPill.svelte";
+  import MeetingTaskSheet from "$lib/modules/meetings/MeetingTaskSheet.svelte";
   import { parseTopics, topicsMarkdown } from "$lib/modules/meetings/topics";
   import ParticipantsEditor, {
     type Participant,
@@ -85,6 +88,67 @@
   let confirmDelete = $state(false);
   let confirmAudio = $state(false);
   let exportOpen = $state(false);
+
+  /**
+   * "Taak maken met schakl" beside an action item: the sheet asks the API for a draft over the
+   * *stored* minutes, so the reviewer's unsaved edits are saved first (`saveDraftFirst`), and
+   * the row is re-read afterwards because the item now carries its task.
+   */
+  let taskSheetOpen = $state(false);
+  let taskSheetIndex = $state(0);
+  let taskSheetItem = $state<MinutesActionItem | null>(null);
+  const canMakeTask = $derived(!!meeting.can_create_task && !!meeting.company_id);
+  const taskDraftAvailable = $derived(aiEnabled(page.data.user, "meeting_assist"));
+  function openTaskSheet(index: number, item: MinutesActionItem) {
+    taskSheetIndex = index;
+    taskSheetItem = item;
+    taskSheetOpen = true;
+  }
+
+  /**
+   * The hours, on the confirm dialog. Every colleague at the table is offered, ticked where
+   * the viewer may book them (their own hours on `time.entry.write`, a colleague's on `:any`);
+   * the length is the recording's, the line is the minutes' `time_note`. Nothing is written
+   * without the section on, and what *will* be written is spelled out in the consequences.
+   */
+  let logTimeOn = $state(false);
+  let logTimeUsers = $state<string[]>([]);
+  let logTimeMinutes = $state<number | null>(null);
+  let logTimeDescription = $state("");
+  let logTimeFor = $state<string | null>(null);
+  const staffAtTable = $derived(
+    (meeting.participants ?? []).filter((p): p is typeof p & { user_id: string } => !!p.user_id),
+  );
+  const bookable = $derived(
+    staffAtTable.filter((p) =>
+      p.user_id === page.data.user?.id ? !!meeting.can_log_time_own : !!meeting.can_log_time_any,
+    ),
+  );
+  $effect(() => {
+    const row = meeting;
+    if (row.status !== "review" || untrack(() => logTimeFor) === row.id) return;
+    logTimeFor = row.id;
+    logTimeUsers = bookable.map((p) => p.user_id);
+    logTimeOn = logTimeUsers.length > 0 && !!row.duration_seconds;
+    logTimeMinutes = row.duration_seconds
+      ? Math.max(1, Math.ceil(row.duration_seconds / 60))
+      : null;
+    logTimeDescription = row.minutes?.time_note ?? "";
+  });
+  function toggleLogUser(id: string) {
+    logTimeUsers = logTimeUsers.includes(id)
+      ? logTimeUsers.filter((x) => x !== id)
+      : [...logTimeUsers, id];
+  }
+  const logTimePayload = $derived(
+    logTimeOn && logTimeUsers.length && logTimeMinutes
+      ? JSON.stringify({
+          user_ids: logTimeUsers,
+          minutes: logTimeMinutes,
+          description: logTimeDescription.trim() || null,
+        })
+      : "",
+  );
 
   // The worker owns the row for a while: ask again until it does not (`pollWhile`'s rule). A
   // row still recording is polled too — a recorder in another tab posts a piece a minute, and
@@ -124,7 +188,12 @@
    */
   type Draft = Required<
     Pick<MinutesDraft, "summary" | "topics" | "decisions" | "action_items" | "open_questions">
-  > & { title: string | null; truncated: boolean; partial_input: boolean };
+  > & {
+    title: string | null;
+    time_note: string | null;
+    truncated: boolean;
+    partial_input: boolean;
+  };
   function toDraft(minutes: MinutesDraft): Draft {
     const copy = structuredClone($state.snapshot(minutes)) as MinutesDraft;
     return {
@@ -134,6 +203,7 @@
       decisions: copy.decisions ?? [],
       action_items: copy.action_items ?? [],
       open_questions: copy.open_questions ?? [],
+      time_note: copy.time_note ?? null,
       truncated: copy.truncated ?? false,
       partial_input: copy.partial_input ?? false,
     };
@@ -349,6 +419,7 @@
         quote: null,
         verified: true,
         create_task: true,
+        task_id: null,
       },
     ];
   }
@@ -422,6 +493,21 @@
     audioPlayable = probe.canPlayType(type) !== "";
   });
   const audioTypeLabel = $derived((meeting.audio_content_type ?? "").split("/")[1] ?? "");
+  let audioSeconds = $state<number | null>(null);
+  function measureAudio(el: HTMLAudioElement) {
+    if (Number.isFinite(el.duration)) {
+      audioSeconds = el.duration;
+      return;
+    }
+    // Infinity: a streamed container with no length in its header. Seeking past the end makes
+    // the browser scan for it and then answer a finite `duration`; the position is put back.
+    const back = () => {
+      el.removeEventListener("timeupdate", back);
+      el.currentTime = 0;
+    };
+    el.addEventListener("timeupdate", back);
+    el.currentTime = 1e101;
+  }
   const inputClass =
     "w-full rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm text-text outline-none focus:border-brand focus:ring-1 focus:ring-brand";
   const smallInput = `${inputClass} py-1.5`;
@@ -485,17 +571,46 @@
           onchange={(value: string) => (item.description = value.trim() ? value : null)}
         />
       </div>
-      <label class="mt-2 flex items-center gap-2 text-sm text-text">
-        <input
-          type="checkbox"
-          class="size-4 rounded border-border"
-          bind:checked={item.create_task}
-          disabled={!reviewing}
-        />
-        {item.owner_contact_id
-          ? t("meetings.review.create_task_contact")
-          : t("meetings.review.create_task")}
-      </label>
+      {#if item.task_id}
+        <p class="mt-2 flex items-center gap-2 text-sm text-text">
+          <Check size={14} class="text-green-600 dark:text-green-400" />
+          {t("meetings.review.task_made")}
+          <a
+            href={`/tasks/${item.task_id}`}
+            class="inline-flex items-center gap-1 text-brand hover:underline"
+          >
+            {t("meetings.review.open_task")}
+            <ExternalLink size={12} />
+          </a>
+        </p>
+      {:else}
+        <div class="mt-2 flex flex-wrap items-center justify-between gap-2">
+          <label class="flex items-center gap-2 text-sm text-text">
+            <input
+              type="checkbox"
+              class="size-4 rounded border-border"
+              bind:checked={item.create_task}
+              disabled={!reviewing}
+            />
+            {item.owner_contact_id
+              ? t("meetings.review.create_task_contact")
+              : t("meetings.review.create_task")}
+          </label>
+          {#if reviewing && canMakeTask}
+            <!-- The e-mail approve's "laat schakl deze taak invullen", one item at a time: a
+                 draft the reviewer checks, never a task that appears. -->
+            <button
+              type="button"
+              class="inline-flex items-center gap-1.5 rounded-lg border border-brand/40 bg-brand/5 px-2.5 py-1 text-xs font-medium text-brand hover:bg-brand/10"
+              title={t("meetings.review.make_task_hint")}
+              onclick={() => openTaskSheet(i, item)}
+            >
+              <Sparkles size={12} />
+              {t("meetings.review.make_task")}
+            </button>
+          {/if}
+        </div>
+      {/if}
       {@render evidence(item)}
     </div>
   {/if}
@@ -538,6 +653,15 @@
   <div class="min-w-0">
     <div class="flex flex-wrap items-center gap-2">
       <h1 class="text-xl font-semibold text-text">{meeting.title}</h1>
+      {#if meeting.title_auto}
+        <span
+          title={t("meetings.review.title_auto")}
+          class="text-brand"
+          aria-label={t("meetings.review.title_auto")}
+        >
+          <Sparkles size={14} />
+        </span>
+      {/if}
       <MeetingStatusPill status={meeting.status} />
     </div>
     <p class="mt-1 text-sm text-text-muted">
@@ -606,6 +730,19 @@
         {t("meetings.review.tasks_skipped", { count: String(form.skipped.length) })}
         {#each form.skipped as skipped (skipped.title)}
           · {skipped.title}{/each}
+      </span>
+    {/if}
+    {#if form.timeEntries?.length}
+      <span class="block text-text-muted">
+        {t("meetings.review.hours_logged")}:
+        {#each form.timeEntries as entry (entry.id)}
+          <span class="mr-2"
+            >{t("meetings.review.hours_entry", {
+              name: entry.user_name,
+              minutes: String(entry.minutes),
+            })}</span
+          >
+        {/each}
       </span>
     {/if}
   </p>
@@ -689,21 +826,45 @@
   <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,380px)]">
     <div class="space-y-6">
       <Card kind="panel" title={t("meetings.review.minutes")}>
-        {#if meeting.interaction_id || taskIds.length}
-          <p class="mb-4 text-sm text-text-muted">
-            {#if meeting.interaction_id}
-              <a
-                href={`/interactions?interaction=${meeting.interaction_id}`}
-                class="text-brand hover:underline">{t("meetings.review.open_interaction")}</a
-              >
+        {#if meeting.interaction_id || taskIds.length || (meeting.time_entries ?? []).length}
+          <div class="mb-4 space-y-1 text-sm text-text-muted">
+            <p>
+              {#if meeting.interaction_id}
+                <a
+                  href={`/interactions?interaction=${meeting.interaction_id}`}
+                  class="text-brand hover:underline">{t("meetings.review.open_interaction")}</a
+                >
+              {/if}
+              {#if taskIds.length}
+                · {tn("meetings.review.tasks_created", taskIds.length)}
+                {#each taskIds as taskId, i (taskId)}
+                  <a href={`/tasks/${taskId}`} class="mr-1 text-brand hover:underline">#{i + 1}</a>
+                {/each}
+              {/if}
+            </p>
+            {#if (meeting.time_entries ?? []).length}
+              <!-- Hours somebody did not type are a surprise on their timesheet unless the
+                   record says so — so the record says so, by name. -->
+              <p class="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <Clock size={14} class="text-text-muted" />
+                <span class="font-medium text-text">{t("meetings.review.hours_logged")}:</span>
+                {#each meeting.time_entries ?? [] as entry (entry.id)}
+                  <span
+                    >{t("meetings.review.hours_entry", {
+                      name: entry.user_name,
+                      minutes: String(entry.minutes),
+                    })}</span
+                  >
+                {/each}
+                <a
+                  href={`/time?date=${(meeting.time_entries ?? [])[0]?.date ?? ""}`}
+                  class="text-brand hover:underline"
+                >
+                  {t("meetings.review.hours_open")}
+                </a>
+              </p>
             {/if}
-            {#if taskIds.length}
-              · {tn("meetings.review.tasks_created", taskIds.length)}
-              {#each taskIds as taskId, i (taskId)}
-                <a href={`/tasks/${taskId}`} class="mr-1 text-brand hover:underline">#{i + 1}</a>
-              {/each}
-            {/if}
-          </p>
+          </div>
         {/if}
         {#if meeting.minutes.summary}
           <Markdown value={meeting.minutes.summary} class="text-sm" images />
@@ -744,7 +905,28 @@
                   {@const item = (meeting.minutes.action_items ?? [])[i]}
                   <li>
                     {item.title}
-                    {#if item.due_date}<span class="text-text-muted">— {item.due_date}</span>{/if}
+                    {#if item.due_date}<span class="text-text-muted"
+                        >— {fmtDayMonth(item.due_date)}</span
+                      >{/if}
+                    {#if item.task_id}
+                      <a
+                        href={`/tasks/${item.task_id}`}
+                        class="ml-1 inline-flex items-center gap-1 text-xs text-brand hover:underline"
+                      >
+                        {t("meetings.review.open_task")}
+                        <ExternalLink size={11} />
+                      </a>
+                    {:else if canWrite && canMakeTask}
+                      <button
+                        type="button"
+                        class="ml-1 inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline"
+                        title={t("meetings.review.make_task_hint")}
+                        onclick={() => openTaskSheet(i, item)}
+                      >
+                        <Sparkles size={11} />
+                        {t("meetings.review.make_task")}
+                      </button>
+                    {/if}
                     {#if item.description}
                       <Markdown value={item.description} class="text-sm text-text-muted" images />
                     {/if}
@@ -784,6 +966,36 @@
       use:enhance={busy.keep("save")}
     >
       <input type="hidden" name="minutes" value={payload} />
+
+      {#if reviewing}
+        <!-- Save and Confirm travel with the reader: a long set of minutes used to end in the
+             two buttons that matter, a screen below the last open question. -->
+        <div
+          class="sticky top-0 z-20 -mx-1 flex flex-wrap items-center gap-3 border-b border-border bg-surface/95 px-1 py-2.5 backdrop-blur"
+        >
+          <Button type="button" onclick={() => (confirmOpen = true)} disabled={busy.active}>
+            <Check size={15} />
+            {t("meetings.review.confirm")}
+          </Button>
+          <Button
+            type="submit"
+            variant="secondary"
+            loading={busy.is("save")}
+            disabled={busy.active}
+          >
+            {t("meetings.review.save_draft")}
+          </Button>
+          <span class="text-xs text-text-muted">
+            {#if unverified > 0}
+              <span class="text-amber-800 dark:text-amber-200">
+                {t("meetings.review.unverified_count", { count: String(unverified) })}
+              </span>
+            {:else}
+              {t("meetings.review.actions_hint")}
+            {/if}
+          </span>
+        </div>
+      {/if}
 
       {#if draft.truncated || draft.partial_input}
         <p
@@ -967,31 +1179,13 @@
           {/if}
         </div>
       </Card>
-
-      {#if reviewing}
-        <div class="flex flex-wrap items-center gap-3">
-          <Button
-            type="submit"
-            variant="secondary"
-            loading={busy.is("save")}
-            disabled={busy.active}
-          >
-            {t("meetings.review.save_draft")}
-          </Button>
-          <Button type="button" onclick={() => (confirmOpen = true)} disabled={busy.active}>
-            <Check size={15} />
-            {t("meetings.review.confirm")}
-          </Button>
-          {#if unverified > 0}
-            <span class="text-xs text-amber-800 dark:text-amber-200">
-              {t("meetings.review.unverified_count", { count: String(unverified) })}
-            </span>
-          {/if}
-        </div>
-      {/if}
     </form>
 
     <div class="space-y-6">
+      {#if canRevise}
+        <!-- First on the right: the one control that changes any part of the desk in words. -->
+        <MeetingAIRevise meetingId={meeting.id} before={saveDraftFirst} onapplied={onRevised} />
+      {/if}
       {#if reviewing}
         <Card kind="panel" title={t("meetings.review.filing")}>
           <form method="POST" action="?/update" class="space-y-3" use:enhance={busy.keep("filing")}>
@@ -1038,9 +1232,6 @@
           </form>
         </Card>
       {/if}
-      {#if canRevise}
-        <MeetingAIRevise meetingId={meeting.id} before={saveDraftFirst} onapplied={onRevised} />
-      {/if}
       {@render transcriptPanel(reviewing)}
     </div>
   </div>
@@ -1056,12 +1247,31 @@
       {#if audioPlayable}
         <!-- `metadata`, not `none`: a phone's player shows its length before the first tap,
              and the API answers byte ranges, so the read is a few kilobytes. -->
-        <audio controls preload="metadata" class="w-full">
+        <!-- A browser-made WebM that was never remuxed reports an infinite length and cannot
+             be scrubbed; seeking to the end once makes the element measure it (the known
+             workaround), and the length is printed beside the player either way. -->
+        <audio
+          controls
+          preload="metadata"
+          class="w-full"
+          onloadedmetadata={(e) => measureAudio(e.currentTarget)}
+          ondurationchange={(e) => {
+            const el = e.currentTarget;
+            if (Number.isFinite(el.duration)) audioSeconds = el.duration;
+          }}
+        >
           <source
             src={`/api/v1/files/${meeting.audio_file_id}`}
             type={meeting.audio_content_type ?? undefined}
           />
         </audio>
+        {#if audioSeconds || meeting.duration_seconds}
+          <p class="mt-1 text-xs text-text-muted">
+            {t("meetings.review.audio_length")}: {fmtDuration(
+              audioSeconds ?? meeting.duration_seconds,
+            )}
+          </p>
+        {/if}
       {:else}
         <p class="text-sm text-text">
           {t("meetings.review.audio_unplayable", { type: audioTypeLabel })}
@@ -1101,7 +1311,12 @@
               : "meetings.review.participants_hint_plain",
           )}
           {#if meeting.transcript_parts > 1}
-            {t("meetings.review.speakers_parts", { parts: String(meeting.transcript_parts) })}
+            {t(
+              meeting.transcript_aligned
+                ? "meetings.review.speakers_aligned"
+                : "meetings.review.speakers_parts",
+              { parts: String(meeting.transcript_parts) },
+            )}
           {/if}
         </p>
         <ParticipantsEditor
@@ -1170,13 +1385,114 @@
   consequences={[
     t("meetings.review.confirm_interaction", { kind: kindLabel(meeting.kind) }),
     tn("meetings.review.confirm_tasks", tasksToCreate),
+    ...(logTimePayload
+      ? [
+          tn("meetings.review.confirm_hours", logTimeUsers.length, {
+            minutes: String(logTimeMinutes ?? 0),
+          }),
+        ]
+      : []),
   ]}
   action="?/confirm"
-  fields={{ minutes: payload }}
+  fields={{ minutes: payload, log_time: logTimePayload }}
   confirmLabel={t("meetings.review.confirm")}
   variant="primary"
+  confirmDisabled={logTimeOn && (logTimeUsers.length === 0 || !logTimeMinutes)}
   onsuccess={() => (confirmOpen = false)}
-/>
+>
+  {#if bookable.length}
+    <!-- The hours: who, how long, the line — every entry it will write, before the press. A
+         colleague's hours land on *their* timesheet, which is why each name is a choice. -->
+    <div class="mt-4 rounded-lg border border-border p-3">
+      <label class="flex items-start gap-2 text-sm text-text">
+        <input
+          type="checkbox"
+          class="mt-0.5 size-4 rounded border-border"
+          bind:checked={logTimeOn}
+        />
+        <span>
+          <span class="block font-medium">{t("meetings.review.log_time")}</span>
+          <span class="block text-xs text-text-muted">{t("meetings.review.log_time_hint")}</span>
+        </span>
+      </label>
+      {#if logTimeOn}
+        <div class="mt-3 space-y-3">
+          <div class="flex flex-wrap gap-2">
+            {#each bookable as p (p.user_id)}
+              <label
+                class="inline-flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1.5 text-sm {logTimeUsers.includes(
+                  p.user_id,
+                )
+                  ? 'border-brand bg-brand/10 text-text'
+                  : 'border-border text-text-muted'}"
+              >
+                <input
+                  type="checkbox"
+                  class="sr-only"
+                  checked={logTimeUsers.includes(p.user_id)}
+                  onchange={() => toggleLogUser(p.user_id)}
+                />
+                {p.name}
+              </label>
+            {/each}
+          </div>
+          {#if logTimeUsers.length === 0}
+            <p class="text-xs text-amber-800 dark:text-amber-200">
+              {t("meetings.review.log_time_nobody")}
+            </p>
+          {/if}
+          <div class="grid gap-3 sm:grid-cols-[8rem_minmax(0,1fr)]">
+            <div>
+              <label for="log-time-minutes" class="mb-1 block text-xs text-text-muted"
+                >{t("meetings.review.log_time_minutes")}</label
+              >
+              <input
+                id="log-time-minutes"
+                type="number"
+                min="1"
+                max="1440"
+                class={smallInput}
+                value={logTimeMinutes ?? ""}
+                oninput={(e) =>
+                  (logTimeMinutes = Number((e.currentTarget as HTMLInputElement).value) || null)}
+              />
+            </div>
+            <div>
+              <label for="log-time-description" class="mb-1 block text-xs text-text-muted"
+                >{t("meetings.review.log_time_description")}</label
+              >
+              <input
+                id="log-time-description"
+                class={smallInput}
+                bind:value={logTimeDescription}
+                placeholder={draft?.title ?? meeting.title}
+              />
+            </div>
+          </div>
+        </div>
+      {/if}
+    </div>
+  {/if}
+</ConfirmDialog>
+
+{#if taskSheetItem}
+  <MeetingTaskSheet
+    bind:open={taskSheetOpen}
+    meetingId={meeting.id}
+    meetingTitle={meeting.title}
+    companyId={meeting.company_id ?? null}
+    companyName={meeting.company_name ?? null}
+    projectId={meeting.project_id ?? null}
+    index={taskSheetIndex}
+    item={taskSheetItem}
+    participants={meeting.participants ?? []}
+    {members}
+    projects={data.projects}
+    aiAvailable={taskDraftAvailable}
+    before={saveDraftFirst}
+    onsaved={onRevised}
+  />
+{/if}
 
 <MeetingExportDialog
   bind:open={exportOpen}

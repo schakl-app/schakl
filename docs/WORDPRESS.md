@@ -544,11 +544,11 @@ the escape hatch.
 - **Writes.** Creating a brand, editing prompts, `POST /brands/{id}/generate-queries`.
 - **An Instellingen overview** of every connected site. The panel is the working surface today.
 
-## 9. The breik. Bridge plugin — the site's own schema, reached from here
+## 9. The schakl WordPress MCP Bridge plugin — the site's own schema, reached from here
 
 `/mcp/wordpress`'s content routes (§7) reach a site through what core's `wp/v2` offers, and
-the first month of using them on a breik.-built site found where that stops. The pages are not
-blocks: every breik. theme builds a page out of an ACF **repeater** (`blokken_blokken`) whose
+the first month of using them on an agency-built site found where that stops. The pages are not
+blocks: every theme it was built for builds a page out of an ACF **repeater** (`blokken_blokken`) whose
 rows carry a `type` select (`10` = image + text, `15` = werkwijze, `3` = slider …) and thirty
 sibling fields of which each type shows four, all defined per site in the database. Four
 things fail on that shape, and none of them is fixable from this side of the credential:
@@ -565,8 +565,8 @@ things fail on that shape, and none of them is fixable from this side of the cre
   record, and `afbeelding_0_1: null` beside `afbeelding_of_video: "0"` on a type-15 row says
   nothing about which of the two is meaningful.
 
-So the fix is a WordPress plugin, **breik. Bridge** (its own repository, `breik-bridge`,
-author breik., PHP 7.4+, GPL), and it owns the four things on the site: the **schema**
+So the fix is a WordPress plugin, **schakl WordPress MCP Bridge** (its own repository, `schakl-wordpress-mcp-bridge`,
+author schakl., PHP 7.4+, GPL), and it owns the four things on the site: the **schema**
 (`acf_get_field_groups` → a normalised tree with names, types, choices, sub fields, layouts,
 the conditions that hide a field, and a one-line `value_format` per type), a **reader**
 (name-keyed canonical values, ISO dates, typed booleans; `compact` keeps per row only the
@@ -579,7 +579,7 @@ which is what stores the reference meta `get_field()` needs; inline `{"upload": 
 until the payload validates) and **WPML** (languages, translation groups, a linked translation
 created from the source with every referenced id swapped for its translation, connecting an
 existing record, String Translation). It exposes one operation catalog through three doors —
-REST `breik/v1`, a stateless MCP endpoint at `/wp-json/breik/v1/mcp` (JSON-RPC over POST,
+REST `schakl/v1`, a stateless MCP endpoint at `/wp-json/schakl/v1/mcp` (JSON-RPC over POST,
 `GET` answers 405 `Allow: POST`, the `RefuseStandaloneStream` rule one product over), and the
 Abilities API where WordPress is new enough — so a site that already routes agents through
 the adapter gets it without a second endpoint. Unit tests run without WordPress (a Lookup seam
@@ -608,7 +608,7 @@ Four rules, three of them §7's restated because they were easy to lose one name
 
 - **"Not installed" is decided by the call, never by the stored version.** Every bridge route
   on a site without the plugin answers core's `rest_no_route` and becomes a 409
-  `errors.wordpress_bridge_missing` naming `breik-bridge` in `details`. The probe grew a sixth
+  `errors.wordpress_bridge_missing` naming `schakl-wordpress-mcp-bridge` in `details`. The probe grew a sixth
   capability (`bridge`) and `wordpress_sites.bridge_version` (migration `c7e2a9b4d6f1`,
   additive) for the panel to print — an observation like `rankmath_version`, cleared by a probe
   that reached the site and found no plugin, left alone by one that could not reach it.
@@ -625,7 +625,7 @@ Four rules, three of them §7's restated because they were easy to lose one name
   thereby the person who may remove one, and a key an assistant holds should be able to say
   "may edit, never delete".
 - **Every write is a trail line on the site row** (§16): `content_created` / `content_updated`
-  (with `via: breik-bridge` and the touched fields or `ops×n`), `content_deleted`,
+  (with `via: schakl-wordpress-mcp-bridge` and the touched fields or `ops×n`), `content_deleted`,
   `media_uploaded`, `term_created`, `options_updated`, `menu_updated`,
   `translation_created`, `string_translated`.
 

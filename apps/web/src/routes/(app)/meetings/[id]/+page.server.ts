@@ -22,6 +22,20 @@ export const load: PageServerLoad = async (event) => {
 
 type MinutesBody = components["schemas"]["MinutesDraft"];
 type ParticipantBody = components["schemas"]["MeetingParticipant"];
+type LogTimeBody = components["schemas"]["MeetingLogTime"];
+type ItemTaskBody = components["schemas"]["MeetingTaskCreate"];
+
+/** The hours section of the confirm dialog, or nothing when it was switched off. */
+function logTimeFrom(form: FormData): LogTimeBody | null {
+  const raw = String(form.get("log_time") ?? "");
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as LogTimeBody;
+    return Array.isArray(parsed.user_ids) && parsed.user_ids.length ? parsed : null;
+  } catch {
+    return null;
+  }
+}
 
 function parseParticipants(form: FormData): ParticipantBody[] | null {
   try {
@@ -125,20 +139,53 @@ export const actions: Actions = {
     return { saved: true };
   },
 
-  /** The draft becomes a contact moment and tasks. */
+  /** The draft becomes a contact moment and tasks — and, when the dialog says so, the
+   *  meeting's hours for the colleagues ticked, in the same transaction. */
   confirm: async (event) => {
     const form = await event.request.formData();
     const minutes = minutesFrom(form);
     if (!minutes) return fail(400, { error: "errors.validation" });
+    const logTime = logTimeFrom(form);
     const { data, error } = await apiFor(event).POST("/api/v1/meetings/{meeting_id}/confirm", {
       params: { path: { meeting_id: event.params.id } },
-      body: { minutes },
+      body: { minutes, ...(logTime ? { log_time: logTime } : {}) },
     });
     if (error) {
       const e = apiErrorKey(error);
-      return fail(400, { error: e.key, fields: e.fields });
+      return fail(400, { error: e.fields?.log_time ?? e.key, fields: e.fields });
     }
-    return { confirmed: true, skipped: data?.skipped ?? [] };
+    return {
+      confirmed: true,
+      skipped: data?.skipped ?? [],
+      timeEntries: data?.time_entries ?? [],
+    };
+  },
+
+  /**
+   * One action item, reviewed in the sheet, becomes a task — steps and links in one call
+   * (`MeetingTaskSheet`). The draft rides as one JSON field because it is nested, exactly as
+   * the dictation's create does.
+   */
+  createItemTask: async (event) => {
+    const form = await event.request.formData();
+    let body: ItemTaskBody;
+    try {
+      body = JSON.parse(String(form.get("payload") ?? "{}")) as ItemTaskBody;
+    } catch {
+      return fail(400, { error: "errors.validation" });
+    }
+    if (!String(body.title ?? "").trim()) return fail(400, { error: "errors.validation" });
+    if (!body.due_date) return fail(400, { error: "errors.required" });
+    const { data, error } = await apiFor(event).POST(
+      "/api/v1/meetings/{meeting_id}/action-items/task",
+      { params: { path: { meeting_id: event.params.id } }, body },
+    );
+    if (error || !data) {
+      const e = apiErrorKey(error);
+      const field = e.fields ? Object.values(e.fields)[0] : undefined;
+      return fail(400, { error: field ?? e.key });
+    }
+    return { taskCreated: true, taskId: data.task_id };
   },
 
   /**

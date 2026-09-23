@@ -38,11 +38,25 @@ request* and takes a bounded amount of audio per request (`core/ai/transcribe.sp
 A recording over the cap is cut into parts with ffmpeg (a copy cut on a frame boundary, no
 re-encode; the API image ships it, a dev box without it refuses exactly those recordings with
 `meetings.error.needs_split`). Every part is a fresh request, so "S1" in part two is not "S1" in
-part one: labels are numbered on through the parts (S1, S2 · S3, S4) and never merged by
-guesswork, and the review screen says the recording was transcribed in *n* parts beside the
-speaker names. That is the whole argument for Voxtral: a two-hour meeting is one request, one
-set of labels, in Dutch. The settings screen offers it as a speech provider
-(`SpeechProvider = "mistral"`); its chat API stays reachable as `openai_compatible`.
+part one. The first shape numbered the labels on through the parts (S1, S2 · S3, S4) and left the
+reviewer to pair four labels with two people — which, on a twenty-three-minute meeting with two
+speakers, was not feasible, and that meeting should never have been cut at all: the margin under
+the vendor's 1500 s was taken twice (1400 × 0.97 = 1358 s), so a meeting well inside what the
+model takes was split. One margin now, in one place (`_PART_MARGIN`). Where a recording really
+is longer than a request, **the parts overlap** (`OVERLAP_SECONDS`, 45): every part but the first
+starts before the previous one ended, both transcribe the same stretch, and a label in the new
+part is matched to the label in the old one that spoke during the same seconds
+(`pipeline.align_labels`) — by time, never by guessing at voices, greedily best pair first, and
+only where the shared speaking time is at least two seconds and at least half of the new label's
+time in the window. A label the overlap cannot pair keeps a fresh number, so the failure direction
+is the old one (a speaker split in two, said on the screen with `transcript_aligned`), never two
+people merged into one; the duplicated stretch is dropped from the new part (a segment straddling
+the cut is kept once, by whichever part holds more of it) and the flat text is rebuilt from the
+rows. A provider that answers no timestamps gets edge-to-edge parts: there is nothing to align on.
+That is still the argument for Voxtral: an alignment is an inference and one request is a fact —
+a two-hour meeting is one request, one set of labels, in Dutch. The settings screen offers it as
+a speech provider (`SpeechProvider = "mistral"`); its chat API stays reachable as
+`openai_compatible`.
 
 **Every claim quotes its evidence, and the quote is checked.** The minutes schema asks for the
 transcript's own words under every decision and action item, with the second it was said at.
@@ -305,6 +319,56 @@ moment the draft lands on `review`, deduped per run so a redraft is heard too). 
 app, and — the one event that mails by its own default (`EMAIL_DEFAULT_ON_EVENTS`) — by mail,
 because the person waiting for it recorded from a phone and walked out of the room; a person or
 an org switches it off in the matrix like any other row.
+
+## From the desk: a task with schakl's draft, the hours, and a name
+
+**An action item becomes a task the way an approved e-mail does** — *Taak maken met schakl*
+beside the item opens a sheet (`MeetingTaskSheet`) that asks `POST
+/meetings/{id}/action-items/draft-task` for the task's whole form: the title, what exactly is to
+be done, the steps the meeting enumerated, the deadline that was *spoken* ("voor het eind van
+de maand" beside the minutes' own date), who took it on — grounded in the transcript around the
+moment the item was said (`taskdraft._excerpt`), through `core/ai/taskdraft.draft_from_call`'s
+own per-type grounding, with the client and project pinned to the meeting's. The reviewer reads
+it beside the quote, corrects it, and `POST …/action-items/task` writes it in one call (steps and
+links included, the dictation's shape) through the tasks module's own service as the reviewer.
+The item then carries `task_id`: the confirm files it on the contact moment beside the tasks it
+makes itself and never makes it twice, and on a meeting already confirmed the task is filed on
+the contact moment at once. The page saves the reviewer's unsaved draft before the sheet opens,
+so the item the API reads is the item on the screen. A draft the provider refuses still opens
+the form, filled from the minutes, and the sheet says which of the two happened.
+
+**The hours are booked on confirm, and every entry is on the dialog before the press.**
+`MeetingConfirm.log_time` names the colleagues (the staff at the table, each a choice — the
+entry lands on *their* timesheet), a duration (the recording's own unless typed) and a line
+(the minutes' `time_note`, one sentence the model writes for a timesheet, unless typed). Each
+entry goes through `time.system.record_entry`, typed after the contact moment's kind (#182) and
+filed on it, in the confirm's transaction; the gates are #314's — `time.entry.write` (`:any` for
+anyone but the caller), the `time` sku still writable (a 402 refuses the whole confirm, because
+a ride-along must never be the one way an uncovered module is written to), every id one of the
+org's staff — and they are asked *before* the contact moment is written. The record then says
+whose hours were booked, by name (`time_entries` on the detail, `time_entry_ids` on the row),
+because a time entry somebody did not type is a surprise on their timesheet unless the record
+says so.
+
+**A meeting left unnamed is named twice, and a typed name is never touched.** The recorder's
+title box may be left empty: the API names the row after the client and the day
+("Bespreking met Nova Fietsen · 23-09-2026", `meetings.title.auto*`, the org's language and
+calendar) and marks it `title_auto`; when the minutes land, a row still marked takes the
+model's `title` once — and the screen draws a ✦ beside a title schakl chose. Editing the title,
+or confirming with one, clears the mark.
+
+**A browser's recording is remuxed once so it can be scrubbed.** `MediaRecorder` streams a WebM
+whose header says *unknown duration* and carries no cues, so `<audio>` reported `Infinity`,
+drew no total and could not be seeked. The fold now runs the file through ffmpeg with `-c copy`
+(`pipeline.remux`, WebM and Ogg only — a phone's m4a already states its length), which writes
+the duration and the cues; the measured length also fills `duration_seconds` where the recorder
+sent none. Where ffmpeg is absent the bytes are kept as they came and the page uses the known
+workaround (seek past the end, then back) and prints the length beside the player either way.
+
+**The desk's controls sit where the reader is.** Opslaan and Bevestigen ride a sticky bar at
+the top of the minutes (a long set of minutes ended in the two buttons that matter, a screen
+below the last open question), and the AI box is the first card on the right, in the brand's
+tint, with the field taking the width and the microphone inside it.
 
 ## Costs
 

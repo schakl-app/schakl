@@ -10,7 +10,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, Query, Response
 
-from app.core.ai.schemas import TimeTranscribeResult
+from app.core.ai.schemas import TaskParseResult, TimeTranscribeResult
 from app.core.entitlements.service import license_write_gate
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
@@ -34,6 +34,9 @@ from app.modules.meetings.schemas import (
     MeetingSettingsRead,
     MeetingSettingsUpdate,
     MeetingStatusRead,
+    MeetingTaskCreate,
+    MeetingTaskCreated,
+    MeetingTaskDraftRequest,
     MeetingTranscribeRequest,
     MeetingUpdate,
     MinutesDraft,
@@ -274,6 +277,39 @@ async def confirm_meeting(
 ) -> MeetingConfirmResult:
     """The minutes become a contact moment and the ticked action items become tasks."""
     return await MeetingService(ctx).confirm(meeting_id, payload)
+
+
+@router.post(
+    "/{meeting_id}/action-items/draft-task",
+    response_model=TaskParseResult,
+    dependencies=[require_permission("meetings.meeting.write")],
+)
+async def draft_task_for_action_item(
+    meeting_id: uuid.UUID,
+    payload: MeetingTaskDraftRequest,
+    ctx: RequestContext = Depends(require_context),
+) -> TaskParseResult:
+    """Schakl fills in the task form for one action item of the minutes — title, what exactly,
+    the steps the meeting listed, the deadline that was spoken, who took it on — grounded in
+    the transcript around it. A draft: nothing is created until it is posted below."""
+    return await MeetingService(ctx).draft_task(meeting_id, payload)
+
+
+@router.post(
+    "/{meeting_id}/action-items/task",
+    response_model=MeetingTaskCreated,
+    status_code=201,
+    dependencies=[require_permission("meetings.meeting.write")],
+)
+async def create_task_for_action_item(
+    meeting_id: uuid.UUID,
+    payload: MeetingTaskCreate,
+    ctx: RequestContext = Depends(require_context),
+) -> MeetingTaskCreated:
+    """Make the task for one action item now, with its steps and links in one call, as the
+    caller (the tasks module's own rules apply). The item remembers its task, the confirm
+    files it on the contact moment, and a meeting already confirmed files it at once."""
+    return await MeetingService(ctx).create_task_for_item(meeting_id, payload)
 
 
 @router.delete(

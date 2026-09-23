@@ -22,8 +22,10 @@ from sqlalchemy import func, select
 
 from app.core.activity import ActivityService
 from app.core.ai.audio import MAX_AUDIO_BYTES, decode_clip
-from app.core.ai.service import enabled_features
+from app.core.ai.schemas import TaskParseResult
+from app.core.ai.service import AIService, enabled_features
 from app.core.directory import labels_for, visible_ids
+from app.core.entitlements import OrgPlan, refusal_for, sku_writable
 from app.core.jobs import enqueue
 from app.core.members import staff_select
 from app.core.parent import ensure_parent_in_tenant
@@ -50,11 +52,17 @@ from app.modules.meetings.schemas import (
     MeetingDetail,
     MeetingFinish,
     MeetingList,
+    MeetingLogTime,
     MeetingParticipant,
     MeetingRow,
     MeetingStatusRead,
+    MeetingTaskCreate,
+    MeetingTaskCreated,
+    MeetingTaskDraftRequest,
+    MeetingTimeEntry,
     MeetingTranscript,
     MeetingUpdate,
+    MinutesActionItem,
     MinutesDraft,
     TranscriptSegment,
 )
@@ -199,17 +207,55 @@ class MeetingService:
             transcript_text=row.transcript_text,
             transcript_model=transcript.get("model"),
             transcript_parts=int(transcript.get("parts") or 0),
+            transcript_aligned=bool(transcript.get("aligned")),
             diarized=any(s.speaker for s in segments),
             participants=participants,
             speakers=speaker_names(participants),
             minutes=minutes,
             interaction_id=row.interaction_id,
             task_ids=[uuid.UUID(str(t)) for t in (row.task_ids or [])],
+            time_entries=await self._time_entries(row, participants),
             confirmed_at=row.confirmed_at,
             can_write=self.ctx.can("meetings.meeting.write"),
             can_delete=self.ctx.can("meetings.meeting.delete"),
+            can_create_task=self.ctx.can("tasks.task.create") and not self.ctx.is_portal,
+            can_log_time_own=self.ctx.can("time.entry.write"),
+            can_log_time_any=self.ctx.can("time.entry.write", "any"),
             document_sections=document_sections_for(row, settings.document_sections),
         )
+
+    async def _time_entries(
+        self, row: Meeting, participants: list[MeetingParticipant]
+    ) -> list[MeetingTimeEntry]:
+        """The hours a confirm booked, read back through the time module's published surface
+        and named through the roster (a booked colleague is a participant by construction)."""
+        ids = [uuid.UUID(str(t)) for t in (row.time_entry_ids or [])]
+        if not ids:
+            return []
+        from app.modules.time import system as time_system
+
+        names = {p.user_id: p.name for p in participants if p.user_id is not None}
+        rows = await time_system.entries_by_ids(self.ctx, ids)
+        missing = [r["user_id"] for r in rows if r["user_id"] not in names]
+        if missing:
+            from app.core.auth.models import User
+
+            found = await self.ctx.session.execute(
+                staff_select(self.ctx.org.id).where(User.id.in_(missing))
+            )
+            for user in found.scalars():
+                names[user.id] = user.full_name or user.email
+        by_id = {r["id"]: r for r in rows}
+        return [
+            MeetingTimeEntry(
+                id=r["id"],
+                user_id=r["user_id"],
+                user_name=names.get(r["user_id"], "?"),
+                minutes=r["minutes"],
+                date=r["started_at"].date(),
+            )
+            for r in (by_id[i] for i in ids if i in by_id)
+        ]
 
     async def transcript(self, meeting_id: uuid.UUID) -> MeetingTranscript:
         """The words whole, every label resolved to a name — one shape for an agent and for
@@ -279,8 +325,17 @@ class MeetingService:
                 0, MeetingParticipant(name=user.full_name or user.email, user_id=user.id)
             )
         now = _now()
+        title = (data.title or "").strip()
+        title_auto = not title
+        if title_auto:
+            # Nobody typed one: name it after the kind, the client and the day, and say so on
+            # the row so the minutes may name it properly once the words are in.
+            title = await self._auto_title(
+                data.kind.value, data.company_id, data.occurred_at or now
+            )
         row = await self.repo.create(
-            title=data.title.strip(),
+            title=title,
+            title_auto=title_auto,
             kind=data.kind.value,
             source=data.source.value,
             status=MeetingStatus.RECORDING.value,
@@ -296,6 +351,27 @@ class MeetingService:
         )
         await ActivityService(self.ctx).record_created(ENTITY_TYPE, row.id)
         return await self._detail(row)
+
+    async def _auto_title(
+        self, kind: str, company_id: uuid.UUID | None, occurred_at: datetime
+    ) -> str:
+        """"Bespreking met Nova Fietsen · 23-09-2026" — the org's language, the org's calendar
+        (a meeting recorded at 00:30 is dated the day the people in it would say)."""
+        from app.core.timezone import org_zoneinfo
+        from app.i18n import translate
+
+        locale = await org_locale(self.ctx)
+        zone = await org_zoneinfo(self.ctx.session, self.ctx.org.id)
+        day = occurred_at.astimezone(zone).strftime("%d-%m-%Y")
+        kind_label = translate(f"meetings.kind.{kind}", locale)
+        company = None
+        if company_id is not None:
+            company = (await labels_for(self.ctx, "company", [company_id])).get(company_id)
+        if company:
+            return translate(
+                "meetings.title.auto_with_client", locale, kind=kind_label, client=company, date=day
+            )[:255]
+        return translate("meetings.title.auto", locale, kind=kind_label, date=day)[:255]
 
     async def _clean_participants(
         self, participants: list[MeetingParticipant]
@@ -372,6 +448,8 @@ class MeetingService:
             values["kind"] = values["kind"].value
         if "title" in values:
             values["title"] = (values["title"] or "").strip() or row.title
+            if values["title"] != row.title:
+                values["title_auto"] = False
         before = {f: getattr(row, f) for f in _TRACKED}
         row = await self.repo.update(row, **values)
         await ActivityService(self.ctx).record_update(
@@ -562,6 +640,9 @@ class MeetingService:
             raise AppError("conflict", "meetings.error.not_reviewable", status_code=409)
         draft = data.minutes
         title = (draft.title or "").strip() or row.title
+        # Every gate the hours need is asked *before* the contact moment is written, so a
+        # refusal (a licence, a colleague the caller may not book) leaves nothing half-done.
+        log_time = await self._log_time_plan(row, data.log_time)
         locale = await org_locale(self.ctx)
         participants = participants_of(row)
         names = await self._owner_names(draft, participants)
@@ -586,7 +667,9 @@ class MeetingService:
         interaction_id = uuid.UUID(str(interaction["id"]))
 
         tasks = TaskService(self.ctx)
-        task_ids: list[uuid.UUID] = []
+        # The tasks made from the review desk already (``create_task_for_item``) are filed on
+        # the contact moment beside the ones the confirm makes now, and made no second time.
+        task_ids: list[uuid.UUID] = [i.task_id for i in draft.action_items if i.task_id]
         skipped: list[dict[str, Any]] = []
         # No SAVEPOINT around the create, on purpose. Assigning a task to a contact queues the
         # contact's mail inside ``release_db`` (tasks #454), whose commit is the outermost one
@@ -598,7 +681,7 @@ class MeetingService:
         # then, which is the per-row durability the savepoint was for.
         company_id, project_id = row.company_id, row.project_id
         for item in draft.action_items:
-            if not item.create_task:
+            if not item.create_task or item.task_id is not None:
                 continue
             try:
                 # A contact who took it on gets the task *as the client's* (#273): the
@@ -615,6 +698,9 @@ class MeetingService:
                     )
                 )
                 task_ids.append(task.id)
+                # The item remembers its task, so the record's page can link it and never
+                # offers to make it a second time.
+                item.task_id = task.id
             except AppError as exc:
                 skipped.append(
                     {"title": item.title, "message": exc.message_key, "fields": exc.fields}
@@ -626,25 +712,230 @@ class MeetingService:
             await InteractionService(self.ctx).update(
                 interaction_id, InteractionUpdate(task_ids=task_ids)
             )
+        entry_ids = await self._log_time(row, interaction_id, log_time, draft, title)
         row = await self.repo.update(
             row,
             title=title,
+            title_auto=False if (draft.title or "").strip() else row.title_auto,
             minutes=draft.model_dump(mode="json"),
             status=MeetingStatus.DONE.value,
             status_at=_now(),
             interaction_id=interaction_id,
             task_ids=[str(t) for t in task_ids],
+            time_entry_ids=[str(t) for t in entry_ids] or None,
             confirmed_at=_now(),
         )
         await ActivityService(self.ctx).record(
             ENTITY_TYPE,
             row.id,
             "meeting.confirmed",
-            {"interaction_id": str(interaction_id), "tasks": len(task_ids)},
+            {
+                "interaction_id": str(interaction_id),
+                "tasks": len(task_ids),
+                "time_entries": len(entry_ids),
+            },
         )
         return MeetingConfirmResult(
-            interaction_id=interaction_id, task_ids=task_ids, skipped=skipped
+            interaction_id=interaction_id,
+            task_ids=task_ids,
+            skipped=skipped,
+            time_entries=await self._time_entries(row, participants),
         )
+
+    async def _log_time_plan(
+        self, row: Meeting, log_time: MeetingLogTime | None
+    ) -> tuple[list[uuid.UUID], int, MeetingLogTime] | None:
+        """Everything the hours need, checked before anything is written (#314's three gates,
+        and a fourth): ``time.entry.write`` — at ``:any`` for anyone but the caller, since the
+        entry lands on *their* timesheet; the ``time`` sku still writable, because the confirm
+        rides ``meetings``' licence gate and a ride-along must never be the one way an
+        uncovered module can still be written to (§18); every id one of the org's staff; and a
+        duration, the recording's own where none was typed — a meeting with neither is a
+        request nobody can honour, refused with the field named."""
+        if log_time is None:
+            return None
+        if not await sku_writable("time", plan=OrgPlan.of(self.ctx.org)):
+            raise AppError(*refusal_for("time"), status_code=402)
+        user_ids = list(dict.fromkeys(log_time.user_ids))
+        if any(uid != self.ctx.user.id for uid in user_ids):
+            self.ctx.require("time.entry.write", "any")
+        else:
+            self.ctx.require("time.entry.write")
+        from app.core.auth.models import User
+
+        rows = await self.ctx.session.execute(
+            staff_select(self.ctx.org.id).where(User.id.in_(user_ids))
+        )
+        staff = {u.id for u in rows.scalars()}
+        if any(uid not in staff for uid in user_ids):
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"log_time": "errors.not_found"},
+            )
+        minutes = log_time.minutes
+        if minutes is None and row.duration_seconds:
+            minutes = max(1, int((row.duration_seconds + 59) // 60))
+        if not minutes:
+            raise AppError(
+                "validation",
+                "errors.validation",
+                status_code=422,
+                fields={"log_time": "meetings.error.log_time_minutes"},
+            )
+        return user_ids, minutes, log_time
+
+    async def _log_time(
+        self,
+        row: Meeting,
+        interaction_id: uuid.UUID,
+        plan: tuple[list[uuid.UUID], int, MeetingLogTime] | None,
+        draft: MinutesDraft,
+        title: str,
+    ) -> list[uuid.UUID]:
+        """One entry per colleague named, for the meeting's length, filed on the contact moment
+        — through the time module's published surface (§6), typed after the moment's kind
+        exactly as a hand-logged call is (#182)."""
+        if plan is None:
+            return []
+        user_ids, minutes, log_time = plan
+        from datetime import timedelta
+
+        from app.modules.interactions import system as interactions_system
+        from app.modules.time import system as time_system
+
+        kind = INTERACTION_KINDS.get(row.kind, "physical_meeting")
+        entry_type_key = await time_system.ensure_type_for_kind(
+            self.ctx, kind, await interactions_system.kind_label(self.ctx, kind)
+        )
+        description = (
+            (log_time.description or "").strip() or (draft.time_note or "").strip() or title
+        )
+        ids: list[uuid.UUID] = []
+        for uid in user_ids:
+            entry = await time_system.record_entry(
+                self.ctx,
+                user_id=uid,
+                started_at=row.occurred_at,
+                ended_at=row.occurred_at + timedelta(minutes=minutes),
+                company_id=row.company_id,
+                project_id=row.project_id,
+                description=description[:2000],
+                entry_type_key=entry_type_key,
+                interaction_id=interaction_id,
+                billable=log_time.billable,
+            )
+            ids.append(entry.id)
+        return ids
+
+    # --- a task from one action item, drafted by schakl --------------------------- #
+    async def _item_at(self, row: Meeting, index: int) -> tuple[MinutesDraft, MinutesActionItem]:
+        if not row.minutes:
+            raise AppError("validation", "meetings.error.no_minutes", status_code=422)
+        try:
+            draft = MinutesDraft.model_validate(row.minutes)
+        except ValueError as exc:
+            raise AppError("validation", "meetings.error.no_minutes", status_code=422) from exc
+        if index >= len(draft.action_items):
+            raise AppError("not_found", "errors.not_found", status_code=404)
+        return draft, draft.action_items[index]
+
+    async def draft_task(
+        self, meeting_id: uuid.UUID, data: MeetingTaskDraftRequest
+    ) -> TaskParseResult:
+        """Schakl fills the task form for one action item of the stored minutes (the e-mail
+        approve's "laat schakl deze taak invullen", on the review desk). Creates nothing."""
+        from app.modules.meetings.taskdraft import draft_task_for_item
+
+        row = await self._writable(meeting_id)
+        self.ctx.require("tasks.task.create")
+        await self._require_feature()
+        draft, item = await self._item_at(row, data.index)
+        participants = participants_of(row)
+        names = await self._owner_names(draft, participants)
+        owner = names.get(_owner_key(item) or "") or item.owner_label
+        company = None
+        if row.company_id is not None:
+            company = (await labels_for(self.ctx, "company", [row.company_id])).get(row.company_id)
+        return await draft_task_for_item(
+            AIService(self.ctx),
+            row=row,
+            item=item,
+            participants=participants,
+            agency=await agency_name(self.ctx.session, self.ctx.org),
+            locale=await org_locale(self.ctx),
+            owner_name=owner,
+            company_name=company,
+            override_budget=data.override_budget,
+        )
+
+    async def create_task_for_item(
+        self, meeting_id: uuid.UUID, data: MeetingTaskCreate
+    ) -> MeetingTaskCreated:
+        """The reviewed draft becomes a task — the meeting's client's, through the tasks
+        module's own service as the reviewer — and the action item remembers it, so the confirm
+        files it on the contact moment rather than making it twice. On a meeting already
+        confirmed, the task is filed on the contact moment here and now."""
+        from app.modules.tasks.schemas import TaskCreate, TaskCreateChecklist
+        from app.modules.tasks.service import TaskService
+
+        row = await self._writable(meeting_id)
+        if row.status not in (MeetingStatus.REVIEW.value, MeetingStatus.DONE.value):
+            raise AppError("conflict", "meetings.error.not_reviewable", status_code=409)
+        draft, item = await self._item_at(row, data.index)
+        if item.task_id is not None:
+            raise AppError("conflict", "meetings.error.task_exists", status_code=409)
+        if data.project_id is not None:
+            await ensure_parent_in_tenant(
+                self.ctx.session, "projects", data.project_id, self.ctx.org.id
+            )
+        locale = await org_locale(self.ctx)
+        task = await TaskService(self.ctx).create(
+            TaskCreate(
+                title=data.title,
+                description=_task_notes(item, row.title, locale, description=data.description),
+                due_date=data.due_date,
+                priority=data.priority or "normal",
+                status=data.status,
+                company_id=row.company_id,
+                project_id=data.project_id or row.project_id,
+                assignee_user_id=None if data.assignee_contact_id else data.assignee_user_id,
+                assignee_contact_id=data.assignee_contact_id,
+                allocated_minutes=data.allocated_minutes,
+                requires_interaction=data.requires_interaction,
+                visible_to_client=data.visible_to_client,
+                checklist=(
+                    TaskCreateChecklist(
+                        title=data.checklist_title,
+                        items=[i.model_dump() for i in data.checklist_items],
+                    )
+                    if data.checklist_items or data.checklist_title
+                    else None
+                ),
+                links=[link.model_dump() for link in data.links],
+                label_ids=data.label_ids,
+            )
+        )
+        item.task_id = task.id
+        item.create_task = False
+        item.title = data.title
+        item.due_date = data.due_date
+        task_ids = [uuid.UUID(str(t)) for t in (row.task_ids or [])] + [task.id]
+        if row.interaction_id is not None:
+            from app.modules.interactions.schemas import InteractionUpdate
+            from app.modules.interactions.service import InteractionService
+
+            await InteractionService(self.ctx).update(
+                row.interaction_id, InteractionUpdate(task_ids=task_ids)
+            )
+        row = await self.repo.update(
+            row, minutes=draft.model_dump(mode="json"), task_ids=[str(t) for t in task_ids]
+        )
+        await ActivityService(self.ctx).record(
+            ENTITY_TYPE, row.id, "meeting.task_created", {"task_id": str(task.id)}
+        )
+        return MeetingTaskCreated(task_id=task.id, meeting=await self._detail(row))
 
     async def _owner_names(
         self, draft: MinutesDraft, participants: list[MeetingParticipant]
@@ -713,6 +1004,14 @@ async def _org_today(ctx: RequestContext):  # noqa: ANN202
     return await org_today(ctx.session, ctx.org.id)
 
 
+async def agency_name(session: Any, org: Any) -> str:
+    """The name the minutes and the task drafts speak of — the brand, else the org."""
+    from app.core.models import OrgSettings
+
+    brand = await session.scalar(select(OrgSettings.brand_name).where(OrgSettings.org_id == org.id))
+    return brand or org.name or "the agency"
+
+
 async def org_locale(ctx: Any) -> str:
     """The org's own language — the minutes are the agency's document, not the reviewer's UI."""
     from app.config import settings as app_settings
@@ -724,14 +1023,17 @@ async def org_locale(ctx: Any) -> str:
     return locale or app_settings.default_locale
 
 
-def _task_notes(item: Any, meeting_title: str, locale: str) -> str | None:
-    """The task's notes: the item's own, plus the sentence it rests on and where it was said —
-    the evidence travels with the work."""
+def _task_notes(
+    item: Any, meeting_title: str, locale: str, *, description: str | None = None
+) -> str | None:
+    """The task's notes: the item's own (or the reviewed draft's), plus the sentence it rests
+    on and where it was said — the evidence travels with the work."""
     from app.i18n import translate
 
     parts: list[str] = []
-    if item.description:
-        parts.append(item.description.strip())
+    notes = description if description is not None else item.description
+    if notes and notes.strip():
+        parts.append(notes.strip())
     if item.quote:
         at = f" ({_clock(item.at)})" if item.at is not None else ""
         parts.append(f"> {item.quote.strip()}{at}")
@@ -905,6 +1207,7 @@ async def drop_audio(ctx: Any, row: Meeting) -> None:
 
 __all__ = [
     "CHUNK_PREFIX",
+    "agency_name",
     "INTERACTION_KINDS",
     "MAX_RECORDING_BYTES",
     "MeetingService",

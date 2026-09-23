@@ -1536,11 +1536,11 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   never folded into `websites.website.write`, and a disconnect that forgets the credential without
   revoking it at the far end.
 - **A page builder's rules live on the site, so the site grows a plugin that states them**
-  (`breik-bridge`, a separate repository; `docs/WORDPRESS.md` §9). Editing a breik. page through
+  (`schakl-wordpress-mcp-bridge`, a separate repository; `docs/WORDPRESS.md` §9). Editing a page-builder page through
   ACF's own REST integration failed on every write, and the cause was not ours to fix from the
   credential's side: the pages are a repeater of typed rows with thirty conditional siblings,
   ACF's REST validation ignores conditional logic, a repeater is re-posted whole and saves
-  positionally, and a post type without `show_in_rest` does not exist. So the **breik. Bridge**
+  positionally, and a post type without `show_in_rest` does not exist. So the **schakl WordPress MCP Bridge**
   plugin owns four things on the site — the schema (field groups → a normalised tree with the
   conditions), a compact reader (per row only what the editor shows, every id resolved), a
   validating writer (conditions evaluated in PHP, every problem reported by path, rows emitted
@@ -2188,6 +2188,26 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   as them, ids grounded in the document, a confirmed meeting's minutes untouched whatever the
   answer says.
 
+- **A speaker is matched across a cut by the seconds they spoke, and a task from the minutes is
+  drafted the way an approved e-mail's is** (`meetings/pipeline.py`, `meetings/taskdraft.py`,
+  `docs/MEETINGS.md`). A twenty-three-minute meeting came back with four speakers for two people:
+  the margin under the vendor's 1500 s was taken twice (1400 × 0.97), so a recording the model
+  takes whole was cut, and labels were numbered on through the parts. One margin now, and where a
+  recording really is longer than a request the **parts overlap** and a new part's label is
+  paired with the old label that spoke during the same seconds — by time, best pair first, only
+  over enough shared speech; an unpaired label keeps a fresh number, so the failure direction is a
+  speaker split in two, never two people merged. Four more rules ride along. **A task from an
+  action item is a draft a person reads beside the quote** (the e-mail approve's shape, the
+  dictation's vocabulary, grounded in the transcript *around* the item so the spoken deadline and
+  the enumerated steps land in the form; the client is the meeting's and pinned), written in one
+  call through the tasks service, remembered on the item so the confirm files it on the contact
+  moment and never makes it twice. **Hours booked for a colleague are on the dialog by name before
+  the press** and gated as #314's ride-along (`time.entry.write:any` for anyone but the caller, the
+  `time` sku, asked before the contact moment is written), and the record says whose were booked.
+  **A generated title is marked and replaced once** (`title_auto`: the client and the day at
+  record time, the minutes' subject when the words are in; a typed title is never touched). And
+  **a browser's streamed WebM is remuxed at fold** (`-c copy`), because a header that says
+  *unknown duration* is a player that cannot be scrubbed.
 - **A redeploy must be a non-event for a tab in the middle of a recording, and a piece that
   does not land is retried by the browser, never by the person** (`meetings/upload.ts`,
   `docs/MEETINGS.md`). The API rolls start-first (§11), which keeps the healthcheck green and says
