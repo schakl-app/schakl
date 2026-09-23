@@ -149,7 +149,25 @@ _RENDER_TAGS = frozenset(
 _RENDER_ATTRS = {"a": {"href", "title"}}
 
 
-def markdown_to_html(value: str | None) -> str:
+#: ``![alt](file:<uuid>)``, optionally `` =NN%`` wide — the one image form the editor writes
+#: (the web's ``richtext/images.ts``, whose grammar this mirrors).
+FILE_IMAGE_RE = re.compile(
+    r"!\[([^\]]*)\]\(file:([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{12})(?: =(\d{1,3})%)?\)"
+)
+
+
+def extract_file_image_ids(body: str | None) -> list[uuid.UUID]:
+    """Every ``file:<uuid>`` image a markdown body embeds, in order, without duplicates."""
+    if not body:
+        return []
+    seen: dict[uuid.UUID, None] = {}
+    for match in FILE_IMAGE_RE.finditer(body):
+        seen.setdefault(uuid.UUID(match.group(2)), None)
+    return list(seen)
+
+
+def markdown_to_html(value: str | None, *, images: dict[str, str] | None = None) -> str:
     """Render stored markdown to sanitized HTML, for the consumers that draw markup.
 
     The document renderer is the caller: an invoice's notes are authored as markdown (#66),
@@ -160,7 +178,32 @@ def markdown_to_html(value: str | None) -> str:
     """
     if not value or not value.strip():
         return ""
+    from html import escape
+
     from markdown_it import MarkdownIt
 
-    rendered = MarkdownIt("commonmark").enable("table").render(value)
-    return nh3.clean(rendered, tags=set(_RENDER_TAGS), attributes=dict(_RENDER_ATTRS))
+    # An embedded image is drawn only where the caller resolved it to bytes it read itself
+    # (``images``: file id → ``data:`` URI) — never a fetch. It travels through the parser and
+    # the sanitizer as an inert token and becomes an ``<img>`` after both, so the allow-list
+    # above stays free of ``img``; an unresolved marker simply disappears.
+    placed: dict[str, str] = {}
+
+    def _token(match: re.Match[str]) -> str:
+        uri = (images or {}).get(match.group(2).lower())
+        if not uri:
+            return ""
+        token = f"SCHAKLIMG{len(placed)}X"
+        width = match.group(3)
+        style = f' style="width:{max(10, min(100, int(width)))}%"' if width else ""
+        placed[token] = (
+            f'<img class="md-img" src="{escape(uri, quote=True)}" '
+            f'alt="{escape(match.group(1), quote=True)}"{style} />'
+        )
+        return token
+
+    source = FILE_IMAGE_RE.sub(_token, value)
+    rendered = MarkdownIt("commonmark").enable("table").render(source)
+    cleaned = nh3.clean(rendered, tags=set(_RENDER_TAGS), attributes=dict(_RENDER_ATTRS))
+    for token, tag in placed.items():
+        cleaned = cleaned.replace(token, tag)
+    return cleaned

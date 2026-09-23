@@ -225,11 +225,36 @@ and what the settings screen's live preview draws — one artefact, so a preview
 cannot disagree (invoicing's rule, inherited with the shared `app/core/documents` engine). The
 design is the reporting document's register: the tenant's logo and the client's, the accent
 contrast-corrected against paper, a heading strip per chapter that bleeds to the paper's edge
-because a strip one line tall can never be cut by a page break, participants as chips with a
-picture where one is stored (a colleague's own uploaded avatar, read back through the org-scoped
-image loader — an IdP picture is a URL on somebody else's server and is never fetched) and
-initials otherwise, decisions numbered with their evidence in a quieter voice underneath, action
-items under the person who owns them by side, the transcript as an appendix on its own page.
+because a strip one line tall can never be cut by a page break, participants grouped
+**under the agency's name and the client's** (and *Overig*) — which side somebody is on is the
+first thing a reader of the attendance wants — with a picture where one is known and initials
+otherwise, decisions numbered with their evidence in a quieter voice underneath, action items
+under the person who owns them by side, the transcript as an appendix on its own page whose
+speakers are **names**, never the provider's `S2` (an unpaired label prints as *Spreker 2*).
+Nobody is printed as "recorded by": who pressed the button is the agency's business, not the
+reader's.
+
+**A picture reaches paper as bytes the API read itself** (`app/core/avatars.py`): a personal
+upload through the org-scoped image loader, and otherwise the identity provider's picture —
+which for a Google Workspace sign-in is every colleague's — fetched only from a closed list of
+IdP picture hosts, over HTTPS, without redirects, from public addresses, capped and cached per
+process. A URL off the list is never requested: the column is filled from a login's claims, and a
+render must not become a way to make the API call an arbitrary address.
+
+**Every text field of the minutes is markdown, and may carry an image.** The summary, the topics,
+each decision, each action item's toelichting and each open question are the shared
+`RichTextEditor` — bold, lists, links, the writing assist (*Verbeteren, Inkorten, …*), and an
+image pasted, dropped or picked, stored against the meeting as body content (`inline=true`, the
+task description's shape) and written as `![alt](file:<id>)`. The document draws such an image
+only when the file belongs **to this meeting** (`render._body_images` → `markdown_to_html(…,
+images=…)`); a pasted id of another record's file simply does not print. The **topics are edited
+as one field** — a heading per topic, the words under it (`topics.ts` round-trips it) — because a
+card per topic with a heading box and a text box is a form for something that is really a
+document; the stored shape stays a list, since the document, the contact moment and the AI box
+address topics one by one. Decisions, action items and questions stay separate rows: they carry
+evidence, an owner, a task and a number, which one markdown field cannot. The minutes prompt asks
+the model to use the formatting that makes minutes scannable (bold the fact, lists for parallel
+points, a small table for a comparison) and nothing for its own sake.
 
 **The chapters are ticked per download** (`DOCUMENT_SECTIONS`: participants, summary, topics,
 decisions, action_items, open_questions, evidence, transcript). The org's defaults live in

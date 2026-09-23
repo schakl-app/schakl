@@ -4,6 +4,7 @@ two seams ``test_meetings_api`` uses, so nothing here touches the network."""
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import UTC, datetime
 
@@ -244,6 +245,53 @@ async def test_the_document_draws_the_ticked_chapters_and_no_others(
         )
         assert unknown.status_code == 422
         assert unknown.json()["error"]["details"]["unknown"] == ["jokes"]
+
+
+async def test_the_document_prints_pasted_images_names_and_sides(
+    client_for, tmp_path, monkeypatch
+) -> None:
+    """An image pasted into the minutes prints as bytes — only when it is this meeting's own
+    file; a transcript line reads as a person, never as the provider's ``S2``; the roster is
+    grouped under the agency's and the client's names; and nobody is "recorded by"."""
+    t, headers, meeting_id, _ = await _minuted(client_for, tmp_path, monkeypatch, "meet-img")
+    async with client_for(t.host) as c:
+        ours = await c.post(
+            "/api/v1/files",
+            params={"entity_type": "meeting", "entity_id": meeting_id, "inline": "true"},
+            files={"file": ("shot.png", _PNG, "image/png")},
+            headers=headers,
+        )
+        assert ours.status_code == 201, ours.text
+        foreign = await c.post(
+            "/api/v1/files",
+            files={"file": ("other.png", _PNG + b"x", "image/png")},
+            headers=headers,
+        )
+        detail = (await c.get(f"/api/v1/meetings/{meeting_id}", headers=headers)).json()
+        minutes = detail["minutes"]
+        minutes["summary"] = (
+            f"Zie **schets**: ![schets](file:{ours.json()['id']} =50%) en "
+            f"![vreemd](file:{foreign.json()['id']})"
+        )
+        minutes["decisions"][0]["text"] = "Live op **3 oktober**."
+        saved = await c.put(f"/api/v1/meetings/{meeting_id}/minutes", json=minutes, headers=headers)
+        assert saved.status_code == 200, saved.text
+
+        page = (
+            await c.get(
+                f"/api/v1/meetings/{meeting_id}/preview",
+                params={"sections": "participants,summary,decisions,transcript"},
+                headers=headers,
+            )
+        ).text
+        assert page.count('class="md-img"') == 1
+        assert 'src="data:image/png;base64,' in page and 'style="width:50%"' in page
+        assert "vreemd" not in page
+        assert "<strong>3 oktober</strong>" in page
+        assert "Opgenomen door" not in page
+        assert 'class="side-title"' in page
+        assert not re.search(r'<td class="speaker">S\d', page)
+        assert "Spreker " in page
 
 
 async def test_the_settings_preview_renders_a_sample_and_a_custom_design(client_for) -> None:

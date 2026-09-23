@@ -107,7 +107,8 @@ SUBMIT_MINUTES = ToolDef(
                     "properties": {
                         "text": {
                             "type": "string",
-                            "description": "What was agreed, as one sentence.",
+                            "description": "What was agreed, as one sentence. Markdown "
+                            "(bold the key fact).",
                         },
                         "quote": {
                             "type": "string",
@@ -130,7 +131,11 @@ SUBMIT_MINUTES = ToolDef(
                     "type": "object",
                     "properties": {
                         "title": {"type": "string", "description": "The task, in a few words."},
-                        "description": {"type": ["string", "null"]},
+                        "description": {
+                            "type": ["string", "null"],
+                            "description": "What exactly is to be done, if the title does not "
+                            "say it all. Markdown.",
+                        },
                         "assignee_user_id": {
                             "type": ["string", "null"],
                             "description": "The staff member who took it on, from the STAFF "
@@ -217,7 +222,13 @@ def system_prompt(
         "- A due date only when a date or a weekday was actually spoken, resolved against the "
         "calendar above. Never invent one.\n"
         "- Do not restate the whole meeting in the summary, do not list who attended, and do "
-        "not write that something was not discussed.",
+        "not write that something was not discussed.\n"
+        "- Every text field is markdown and is read on screen and printed, so make it easy to "
+        "scan: **bold** the few words a reader looks for (a date, an amount, a name, the "
+        "verdict), use a bulleted list wherever there are three or more parallel points, a "
+        "numbered list for steps in order, and a small table where options or figures are "
+        "compared. Keep headings out of the fields (a topic's heading is its own field), no "
+        "images, and never formatting for its own sake — one plain sentence stays plain.",
     ]
     if house_rules and house_rules.strip():
         parts.append(

@@ -11,13 +11,13 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
-import re
 import uuid
 from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
 
+from app.core.avatars import load_user_avatar
 from app.core.branding import load_brand_logo, load_org_image
 from app.core.directory import labels_for
 from app.core.timezone import org_zoneinfo
@@ -30,8 +30,6 @@ from app.modules.meetings.settings import MeetingSettingsRead, load_settings
 logger = logging.getLogger("schakl.meetings")
 
 __all__ = ["ENGINE", "build_context", "render_meeting_html", "render_meeting_pdf"]
-
-_LOCAL_FILE = re.compile(r"^/api/v\d+/files/(?P<id>[0-9a-fA-F-]{36})(?:/public)?/?$")
 
 
 def _data_uri(payload: bytes | None, content_type: str | None) -> str | None:
@@ -72,9 +70,9 @@ async def _people(
     """Every person the document names — the roster and every action-item owner — as a
     printable person keyed ``u:<id>`` / ``c:<id>``, with a picture where one is stored.
 
-    A colleague's picture is their own upload (``custom_avatar_url`` → a stored file of this
-    org), read back through the org-scoped image loader; an IdP picture is a URL on somebody
-    else's server and is never fetched. A contact has no picture here and keeps initials.
+    A colleague's picture is their own upload or, failing that, their identity provider's
+    picture, read as bytes by ``core/avatars.py`` (a closed list of IdP hosts, never an
+    arbitrary URL). A contact has no picture here and keeps initials.
     """
     from app.core.auth.models import User
     from app.core.members import staff_select
@@ -100,23 +98,19 @@ async def _people(
             .scalars()
             .all()
         )
-        for user in rows:
+        # Every picture at once: an IdP picture is a fetch, and six of them in a row would be
+        # six round trips in front of a preview (``core/avatars.py`` caches them per process).
+        pictures = (
+            await asyncio.gather(*(load_user_avatar(ctx, user) for user in rows))
+            if avatars
+            else [(None, None)] * len(rows)
+        )
+        for user, (payload, content_type) in zip(rows, pictures, strict=True):
             key = f"u:{user.id}"
-            avatar = None
-            if avatars and user.custom_avatar_url:
-                match = _LOCAL_FILE.match(user.custom_avatar_url.strip())
-                if match is not None:
-                    try:
-                        file_id = uuid.UUID(match.group("id"))
-                    except ValueError:
-                        file_id = None
-                    if file_id is not None:
-                        payload, content_type = await load_org_image(ctx, file_id, what="avatar")
-                        avatar = _data_uri(payload, content_type)
             people[key] = _person(
                 names_on_roster.get(key) or user.full_name or user.email,
                 side="agency",
-                avatar=avatar,
+                avatar=_data_uri(payload, content_type),
                 locale=locale,
             )
     if contact_ids:
@@ -139,6 +133,47 @@ async def _people(
             ),
         )
     return people
+
+
+async def _body_images(ctx: Any, row: Meeting, draft: MinutesDraft | None) -> dict[str, str]:
+    """Every image the minutes embed (``![alt](file:<id>)``), as ``data:`` URIs.
+
+    Only a file stored *against this meeting* is read: the marker carries an id somebody
+    typed, and a document must never print another record's picture because its id was
+    pasted into the notes. Anything else resolves to nothing and simply is not drawn.
+    """
+    from app.core.richtext import extract_file_image_ids
+    from app.core.storage.models import StoredFile
+
+    if draft is None:
+        return {}
+    texts = [draft.summary, *(t.text for t in draft.topics), *(d.text for d in draft.decisions)]
+    texts += [item.description or "" for item in draft.action_items]
+    texts += list(draft.open_questions)
+    wanted: list[uuid.UUID] = []
+    for text in texts:
+        for file_id in extract_file_image_ids(text):
+            if file_id not in wanted:
+                wanted.append(file_id)
+    if not wanted:
+        return {}
+    owned = (
+        await ctx.session.scalars(
+            select(StoredFile.id).where(
+                StoredFile.org_id == ctx.org.id,
+                StoredFile.entity_type == "meeting",
+                StoredFile.entity_id == row.id,
+                StoredFile.id.in_(wanted[:50]),
+            )
+        )
+    ).all()
+    images: dict[str, str] = {}
+    for file_id in owned:
+        payload, content_type = await load_org_image(ctx, file_id, what="minutes image")
+        uri = _data_uri(payload, content_type)
+        if uri:
+            images[str(file_id).lower()] = uri
+    return images
 
 
 async def render_meeting_html(
@@ -183,6 +218,7 @@ async def render_meeting_html(
         participants=participants,
         people=await _people(ctx, row, draft, locale=locale, avatars=current.document_avatars),
         minutes=draft,
+        images=await _body_images(ctx, row, draft),
         segments=[s for s in (transcript.get("segments") or []) if isinstance(s, dict)],
         transcript_text=row.transcript_text,
         transcript_parts=int(transcript.get("parts") or 0),

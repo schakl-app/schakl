@@ -47,6 +47,7 @@
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import Markdown from "$lib/core/ui/Markdown.svelte";
+  import RichTextEditor from "$lib/core/ui/RichTextEditor.svelte";
   import { memberLabel } from "$lib/core/members";
   import { companyArchivedLabel, splitCompanyOptions } from "$lib/modules/companies/picker";
   import {
@@ -59,6 +60,7 @@
   import MeetingAIRevise from "$lib/modules/meetings/MeetingAIRevise.svelte";
   import MeetingExportDialog from "$lib/modules/meetings/MeetingExportDialog.svelte";
   import MeetingStatusPill from "$lib/modules/meetings/MeetingStatusPill.svelte";
+  import { parseTopics, topicsMarkdown } from "$lib/modules/meetings/topics";
   import ParticipantsEditor, {
     type Participant,
   } from "$lib/modules/meetings/ParticipantsEditor.svelte";
@@ -138,13 +140,32 @@
   }
   let draft = $state<Draft | null>(null);
   let draftFor = $state<string | null>(null);
+  // Bumped whenever the draft is re-seeded from the row: the rich editors read their value
+  // once, so a re-seed (after the AI box rewrote the minutes) remounts them under `{#key}`.
+  let draftRev = $state(0);
   $effect(() => {
     const row = meeting;
     if (row.status !== "review" || !row.minutes) return;
     if (untrack(() => draftFor) === row.id) return;
     draft = toDraft(row.minutes);
     draftFor = row.id;
+    draftRev = untrack(() => draftRev) + 1;
   });
+
+  /**
+   * The discussed topics are written as **one** markdown field — a heading per topic, the
+   * words under it — because that is how a person writes them, and a card per topic with a
+   * heading box and a text box is a form for something that is really a document. The stored
+   * shape stays a list (the document, the contact moment and the AI box address topics one by
+   * one); `topics.ts` is the round trip between the two.
+   */
+  const topicsSource = $derived(draft ? topicsMarkdown(draft.topics) : "");
+  function setTopics(markdown: string) {
+    if (!draft) return;
+    draft.topics = parseTopics(markdown, t("meetings.review.topic_general"));
+  }
+  // Images pasted into any field are stored against this meeting as body content.
+  const upload = $derived({ entityType: "meeting", entityId: meeting.id });
 
   /**
    * The roster under edit — the same copy-once rule as the draft, and re-seeded after its own
@@ -347,15 +368,6 @@
     if (!draft) return;
     draft.open_questions = draft.open_questions.filter((_, i) => i !== index);
   }
-  function addTopic() {
-    if (!draft) return;
-    draft.topics = [...draft.topics, { heading: "", text: "" }];
-  }
-  function removeTopic(index: number) {
-    if (!draft) return;
-    draft.topics = draft.topics.filter((_, i) => i !== index);
-  }
-
   const canWrite = $derived(meeting.can_write);
   const reviewing = $derived(meeting.status === "review" && canWrite);
   const hasTranscript = $derived(segments.length > 0 || !!meeting.transcript_text);
@@ -459,6 +471,19 @@
             onchange={(value: string) => (item.due_date = value || null)}
           />
         </div>
+      </div>
+      <div class="mt-2">
+        <span class="mb-1 block text-xs text-text-muted"
+          >{t("meetings.review.item_description")}</span
+        >
+        <RichTextEditor
+          name={null}
+          rows={2}
+          value={item.description ?? ""}
+          placeholder={t("meetings.review.item_description_placeholder")}
+          {upload}
+          onchange={(value: string) => (item.description = value.trim() ? value : null)}
+        />
       </div>
       <label class="mt-2 flex items-center gap-2 text-sm text-text">
         <input
@@ -681,24 +706,30 @@
           </p>
         {/if}
         {#if meeting.minutes.summary}
-          <Markdown value={meeting.minutes.summary} class="text-sm" />
+          <Markdown value={meeting.minutes.summary} class="text-sm" images />
         {/if}
         {#each meeting.minutes.topics ?? [] as topic (topic.heading)}
           <h3 class="mt-4 text-sm font-semibold text-text">{topic.heading}</h3>
-          <Markdown value={topic.text} class="text-sm" />
+          <Markdown value={topic.text} class="text-sm" images />
         {/each}
         {#if meeting.minutes.decisions?.length}
           <h3 class="mt-4 text-sm font-semibold text-text">{t("meetings.review.decisions")}</h3>
-          <ul class="mt-1 list-disc space-y-1 pl-5 text-sm text-text">
+          <ol class="mt-2 space-y-2 text-sm text-text">
             {#each meeting.minutes.decisions ?? [] as decision, i (i)}
-              <li>
-                {decision.text}
-                {#if decision.at != null}<span class="text-xs text-text-muted tabular-nums"
-                    >({fmtClock(decision.at)})</span
-                  >{/if}
+              <li class="flex gap-2.5">
+                <span
+                  class="mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-brand text-[11px] font-semibold text-white tabular-nums"
+                  >{i + 1}</span
+                >
+                <div class="min-w-0 flex-1">
+                  <Markdown value={decision.text} class="text-sm font-medium" images />
+                  {#if decision.at != null}<span class="text-xs text-text-muted tabular-nums"
+                      >{fmtClock(decision.at)}</span
+                    >{/if}
+                </div>
               </li>
             {/each}
-          </ul>
+          </ol>
         {/if}
         {#if meeting.minutes.action_items?.length}
           <h3 class="mt-4 text-sm font-semibold text-text">{t("meetings.review.action_items")}</h3>
@@ -714,6 +745,9 @@
                   <li>
                     {item.title}
                     {#if item.due_date}<span class="text-text-muted">— {item.due_date}</span>{/if}
+                    {#if item.description}
+                      <Markdown value={item.description} class="text-sm text-text-muted" images />
+                    {/if}
                   </li>
                 {/each}
               </ul>
@@ -726,7 +760,7 @@
           </h3>
           <ul class="mt-1 list-disc space-y-1 pl-5 text-sm text-text">
             {#each meeting.minutes.open_questions ?? [] as question, i (i)}
-              <li>{question}</li>
+              <li><Markdown value={question} class="text-sm" images /></li>
             {/each}
           </ul>
         {/if}
@@ -777,67 +811,71 @@
             <label for="minutes-summary" class="mb-1 block text-xs font-medium text-text-muted"
               >{t("meetings.review.summary")}</label
             >
-            <textarea
-              id="minutes-summary"
-              rows="5"
-              class="{inputClass} resize-y"
-              bind:value={draft.summary}
-              disabled={!reviewing}></textarea>
+            {#if reviewing}
+              {#key draftRev}
+                <RichTextEditor
+                  id="minutes-summary"
+                  name={null}
+                  rows={5}
+                  value={draft.summary}
+                  {upload}
+                  onchange={(value: string) => draft && (draft.summary = value)}
+                />
+              {/key}
+            {:else}
+              <Markdown value={draft.summary} class="text-sm" images />
+            {/if}
           </div>
         </div>
       </Card>
 
       <Card kind="panel" title={t("meetings.review.topics")}>
-        <div class="space-y-4">
-          {#each draft.topics as topic, i (i)}
-            <div class="rounded-lg border border-border p-3">
-              <div class="flex items-center gap-2">
-                <input
-                  class={smallInput}
-                  placeholder={t("meetings.review.topic_heading")}
-                  bind:value={topic.heading}
-                  disabled={!reviewing}
-                />
-                {#if reviewing}
-                  <button
-                    type="button"
-                    class="shrink-0 rounded p-1 text-text-muted hover:text-red-600"
-                    aria-label={t("common.remove")}
-                    onclick={() => removeTopic(i)}><X size={14} /></button
-                  >
-                {/if}
-              </div>
-              <textarea
-                rows="3"
-                class="{inputClass} mt-2 resize-y"
-                bind:value={topic.text}
-                disabled={!reviewing}></textarea>
-            </div>
-          {/each}
-          {#if reviewing}
-            <Button type="button" variant="secondary" size="sm" onclick={addTopic}>
-              <Plus size={14} />
-              {t("meetings.review.add_topic")}
-            </Button>
-          {/if}
-        </div>
+        <p class="mb-2 text-xs text-text-muted">{t("meetings.review.topics_hint")}</p>
+        {#if reviewing}
+          {#key draftRev}
+            <RichTextEditor
+              name={null}
+              rows={8}
+              value={topicsSource}
+              placeholder={t("meetings.review.topics_placeholder")}
+              {upload}
+              onchange={setTopics}
+            />
+          {/key}
+        {:else}
+          <Markdown value={topicsSource} class="text-sm" images />
+        {/if}
       </Card>
 
       <Card kind="panel" title={t("meetings.review.decisions")}>
         <div class="space-y-3">
           {#each draft.decisions as decision, i (i)}
             <div class="rounded-lg border border-border p-3">
-              <div class="flex items-center gap-2">
-                <input
-                  class={smallInput}
-                  bind:value={decision.text}
-                  placeholder={t("meetings.review.decision_placeholder")}
-                  disabled={!reviewing}
-                />
+              <div class="flex items-start gap-2">
+                <span
+                  class="mt-2 inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-brand text-[11px] font-semibold text-white tabular-nums"
+                  >{i + 1}</span
+                >
+                <div class="min-w-0 flex-1">
+                  {#if reviewing}
+                    {#key `${draftRev}:${draft.decisions.length}`}
+                      <RichTextEditor
+                        name={null}
+                        rows={1}
+                        value={decision.text}
+                        placeholder={t("meetings.review.decision_placeholder")}
+                        {upload}
+                        onchange={(value: string) => (decision.text = value)}
+                      />
+                    {/key}
+                  {:else}
+                    <Markdown value={decision.text} class="text-sm" images />
+                  {/if}
+                </div>
                 {#if reviewing}
                   <button
                     type="button"
-                    class="shrink-0 rounded p-1 text-text-muted hover:text-red-600"
+                    class="mt-1.5 shrink-0 rounded p-1 text-text-muted hover:text-red-600"
                     aria-label={t("common.remove")}
                     onclick={() => removeDecision(i)}><X size={14} /></button
                   >
@@ -871,7 +909,9 @@
                     <p class="text-sm font-medium text-text">{group.name}</p>
                   {/if}
                   {#each group.indices as i (i)}
-                    {@render actionItem(i)}
+                    {#key `${draftRev}:${draft.action_items.length}`}
+                      {@render actionItem(i)}
+                    {/key}
                   {/each}
                 {/each}
               </div>
@@ -891,16 +931,26 @@
       <Card kind="panel" title={t("meetings.review.open_questions")}>
         <div class="space-y-2">
           {#each draft.open_questions as _question, i (i)}
-            <div class="flex items-center gap-2">
-              <input
-                class={smallInput}
-                bind:value={draft.open_questions[i]}
-                disabled={!reviewing}
-              />
+            <div class="flex items-start gap-2">
+              <div class="min-w-0 flex-1">
+                {#if reviewing}
+                  {#key `${draftRev}:${draft.open_questions.length}`}
+                    <RichTextEditor
+                      name={null}
+                      rows={1}
+                      value={draft.open_questions[i]}
+                      {upload}
+                      onchange={(value: string) => draft && (draft.open_questions[i] = value)}
+                    />
+                  {/key}
+                {:else}
+                  <Markdown value={draft.open_questions[i]} class="text-sm" images />
+                {/if}
+              </div>
               {#if reviewing}
                 <button
                   type="button"
-                  class="shrink-0 rounded p-1 text-text-muted hover:text-red-600"
+                  class="mt-1.5 shrink-0 rounded p-1 text-text-muted hover:text-red-600"
                   aria-label={t("common.remove")}
                   onclick={() => removeQuestion(i)}><X size={14} /></button
                 >
