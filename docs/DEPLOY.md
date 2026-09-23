@@ -431,6 +431,18 @@ Three settings are load-bearing and easy to get wrong:
 | `SCHAKL_DB_POOL_SIZE` / `_MAX_OVERFLOW` | The pool is **per replica**. Both cloud stacks halve them to `8`/`8` so two replicas total 32 connections against the 30 one replica used — the ceiling did not silently double on a managed database sized for one. Raise them only together with `API_REPLICAS`, after checking `max_connections`. |
 | The `web` healthcheck | Without one, `start-first` rotates a new web task into Traefik the moment the container is *running*, a second or two before the SSR server binds `:3000` — a handful of 502s per deploy. It probes `/healthz` with `node -e` (the runtime image is `node:22-slim`, which has neither curl nor wget). |
 
+**What a redeploy does to work the browser is in the middle of.** The one long-lived thing a tab
+does against this API is record a meeting (`docs/MEETINGS.md`): a piece a minute for up to four
+hours. The rollover above keeps the API answering, but a request can still meet a task being
+retired or the edge restarting, so three settings ride together. The **API task gets
+`stop_grace_period: 30s`** (Compose's default is ten), because uvicorn finishes the requests it
+holds before it exits and the one worth finishing is a chunk still arriving over a phone's uplink.
+The **recorder retries a refused piece for ten minutes** with a capped backoff before it asks a
+person for anything, which covers this rollover and a Traefik restart with room to spare. And the
+**worker resumes a job its own stop-first restart cancelled**: arq re-queues it, and the pipeline
+picks a row up in the state it was left in rather than standing down. None of this is Swarm's
+doing — it is what makes `start-first` on the API true for the tab, not only for the healthcheck.
+
 `SCHAKL_MIGRATION_LOCK_TIMEOUT_SECONDS` (default `600`) bounds how long a booting instance waits
 for another one's migration. It bounds a *rolling deploy*, not a migration — the holder may run as
 long as it likes. On timeout the task fails its healthcheck and Swarm rolls back, which is the

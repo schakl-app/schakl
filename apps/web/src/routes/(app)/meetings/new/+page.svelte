@@ -15,6 +15,13 @@
    * "who took this on" in. And **a speech model that does not label speakers is said by name
    * before a minute is recorded** (`speech_diarize`): a transcript without speakers looks exactly
    * like one that failed to find any, so the honest place to say it is above the record button.
+   *
+   * And one about leaving. While a recording runs, this page is the recorder: a reload, a closed
+   * tab or a mis-clicked nav link ends the capture and — through `leave()` — deletes the row, so
+   * both are asked about first (`beforeunload` for the browser's own exits, `beforeNavigate` for
+   * the app's). A piece that is not landing is *not* a reason to stop: the upload retries in the
+   * background for minutes (`upload.ts`), and the screen says so in amber, because a redeploy or
+   * a dropped connection ends on its own and the recording must not.
    */
   import ArrowLeft from "@lucide/svelte/icons/arrow-left";
   import Mic from "@lucide/svelte/icons/mic";
@@ -23,7 +30,7 @@
   import Upload from "@lucide/svelte/icons/upload";
   import { onMount } from "svelte";
 
-  import { goto } from "$app/navigation";
+  import { beforeNavigate, goto } from "$app/navigation";
   import { page } from "$app/state";
   import { aiEnabled } from "$lib/core/ai";
   import { fmtNumericDate } from "$lib/core/format";
@@ -80,6 +87,27 @@
     if (!micSupported) source = "upload";
     if (!title) title = t("meetings.record.default_title", { date: fmtNumericDate(orgToday()) });
     return () => void leave();
+  });
+
+  /** Is leaving now the end of a recording? (`finish` hands the row over first.) */
+  const guarded = $derived(recorder.active || phase === "uploading");
+
+  // The browser's own exits — reload, close, a typed URL — get the native "leave site?" prompt.
+  $effect(() => {
+    if (!guarded) return;
+    const ask = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      // Older browsers read a returnValue; modern ones show their own sentence regardless.
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", ask);
+    return () => window.removeEventListener("beforeunload", ask);
+  });
+
+  // The app's own exits — a nav link, the back button — ask in our words and can be refused.
+  beforeNavigate((navigation) => {
+    if (!guarded || navigation.type === "leave") return;
+    if (!confirm(t("meetings.record.leave_confirm"))) navigation.cancel();
   });
 
   const enabled = $derived(
@@ -151,19 +179,40 @@
     await goto(`/meetings/${id}`);
   }
 
+  /**
+   * The microphone first, the row second, the capture third.
+   *
+   * The order is the point. Creating the row first and asking for the microphone second is how
+   * a colleague's three-hour meeting came to exist on the server as a row stamped `recording`
+   * with no audio behind it and no way to end it: the capture never really began (a permission
+   * prompt a phone froze while it was up), and everything downstream — the screen, the poller,
+   * the reaper — went on describing a recording that had never started. `arm()` makes the
+   * capture the precondition rather than the consequence, so a recording that cannot start
+   * leaves nothing to clean up.
+   */
   async function startRecording() {
     if (!title.trim()) {
       fieldError = "errors.required";
       return;
     }
+    error = null;
+    fieldError = null;
+    if (!(await recorder.arm(source as CaptureSource))) {
+      if (recorder.error) error = recorder.error;
+      return;
+    }
     const id = await createMeeting();
-    if (!id) return;
+    if (!id) {
+      // The capture is live and there is nowhere to put it: let the microphone go, or the
+      // recorder holds it (and the phone shows it holding it) for a recording nobody has.
+      recorder.abort();
+      return;
+    }
     phase = "recording";
-    const ok = await recorder.start(id, source as CaptureSource);
+    const ok = await recorder.begin(id);
     if (!ok) {
       if (recorder.error) error = recorder.error;
       if (phase === "recording" && !recorder.uploadError) {
-        // The capture never began (no microphone, share refused): drop the empty row.
         await fetch(`/api/v1/meetings/${id}`, { method: "DELETE" }).catch(() => undefined);
         meetingId = null;
         phase = "form";
@@ -262,12 +311,26 @@
         {t("meetings.record.finishing")}
       {:else if recorder.uploadError}
         <span class="text-red-700 dark:text-red-300">{t(recorder.uploadError)}</span>
+      {:else if recorder.retrying}
+        <!-- A piece is being retried: the recording goes on and nothing is lost yet, so amber,
+             with what *is* safe beside it. -->
+        <span class="text-amber-800 dark:text-amber-200">
+          {t("meetings.record.reconnecting", { clock: formatClock(recorder.savedSeconds) })}
+        </span>
       {:else if recorder.uploaded === 0 && recorder.pending === 0}
         {t("meetings.record.saving_soon")}
       {:else}
-        {t("meetings.record.saved_until", { clock: formatClock(recorder.uploaded * 60) })}
+        {t("meetings.record.saved_until", { clock: formatClock(recorder.savedSeconds) })}
       {/if}
     </p>
+    {#if recorder.captureLost}
+      <!-- The capture ended without anybody stopping it. What landed is being handed over; the
+           sentence is here because a recording that stops by itself must never look like one
+           that was stopped. -->
+      <p class="mt-2 text-sm text-amber-800 dark:text-amber-200" role="alert">
+        {t("meetings.record.capture_lost")}
+      </p>
+    {/if}
     <div class="mt-6 flex flex-wrap items-center justify-center gap-3">
       {#if recorder.uploadError}
         <Button type="button" variant="secondary" onclick={() => recorder.retryFailed()}>
@@ -289,6 +352,9 @@
     {#if recorder.stoppedAtLimit}
       <p class="mt-3 text-sm text-text-muted">{t("meetings.record.limit_reached")}</p>
     {/if}
+    <!-- Said while it runs, not in the help: a locked phone freezes the tab and the recording
+         with it, and this is the one thing the person can do about it. -->
+    <p class="mt-3 text-xs text-text-muted">{t("meetings.record.keep_screen_on")}</p>
   </div>
 {:else if phase === "uploading"}
   <div class="rounded-xl border border-border bg-surface-raised p-6 text-center">

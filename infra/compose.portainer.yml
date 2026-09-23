@@ -175,6 +175,11 @@ x-api-env: &api-env
 services:
   api:
     image: ghcr.io/schakl-app/schakl-api:${SCHAKL_TAG:?pin a release tag, e.g. 1.4.0}
+    # Thirty seconds, not the default ten: uvicorn finishes the requests it holds before it
+    # exits, and the one worth finishing is a meeting recorder's chunk upload — a minute of
+    # audio that may still be arriving over a phone's uplink when Swarm retires this task.
+    # The recorder retries a lost piece anyway; this is what makes that the rare case.
+    stop_grace_period: 30s
     environment: *api-env
     volumes:
       - storage-data:/data/storage

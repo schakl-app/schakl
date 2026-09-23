@@ -7,7 +7,7 @@ from __future__ import annotations
 import base64
 import uuid
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from pwdlib import PasswordHash
@@ -21,7 +21,7 @@ from app.core.auth.models import User
 from app.core.models import Org
 from app.core.storage.models import StoredFile
 from app.db import async_session_maker, set_current_org
-from app.modules.meetings.jobs import run_pipeline
+from app.modules.meetings.jobs import RECORDING_STALE_AFTER_MINUTES, _reap_org, run_pipeline
 from app.modules.meetings.models import Meeting
 from tests.conftest import add_membership, auth_cookie, make_tenant
 
@@ -910,3 +910,213 @@ async def test_a_client_never_reads_a_meeting_even_holding_the_key(
                 headers=guest_h,
             )
         ).status_code == 403
+
+
+async def test_a_run_the_worker_restart_cut_short_is_resumed(
+    client_for, tmp_path, monkeypatch
+) -> None:
+    """The worker rolls stop-first on a redeploy: arq cancels the running job and queues it
+    again, and the second run finds the row still stamped with the state the first one was in.
+    Standing down there left the meeting to the reaper (ninety minutes, then ``failed``, then a
+    person pressing retry) for a restart that took seconds — so a row in a worker state is
+    resumed, and from where the words are: a transcript already stored is not bought twice."""
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+    transcriptions: list[int] = []
+    inner = _fake_transcribe(900)
+
+    async def counting(config, clip, **kwargs):  # noqa: ANN001, ANN003
+        transcriptions.append(1)
+        return await inner(config, clip, **kwargs)
+
+    monkeypatch.setattr("app.modules.meetings.pipeline.provider_transcribe", counting)
+    t = await make_tenant("meet-resume")
+    headers = await auth_cookie(t.user)
+
+    async def left_on(status: str, meeting_id: str) -> None:
+        async with async_session_maker() as session:
+            await set_current_org(session, t.org.id)
+            row = await session.get(Meeting, uuid.UUID(meeting_id))
+            row.status = status
+            row.status_at = datetime.now(UTC)
+            row.minutes = None
+            await session.commit()
+
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        meeting = await _record(c, headers)
+        monkeypatch.setattr(
+            "app.core.ai.providers.stream_chat", _fake_stream(_submit(**_minutes(str(t.user.id))))
+        )
+        # Stopped while transcribing: nothing was written, so the words are read once.
+        await left_on("transcribing", meeting["id"])
+        await _run(t.org.id, meeting["id"])
+        detail = (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()
+        assert detail["status"] == "review", detail
+        assert len(transcriptions) == 1
+        # Stopped while summarising: the transcript is on the row, so the resume starts at the
+        # minutes and the provider is not asked for the words again.
+        await left_on("summarising", meeting["id"])
+        await _run(t.org.id, meeting["id"])
+        detail = (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()
+        assert detail["status"] == "review" and detail["minutes"], detail
+        assert len(transcriptions) == 1
+        # A row a person is reviewing is not a run to resume: the worker still stands down.
+        await _run(t.org.id, meeting["id"])
+        assert (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()[
+            "status"
+        ] == "review"
+
+
+# --------------------------------------------------------------------------- #
+# The recorder that never sent a stop.
+# --------------------------------------------------------------------------- #
+
+
+async def _age_recording(org_id: uuid.UUID, meeting_id: str, minutes: int) -> None:
+    """Pretend the last piece landed `minutes` ago — what a dead tab looks like."""
+    async with async_session_maker() as session:
+        await set_current_org(session, org_id)
+        row = await session.get(Meeting, uuid.UUID(meeting_id))
+        row.status_at = datetime.now(UTC) - timedelta(minutes=minutes)
+        await session.commit()
+
+
+async def _reap(org_id: uuid.UUID) -> None:
+    async with async_session_maker() as session:
+        org = await session.get(Org, org_id)
+        await set_current_org(session, org.id)
+        await _reap_org(org, session)
+        await session.commit()
+
+
+async def test_a_recording_nobody_is_feeding_is_ended_by_the_server(
+    client_for, tmp_path, monkeypatch
+) -> None:
+    """The stop is the one message a dead tab cannot send, so the server sends it.
+
+    A recording that stored pieces is *queued* — the same act as the recorder's own finish —
+    because the meeting is on the server and only the stop is missing. Before this, a
+    ``recording`` row was the one state nothing ever ended: three hours after a phone locked
+    mid-meeting, the screen still said a recording was running and the only control on it was
+    Delete.
+    """
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+    queued: list[tuple] = []
+
+    async def _capture(*args, **kwargs):  # noqa: ANN002, ANN003
+        queued.append(args)
+        return object()
+
+    monkeypatch.setattr("app.modules.meetings.jobs.enqueue", _capture)
+    t = await make_tenant("meet-reap-pieces")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        created = await c.post(
+            "/api/v1/meetings",
+            json={"title": "Kwartaaloverleg", "participants_informed": True},
+            headers=headers,
+        )
+        meeting = created.json()
+        for seq in range(2):
+            raw = WEBM_HEADER if seq == 0 else b"\x01" * 300
+            await c.post(
+                f"/api/v1/meetings/{meeting['id']}/chunks",
+                json={"seq": seq, "audio": _B64(raw)},
+                headers=headers,
+            )
+
+        # Still being recorded: a reap now must leave it alone, or it would 409 every
+        # remaining piece and lose the rest of a live meeting to save the start of it.
+        await _reap(t.org.id)
+        assert (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()[
+            "status"
+        ] == "recording"
+        assert queued == []
+
+        await _age_recording(t.org.id, meeting["id"], RECORDING_STALE_AFTER_MINUTES + 1)
+        await _reap(t.org.id)
+        detail = (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()
+        assert detail["status"] == "queued", detail
+        assert detail["error_key"] is None
+        assert queued and queued[0][0] == "meetings_process" and queued[0][2] == meeting["id"]
+
+
+async def test_a_recording_that_never_arrived_is_failed_and_says_so(client_for) -> None:
+    """Zero pieces is not a recording, it is a row claiming to be one.
+
+    This is the shape that stranded a three-hour meeting: the row was created before the
+    microphone was acquired, the capture never began, and nothing on the server disagreed with
+    a screen that went on saying "de opname loopt". It is failed with the reason rather than
+    deleted, because the title, the client and the roster the person typed did reach us and are
+    the only half worth keeping.
+    """
+    t = await make_tenant("meet-reap-empty")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        created = await c.post(
+            "/api/v1/meetings",
+            json={"title": "Kick-off", "participants_informed": True},
+            headers=headers,
+        )
+        meeting = created.json()
+        await _age_recording(t.org.id, meeting["id"], RECORDING_STALE_AFTER_MINUTES + 1)
+        await _reap(t.org.id)
+
+        detail = (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()
+        assert detail["status"] == "failed", detail
+        assert detail["error_key"] == "meetings.error.abandoned"
+        assert detail["title"] == "Kick-off"
+
+        # And the colleague who pressed record is told, rather than finding out days later by
+        # opening the row: silence is what made the incident behind this expensive.
+        inbox = (await c.get("/api/v1/notifications", headers=headers)).json()
+        lost = [i for i in inbox["items"] if i["event_type"] == "meeting.lost"]
+        assert len(lost) == 1, inbox
+        assert lost[0]["payload"]["title"] == "Kick-off"
+
+
+async def test_a_piece_keeps_the_recording_alive(client_for, tmp_path, monkeypatch) -> None:
+    """``status_at`` is stamped by every piece, so a live recorder can never look silent — and
+    only a piece may say so: a title edited mid-recording bumps ``updated_at`` and must not buy
+    a dead tab another twenty minutes."""
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+    t = await make_tenant("meet-reap-alive")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        created = await c.post(
+            "/api/v1/meetings",
+            json={"title": "Standup", "participants_informed": True},
+            headers=headers,
+        )
+        meeting = created.json()
+        await _age_recording(t.org.id, meeting["id"], RECORDING_STALE_AFTER_MINUTES + 1)
+
+        # A title edit is not the recording saying anything.
+        await c.patch(
+            f"/api/v1/meetings/{meeting['id']}", json={"title": "Standup dinsdag"}, headers=headers
+        )
+        await _reap(t.org.id)
+        assert (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()[
+            "status"
+        ] == "failed"
+
+        # A piece is.
+        second = await c.post(
+            "/api/v1/meetings",
+            json={"title": "Standup 2", "participants_informed": True},
+            headers=headers,
+        )
+        second_id = second.json()["id"]
+        await _age_recording(t.org.id, second_id, RECORDING_STALE_AFTER_MINUTES + 1)
+        await c.post(
+            f"/api/v1/meetings/{second_id}/chunks",
+            json={"seq": 0, "audio": _B64(WEBM_HEADER)},
+            headers=headers,
+        )
+        await _reap(t.org.id)
+        assert (await c.get(f"/api/v1/meetings/{second_id}", headers=headers)).json()[
+            "status"
+        ] == "recording"

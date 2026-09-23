@@ -27234,6 +27234,8 @@ export interface components {
             transcript_parts: number;
             /** Transcript Text */
             transcript_text?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
         };
         /** MeetingFinish */
         MeetingFinish: {

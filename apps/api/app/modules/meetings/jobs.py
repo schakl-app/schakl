@@ -5,9 +5,18 @@
   (``minutes.py``). Enqueued by ``finish`` and by ``retry``; with ``stage="minutes"`` (the
   reviewer's *redraft*, after naming the speakers) it starts at the draft over the transcript
   already on the row and spends no audio.
-* ``meetings_reap_stale`` — every quarter of an hour, per org. A row a worker claimed and never
-  released — the process is not there any more — is failed, so the screen stops saying "bezig"
-  (the #300 rule, the interactions module's shape).
+* ``meetings_reap_stale`` — every quarter of an hour, per org. Two kinds of run nobody holds
+  any more. A row a worker **claimed and never released** — the process is not there any more —
+  is failed, so the screen stops saying "bezig" (the #300 rule, the interactions module's
+  shape). And a row still ``recording`` that **nothing has posted a piece to** for
+  :data:`RECORDING_STALE_AFTER_MINUTES`: the recorder is a browser tab, and a tab that is
+  closed, reloaded, crashed or frozen by a phone locking its screen sends no stop — so the
+  server sends it instead. What that means depends on what arrived: pieces were stored, so the
+  meeting is *queued* and transcribed from them (the recorder's own "Verwerk wat is opgeslagen",
+  taken without a person pressing it); nothing arrived at all, so the row is failed and says
+  so. Before this, a ``recording`` row was the one state nothing ever ended: it sat there
+  claiming a recording was running, was polled by every page load that opened it, and could be
+  cleared only by deleting the meeting.
 * ``meetings_sweep_audio`` — nightly, per org. The recording of a confirmed meeting is dropped
   after :data:`AUDIO_RETENTION_DAYS`; the transcript and the minutes stay. A recording is the
   most personal thing this product stores and the AVG asks for a stated retention, so the
@@ -35,7 +44,7 @@ from app.core.ai.providers import AIProviderError
 from app.core.ai.service import AIService
 from app.core.entitlements.service import sku_cron_enabled
 from app.core.events import emit
-from app.core.jobs import run_per_org, system_context
+from app.core.jobs import enqueue, run_per_org, system_context
 from app.core.models import Org, OrgStatus
 from app.core.storage.backend import storage_for
 from app.core.storage.models import StoredFile
@@ -65,11 +74,20 @@ logger = logging.getLogger("schakl.meetings")
 #: A run still claimed after this is claimed by nobody. Long: a three-hour recording through a
 #: provider that takes a while is a legitimate forty minutes.
 STALE_AFTER_MINUTES = 90
+#: A ``recording`` row silent for this long is a recorder that is gone. A tab posts one piece a
+#: minute and retries a piece that will not land for ten (``web/.../upload.ts``), so the longest
+#: honest silence from a *live* recorder is that budget plus a piece — twenty minutes is past it
+#: with room, and the reaper runs four times an hour, so a dead recording is ended inside half
+#: an hour rather than never.
+RECORDING_STALE_AFTER_MINUTES = 20
 #: How long a confirmed meeting keeps its audio. Stated on the recording screen.
 AUDIO_RETENTION_DAYS = 30
 #: The notification the colleague who recorded it gets when the draft lands on ``review``
 #: (registered in ``notifications/events.py``; ``MEETING_READY`` there must match).
 READY_EVENT = "meeting.ready"
+#: The notification the colleague who recorded it gets when the server had to end a recording
+#: that nothing of ever arrived (``notifications/events.py``; ``MEETING_LOST`` must match).
+LOST_EVENT = "meeting.lost"
 
 
 async def _licensed() -> bool:
@@ -189,7 +207,21 @@ async def run_pipeline(
     # an expired attribute read is a lazy load — sync IO the async session refuses.
     org_id = org.id
     row = await _load(session, org_id, meeting_id)
-    if row is None or row.status != MeetingStatus.QUEUED.value:
+    if row is None:
+        return
+    if row.status in WORKER_STATUSES:
+        # A run this worker (or its predecessor) claimed and did not finish: the worker rolls
+        # stop-first on a redeploy, arq cancels the job and queues it again, and the second run
+        # arrives to a row still stamped ``transcribing`` or ``summarising``. Standing down here
+        # left the meeting to the reaper — ninety minutes, then ``failed``, then a person pressing
+        # retry — for a restart that took ten seconds. So a row in a worker state is *resumed*,
+        # and resumed from where the words are: a transcript already committed is not
+        # transcribed again (the row was stamped ``summarising`` in the same commit that stored
+        # it), because a second transcription is a second bill for the same audio.
+        logger.info("meetings: %s was left on %s; resuming", meeting_id, row.status)
+        if (row.transcript_text or "").strip():
+            stage = "minutes"
+    elif row.status != MeetingStatus.QUEUED.value:
         logger.info("meetings: %s is not queued; standing down", meeting_id)
         return
     ctx = system_context(org, session)
@@ -315,6 +347,28 @@ async def _notify_ready(ctx, row: Meeting, draft) -> None:  # noqa: ANN001
     )
 
 
+async def _notify_lost(ctx, row: Meeting) -> None:  # noqa: ANN001
+    """The colleague who pressed record is told the recording never arrived.
+
+    Silence is what made this expensive: somebody walked out of a three-hour meeting believing
+    it had been recorded and found out hours later, by opening the row. The sentence names the
+    meeting and links to it, and mails by this event's own default — the person it is addressed
+    to recorded from a phone and is not at their desk (``notifications/defaults``).
+    """
+    if row.owner_user_id is None:
+        return
+    await emit(
+        LOST_EVENT,
+        ctx,
+        {
+            "meeting_id": row.id,
+            "title": row.title,
+            "_recipients": [row.owner_user_id],
+            "_dedup_key": f"meeting-lost:{row.id}",
+        },
+    )
+
+
 async def _fail(
     session: AsyncSession, org_id: uuid.UUID, meeting_id: uuid.UUID, error_key: str
 ) -> None:
@@ -353,6 +407,12 @@ async def meetings_process(
 
 
 async def _reap_org(org: Org, session: AsyncSession) -> None:
+    await _reap_runs(org, session)
+    await _reap_recordings(org, session)
+
+
+async def _reap_runs(org: Org, session: AsyncSession) -> None:
+    """A run a worker claimed and never released."""
     cutoff = datetime.now(UTC) - timedelta(minutes=STALE_AFTER_MINUTES)
     rows = (
         (
@@ -372,6 +432,72 @@ async def _reap_org(org: Org, session: AsyncSession) -> None:
         row.status_at = datetime.now(UTC)
         row.error_key = "meetings.error.stale"
         logger.warning("meetings: run for %s was claimed by nobody; failing it", row.id)
+
+
+async def _reap_recordings(org: Org, session: AsyncSession) -> None:
+    """A recording nothing is feeding any more: end it the way the recorder would have.
+
+    The stop is the one message a dead tab cannot send, and everything else about the recording
+    is already on the server — so the server sends it. **Pieces arrived** and the meeting is
+    handed to the worker exactly as ``finish`` would (``duration_seconds`` is left alone: the
+    recorder's elapsed count died with the tab, and the transcription reports the real length
+    anyway). **Nothing arrived** and there is no recording, only a row that says there is one,
+    so it is failed with the reason rather than left claiming to be running — a delete would
+    also clear the screen and would throw away the title, the client and the roster the person
+    typed, which are the half of it that *did* reach us.
+
+    ``status_at`` is what "still going" means here: ``add_chunk`` stamps it with every piece
+    (``service.add_chunk``), so a recording that is alive can never look silent, and a title
+    edited mid-recording cannot make a dead one look alive.
+    """
+    cutoff = datetime.now(UTC) - timedelta(minutes=RECORDING_STALE_AFTER_MINUTES)
+    rows = (
+        (
+            await session.execute(
+                select(Meeting).where(
+                    Meeting.org_id == org.id,
+                    Meeting.status == MeetingStatus.RECORDING.value,
+                    Meeting.status_at < cutoff,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    ctx = system_context(org, session)
+    for row in rows:
+        now = datetime.now(UTC)
+        if row.chunks_received <= 0:
+            row.status = MeetingStatus.FAILED.value
+            row.status_at = now
+            row.error_key = "meetings.error.abandoned"
+            logger.warning("meetings: recording %s never received a piece; failing it", row.id)
+            await _notify_lost(ctx, row)
+            continue
+        row.status = MeetingStatus.QUEUED.value
+        row.status_at = now
+        row.error_key = None
+        logger.warning(
+            "meetings: recording %s went silent with %d pieces; processing them", row.id,
+            row.chunks_received,
+        )
+        # Queued and committed *before* the job is fired, or the worker can pick the row up
+        # while this transaction still says ``recording`` and stand down (``run_pipeline``).
+        await _commit(session, org.id)
+        job = await enqueue(
+            "meetings_process",
+            str(org.id),
+            str(row.id),
+            "full",
+            _job_id=f"meetings-process-{row.id}-{int(now.timestamp())}",
+        )
+        if job is None:
+            # Nothing is queued, so nothing will move it off ``queued``; say why rather than
+            # leaving it for ``_reap_runs`` ninety minutes later (``core.jobs.enqueue``).
+            row = await _load(session, org.id, row.id) or row
+            row.status = MeetingStatus.FAILED.value
+            row.status_at = datetime.now(UTC)
+            row.error_key = "meetings.error.not_queued"
 
 
 async def meetings_reap_stale(ctx: dict) -> None:  # noqa: ARG001
@@ -410,7 +536,9 @@ async def meetings_sweep_audio(ctx: dict) -> None:  # noqa: ARG001
 
 __all__ = [
     "AUDIO_RETENTION_DAYS",
+    "LOST_EVENT",
     "READY_EVENT",
+    "RECORDING_STALE_AFTER_MINUTES",
     "STALE_AFTER_MINUTES",
     "meetings_process",
     "meetings_reap_stale",

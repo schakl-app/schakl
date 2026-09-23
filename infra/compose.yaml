@@ -119,6 +119,11 @@ services:
 
   api:
     image: ghcr.io/schakl-app/schakl-api:${SCHAKL_TAG:-latest}
+    # Thirty seconds, not the default ten: uvicorn finishes the requests it holds before it
+    # exits, and the one worth finishing is a meeting recorder's chunk upload — a minute of
+    # audio that may still be arriving over a phone's uplink when Swarm retires this task.
+    # The recorder retries a lost piece anyway; this is what makes that the rare case.
+    stop_grace_period: 30s
     build:
       context: ..
       dockerfile: apps/api/Dockerfile

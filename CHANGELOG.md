@@ -2,6 +2,63 @@
 
 _Releases v0.25.0 through v0.41.0 are written up on their GitHub Releases; this file resumes at v0.42.0._
 
+## v0.52.0 — 2026-09-23
+
+A recording that nobody is feeding is now ended by the server, and a meeting row exists only
+for a capture that is already running. Everything here comes out of one incident: a colleague
+recorded a three-hour meeting on a phone and not one byte reached the server, and three hours
+later the page still said the recording was running, with Verwijderen as the only control on
+it.
+
+No migration, no new environment variable, no schema change. One new notification event,
+`meeting.lost`, which mails by default like `meeting.ready` does; one new i18n key on the row
+(`meetings.error.abandoned`) and five on the screens and in the inbox. The API surface is
+unchanged, so the typed client and the public reference are untouched.
+
+### Build and CI
+
+- **The web build no longer runs out of memory, and stops getting closer to it with every
+  translated string.** Paraglide compiled one module per message — 8200 of them across two
+  locales — and rollup's peak crossed the build's own 12 GB cap: the CI web job went red and the
+  release image kept building only by landing a few hundred megabytes under the line. It now
+  compiles one module per locale, which costs nothing (`t()` indexes a namespace import
+  dynamically, so every message was already in the bundle). Peak memory 15.9 GB → 4.4 GB, build
+  8m24s → 31s. No change to what ships.
+- **Four time-module tests asked UTC which day it was.** Each posted an aware `started_at` and
+  then asked a day-shaped question with UTC's date, while the API buckets an instant in the
+  tenant's zone — so they were green by day and red for the two hours a night between local and
+  UTC midnight. They use `conftest.org_today()` now, as CLAUDE.md §8 already required.
+
+### Meetings
+
+- **A row exists only for a live capture.** The record screen created the meeting and *then*
+  asked for the microphone, so every way a capture can fail to begin — a permission prompt
+  nobody answers, a phone that freezes the tab while the prompt is up — left a meeting stamped
+  `recording` with nothing to record into. The recorder is armed first and the row is created
+  between arming and starting; a create that fails releases the microphone.
+- **The server ends a recording nobody is feeding.** `meetings_reap_stale` now reaps
+  `recording` as well (twenty minutes without a piece). Pieces were stored, so the meeting is
+  queued and transcribed from them — the recorder's own *Verwerk wat is opgeslagen*, taken
+  without a person pressing it. Nothing arrived, so the row is failed with a reason, rather
+  than left claiming to be running. It is failed and not deleted: the title, the client and the
+  roster the person typed did reach us.
+- **And the person who recorded it is told.** A new `meeting.lost` notification, mailed by
+  default: silence is what made the incident expensive, because somebody walked out of a
+  three-hour meeting believing it had been recorded and found out hours later by opening the
+  row.
+- **The first piece is uploaded after five seconds**, not after a minute. A recording that dies
+  in its first minute is now a short recording rather than no recording, and *"opgeslagen tot"*
+  states a measured second rather than the piece count times sixty.
+- **The screen stays awake for the whole recording.** A wake lock is released by the browser the
+  moment the page hides and handed back to nobody, so it is re-taken on every return. A capture
+  that did not survive being away — a torn-down `MediaRecorder`, a microphone an incoming call
+  took over — now ends the recording, hands over every piece that landed, and says why.
+- **The recovery card always offers something.** It appears after fifteen minutes of silence
+  rather than two, because a live recorder retries a piece for ten and processing a meeting
+  that is still being recorded loses the rest of it. With no pieces stored it stops drawing a
+  disabled button and offers the one honest control instead, and it says that the server will
+  finish the job by itself if nobody does.
+
 ## v0.51.0 — 2026-09-22
 
 The meetings module gets its second release: the minutes leave the app as a PDF with chapters

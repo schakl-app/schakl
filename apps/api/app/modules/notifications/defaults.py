@@ -27,6 +27,7 @@ from app.modules.notifications.events import (
     LEAVE_APPROVED,
     LEAVE_REJECTED,
     LEAVE_REQUESTED,
+    MEETING_LOST,
     MEETING_READY,
     PROJECT_ASSIGNED,
     SNELSTART_SYNC_FAILED,
@@ -80,6 +81,10 @@ _IMMEDIATE_EVENTS: frozenset[str] = frozenset(
         # The minutes you recorded an hour ago are ready to read: the review is what closes
         # the loop, and it is the one thing the person is waiting for.
         MEETING_READY,
+        # And the other end of the same sentence: the recording you thought you were making did
+        # not arrive. Digesting it until tomorrow morning is telling somebody at nine that last
+        # night's meeting is gone, when at the time they were still in the building.
+        MEETING_LOST,
     }
 )
 
@@ -88,7 +93,7 @@ _IMMEDIATE_EVENTS: frozenset[str] = frozenset(
 #: person who is waiting for it and is most likely no longer at their desk: a colleague who
 #: recorded a meeting from a phone and walked out of the room. Still a default, so an org or a
 #: person switches it off in the matrix like any other row.
-EMAIL_DEFAULT_ON_EVENTS: frozenset[str] = frozenset({MEETING_READY})
+EMAIL_DEFAULT_ON_EVENTS: frozenset[str] = frozenset({MEETING_READY, MEETING_LOST})
 
 
 @dataclass(frozen=True)
