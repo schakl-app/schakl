@@ -2,6 +2,63 @@
 
 _Releases v0.25.0 through v0.41.0 are written up on their GitHub Releases; this file resumes at v0.42.0._
 
+## v0.54.0 — 2026-09-23
+
+The minutes of a meeting read like a document now, and a long meeting gets transcribed. Every
+field of the minutes accepts markdown and pasted images. The PDF names people instead of
+labels. And a recording longer than about a quarter of an hour no longer ends in
+`meetings.error.failed` with its audio stored and no transcript.
+
+No migration: the head stays `c7e2a9b4d6f1`. No new permission keys, endpoints or environment
+variables, and the typed client is unchanged. Six i18n keys are added and three are removed,
+all in the `meetings.*` namespace, in `en` and `nl` alike.
+
+### Meetings: the minutes
+
+- **Every text field is the shared rich-text editor.** That covers the summary, the topics,
+  the decisions, each action item's details and the open questions. Each one takes markdown,
+  takes pasted images (stored against the meeting) and has the writing assist.
+- **The topics are one field.** You write a heading per topic with the notes under it. The
+  field is saved back to the stored list of topics, so the document and the API see the same
+  shape they always did.
+- **An embedded image prints only when its file belongs to this meeting.** An image marker
+  that points at any other file draws nothing on the document.
+- **The PDF names people.** The "Opgenomen door" line is gone. The roster is grouped under the
+  agency's name and the client's name. Transcript speakers print as names, or as "Spreker 2"
+  when a label was never paired with a person. They never print as `S2`. Decision numbers stay
+  small and round at any row height.
+- **Profile pictures reach paper.** A personal upload is read from the org's own storage. An
+  identity provider's picture is fetched only from a closed list of hosts
+  (`googleusercontent.com`), over HTTPS, with no redirects, from public addresses only, capped
+  in size and time and cached for an hour. If any of that fails, the initials are printed
+  instead.
+- **The minutes prompt asks for scannable markdown.**
+
+### Meetings: long recordings
+
+Two recordings of 18 and 23 minutes failed while every short one worked. Three limits that
+were sized for other work stood in the way:
+
+- **The transcription call has its own timeout.** It used the shared AI client's 180-second
+  read timeout, which is sized for a streamed chat. A diarising transcription model returns
+  nothing until the whole clip is done, so the call now waits up to 900 seconds. A network
+  failure is now reported as a provider error, not as a crash of ours.
+- **`meetings_process` has an 80-minute job timeout.** Before, arq's five-minute default
+  cancelled a long transcription and never retried it. 80 minutes is below the 90-minute
+  reaper.
+- **A recording just over the provider's limit is no longer cut into a tiny part.** It was cut
+  at `duration // n`, which left a 27 ms third part that was sent as a request of its own. The
+  cut point is now rounded up, and a tail shorter than a second is dropped.
+
+### Upgrade notes
+
+- Nothing to run: no migration and no configuration.
+- A meeting that already failed on a long recording still has its audio. Use **Opnieuw
+  proberen** on the meeting (`POST /meetings/{id}/retry`) to transcribe it under the new limits.
+- A document render may now make an outbound HTTPS request to `googleusercontent.com` for a
+  colleague's sign-in picture. Where the API has no outbound internet access, the initials are
+  printed instead.
+
 ## v0.53.0 — 2026-09-23
 
 The WordPress integration can now edit the pages breik. builds. The breik. Bridge plugin runs
