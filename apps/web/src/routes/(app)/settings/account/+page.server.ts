@@ -85,7 +85,14 @@ export const load: PageServerLoad = async (event) => {
     googleEnabled && google.data?.connected && google.data?.calendar_enabled
       ? api
           .GET("/api/v1/google/calendar/calendars")
-          .then((r) => r.data ?? null)
+          // A grant made before the calendar-list scope was asked is refused by Google; the card
+          // says to reconnect rather than silently drawing no calendar section at all.
+          .then((r) =>
+            r.data ??
+            (apiErrorKey(r.error, "").key === "errors.google_calendar_list_scope_missing"
+              ? ("reconnect" as const)
+              : null),
+          )
           .catch(() => null)
       : Promise.resolve(null);
   const microsoftCalendars =

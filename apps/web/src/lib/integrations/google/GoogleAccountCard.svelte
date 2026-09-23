@@ -51,8 +51,9 @@
   }: {
     data: MyConnection;
     status: string | null;
-    /** The viewer's calendarList (#440), streamed — `null` while unknown or unavailable. */
-    calendars?: Promise<CalendarEntry[] | null>;
+    /** The viewer's calendarList (#440), streamed — `null` while unknown or unavailable, and
+     *  `"reconnect"` when the grant predates the calendar-list scope. */
+    calendars?: Promise<CalendarEntry[] | "reconnect" | null>;
   } = $props();
 
   let includeGmail = $state(false);
@@ -61,8 +62,12 @@
   // Resolved into state, never awaited in the markup: a save invalidates the page, and a raw
   // `{#await}` would blank the whole checklist on every one (docs/PERFORMANCE.md).
   let calendarList = $state<CalendarEntry[] | null>(null);
+  let calendarsNeedReconnect = $state(false);
   $effect(() => {
-    void calendars.then((value) => (calendarList = value));
+    void calendars.then((value) => {
+      calendarsNeedReconnect = value === "reconnect";
+      calendarList = value === "reconnect" ? null : value;
+    });
   });
   // The section is worth its space only when there is a choice to make: a viewer whose
   // account holds nothing but the primary sees the card exactly as it always was.
@@ -174,6 +179,19 @@
         >
           {t("google.account.reconnect")}
         </a>
+      {/if}
+
+      {#if data.calendar_enabled && connection.status === "active" && calendarsNeedReconnect}
+        <div class="space-y-2 border-t border-border pt-3">
+          <p class="text-sm text-text-muted">{t("google.account.calendars_reconnect")}</p>
+          <a
+            href={connectHref}
+            data-sveltekit-preload-data="off"
+            class="inline-block rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+          >
+            {t("google.account.reconnect")}
+          </a>
+        </div>
       {/if}
 
       {#if data.calendar_enabled && connection.status === "active" && selectableCalendars.length > 0}

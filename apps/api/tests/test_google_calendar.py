@@ -1575,3 +1575,59 @@ async def test_retitle_migration_rewrites_pushed_task_events(client_for, monkeyp
         assert link.payload["summary"] == "Nova Fietsen: Redesign homepage"
         assert link.status == "pending" and link.attempts == 0
         assert link.google_event_id == "gev-old"  # an update, never a second event
+
+
+class _RefusedResponse(_StubResponse):
+    """Google's real refusal body, so the error model can read the reason."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(403)
+        self._reason = reason
+
+    def raise_for_status(self) -> None:
+        body = {
+            "error": {
+                "code": 403,
+                "status": "PERMISSION_DENIED",
+                "message": "Request had insufficient authentication scopes.",
+                "details": [{"reason": self._reason}],
+            }
+        }
+        request = httpx.Request("GET", "https://www.googleapis.com/calendar/v3/users/me/calendarList")
+        response = httpx.Response(403, json=body, request=request)
+        raise httpx.HTTPStatusError("403", request=request, response=response)
+
+
+async def test_a_calendar_list_refused_for_scope_says_reconnect_not_500(
+    client_for, monkeypatch
+) -> None:
+    """``calendar.events`` does not cover ``calendarList``: a grant consented with that scope
+    alone is refused by Google, which escaped as a 500 and left the account page silent."""
+    t = await make_tenant("gcal-list-scope")
+    await _seed(t)
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        stub = _StubClient([("GET", _RefusedResponse("ACCESS_TOKEN_SCOPE_INSUFFICIENT"))])
+        monkeypatch.setattr(
+            "app.integrations.google.calendar.service.acting_as", _stub_acting_as(stub)
+        )
+        refused = await c.get("/api/v1/google/calendar/calendars", headers=headers)
+        assert refused.status_code == 409, refused.text
+        assert refused.json()["error"]["code"] == "google_calendar_list_scope_missing"
+
+        # Anything else Google says is its outage, not our crash.
+        stub = _StubClient([("GET", _StubResponse(503))])
+        monkeypatch.setattr(
+            "app.integrations.google.calendar.service.acting_as", _stub_acting_as(stub)
+        )
+        down = await c.get("/api/v1/google/calendar/calendars", headers=headers)
+        assert down.status_code == 502, down.text
+        assert down.json()["error"]["code"] == "google_calendar_unavailable"
+
+
+def test_a_calendar_consent_asks_for_the_calendar_list() -> None:
+    from app.integrations.google.oauth import SCOPE_CALENDAR_LIST, scopes_for
+
+    scopes = scopes_for(GoogleSettings(calendar_enabled=True), include_gmail=False)
+    assert SCOPE_CALENDAR in scopes
+    assert SCOPE_CALENDAR_LIST in scopes

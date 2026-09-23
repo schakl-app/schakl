@@ -35,6 +35,10 @@ SCOPE_CALENDAR = "https://www.googleapis.com/auth/calendar.events"
 SCOPE_CALENDAR_FULL = "https://www.googleapis.com/auth/calendar"
 #: Every scope that grants writing events to a calendar.
 CALENDAR_WRITE_SCOPES = (SCOPE_CALENDAR, SCOPE_CALENDAR_FULL)
+#: Reading the viewer's calendar *list* (which shared calendars sync, #440). ``calendar.events``
+#: does **not** cover ``calendarList`` — Google answers 403 ``ACCESS_TOKEN_SCOPE_INSUFFICIENT`` —
+#: so this is asked beside it. Read-only and names nothing but the calendars themselves.
+SCOPE_CALENDAR_LIST = "https://www.googleapis.com/auth/calendar.calendarlist.readonly"
 #: Full Drive, not ``drive.file``: browsing *existing* client folders is the whole point.
 #: Restricted scope — acceptable only under the per-agency "Internal" OAuth app (§2).
 SCOPE_DRIVE = "https://www.googleapis.com/auth/drive"
@@ -176,6 +180,7 @@ def scopes_for(
     scopes = list(SCOPE_IDENTITY)
     if row is not None and row.calendar_enabled:
         scopes.append(SCOPE_CALENDAR)
+        scopes.append(SCOPE_CALENDAR_LIST)
     if row is not None and row.drive_enabled:
         scopes.append(SCOPE_DRIVE)
     if include_gmail and row is not None and row.gmail_enabled:
