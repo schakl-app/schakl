@@ -2,6 +2,79 @@
 
 _Releases v0.25.0 through v0.41.0 are written up on their GitHub Releases; this file resumes at v0.42.0._
 
+## v0.55.0 — 2026-09-23
+
+The meeting review desk now turns an action item into a real task and records the meeting's
+hours on confirm. A recording cut into parts keeps one speaker per person. The Google account
+page lists your calendars again instead of answering 500. The WordPress bridge plugin has a
+new name.
+
+One migration, `a3c9e1f7b5d2` (additive): `meetings.title_auto` and `meetings.time_entry_ids`.
+The head moves from `c7e2a9b4d6f1` to `a3c9e1f7b5d2`. There are two new endpoints,
+`POST /meetings/{id}/action-items/draft-task` and `POST /meetings/{id}/action-items/task`, and
+both declare `meetings.meeting.write`. No new permission keys and no new environment
+variables. The typed client is regenerated. The Google consent asks for one more scope,
+`calendar.calendarlist.readonly`.
+
+### Meetings: the review desk
+
+- **An action item becomes a task in one step.** *Taak maken met schakl* beside an item opens
+  a sheet with the whole task form filled in from the transcript around the item: the title,
+  what exactly, the steps the meeting listed, the deadline that was spoken and who took it on.
+  The client is always the meeting's. Nothing is created until you press Create. The item
+  remembers its task, so the confirm files that task on the contact moment and never makes a
+  second one.
+- **Confirming can record the hours.** Tick the colleagues who were there and each gets one
+  time entry on their own timesheet. The entry is the recording's length, with the minutes'
+  time note as its line. It is gated like the ride-along on finishing a task: booking hours
+  for someone else needs `time.entry.write:any`, and the `time` licence is checked before
+  anything is written. The meeting then says whose hours were booked.
+- **A meeting you leave untitled is named for you.** It gets a name like "Bespreking met Nova
+  Fietsen · 23-09-2026", and once the minutes are in, the subject they found replaces it. A
+  ✦ marks the name as schakl's. A title you typed yourself is never changed.
+- **Save and Confirm stay in reach.** They ride a sticky bar at the top of the minutes. The
+  AI box is now the first card on the right.
+- **Recordings can be scrubbed.** A recording made in the browser is remuxed once
+  (`ffmpeg -c copy`), so the player shows the total length and seeking works. The measured
+  length fills `duration_seconds`.
+
+### Meetings: speakers across a cut
+
+A 23-minute meeting came back with four speakers for two people. There were two causes:
+
+- **The request-length margin was applied twice.** A recording the model could take in one
+  request was cut in two. There is now one margin.
+- **Each part numbered its speakers from scratch.** When a recording really is longer than one
+  request, the parts now overlap by 45 seconds. Each label in a new part is matched to the
+  label that spoke during the same seconds of the part before. A label with no match keeps a
+  fresh number, so the worst case is one person split in two, never two people merged into one.
+
+### Google and Microsoft calendars
+
+- **The calendar list works again.** `GET /google/calendar/calendars` answered 500 in
+  production because Google refuses that read without a calendar-list scope. The consent now
+  asks for `calendar.calendarlist.readonly`.
+- **A missing scope is explained.** It answers 409 `google_calendar_list_scope_missing`, and
+  the account card offers to reconnect. Any other refusal from Google is a 502.
+- **Microsoft had the same unhandled error.** Its calendar list now answers 502
+  `microsoft_calendar_unavailable`.
+
+### WordPress
+
+- **The bridge plugin is now the schakl WordPress MCP Bridge** (`schakl-app/schakl-wordpress-mcp-bridge`,
+  1.1.4). Its REST namespace is `schakl/v1` and its slug is `schakl-wordpress-mcp-bridge`. The
+  client, the probe and the on-screen text follow the new name.
+
+### Upgrade notes
+
+- The migration is additive and runs unattended on upgrade.
+- **Google users reconnect once to see their calendar list.** Until then the account card
+  explains what is missing and offers the reconnect; everything else keeps working.
+- **Sites running the old breik. Bridge plugin need the renamed plugin** (1.1.4 or later).
+  schakl now calls the `schakl/v1` namespace, so a site on the old plugin reads as "not
+  installed".
+- The API image already ships ffmpeg. Nothing to install.
+
 ## v0.54.0 — 2026-09-23
 
 The minutes of a meeting read like a document now, and a long meeting gets transcribed. Every
