@@ -49,6 +49,7 @@ from app.core.richtext import sanitize_markdown
 from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext, TenantScopedRepository
 from app.core.timezone import org_zoneinfo
+from app.core.webaddress import website_company_sql, website_label_sql
 from app.errors import AppError
 from app.modules.subscriptions.models import (
     Subscription,
@@ -83,12 +84,12 @@ ENTITY_TYPE = "subscription"
 _LINK_TABLES: dict[str, str] = {"project": "projects", "task": "tasks", "website": "websites"}
 
 #: ``(id, label)`` per kind, for the page's links in one statement each. A website is named by
-#: the host it answers on, exactly as its own page titles it.
+#: its address — host plus path — exactly as its own page titles it (app/core/webaddress.py).
 _LINK_LABEL_SQL: dict[str, str] = {
     "project": "SELECT id, name FROM projects WHERE org_id = :oid AND id IN :ids",
     "task": "SELECT id, title FROM tasks WHERE org_id = :oid AND id IN :ids",
     "website": (
-        "SELECT w.id, CASE WHEN w.root THEN d.name ELSE 'www.' || d.name END"
+        f"SELECT w.id, {website_label_sql()}"
         " FROM websites w JOIN domains d ON d.id = w.domain_id"
         " WHERE w.org_id = :oid AND w.id IN :ids"
     ),
@@ -99,7 +100,7 @@ _AUDITED_FIELDS = (
     "name", "status", "subscription_type_id", "company_id", "currency", "interval",
     "interval_count", "start_date", "end_date", "next_invoice_date", "billed_until",
     "included_hours", "notice_period_days", "auto_invoice_mode", "billed_in_advance_override",
-    "notes_on_invoice_override",
+    "notes_on_invoice_override", "product_id",
 )
 
 #: Starter categories, seeded lazily like ``DEFAULT_LEAVE_TYPES`` — an editable suggestion of
@@ -167,6 +168,10 @@ def _amount_sort(today: date) -> Any:
 
 #: Months per interval — the one place the calendar arithmetic lives.
 _INTERVAL_MONTHS = {
+    # Zero months is "no cycle": a one-time agreement owes its anchor and nothing after it.
+    # Every consumer of ``period_months`` treats 0 as that — the walk offers one boundary, the
+    # cron fires once and completes the agreement, and there is no monthly equivalent.
+    SubscriptionInterval.ONCE.value: 0,
     SubscriptionInterval.MONTHLY.value: 1,
     SubscriptionInterval.QUARTERLY.value: 3,
     SubscriptionInterval.YEARLY.value: 12,
@@ -199,6 +204,37 @@ SORTABLE = {
 
 def period_months(interval: str, interval_count: int) -> int:
     return _INTERVAL_MONTHS[interval] * max(1, interval_count)
+
+
+def period_of(boundary: date, months: int, *, advance: bool) -> tuple[date | None, date]:
+    """The span a boundary stands for — ``period_span`` with the one-time case stated once.
+
+    A one-time agreement has no span: the day it is billed is the whole period, so the start is
+    ``None`` and the document prints the one date (the shape an agreement with no cycle already
+    had). Every reader of a period — the picker, the backlog, the cron — goes through this so
+    none of them writes "24-09-2026 - 24-09-2026" on paper.
+    """
+    if months <= 0:
+        return None, boundary
+    return period_span(boundary, months, advance=advance)
+
+
+async def ensure_product(ctx: RequestContext, product_id: uuid.UUID | None) -> None:
+    """A product is this tenant's or it is not this agreement's — through the invoicing
+    module's table (§6), never its models."""
+    if product_id is None:
+        return
+    row = await ctx.session.scalar(
+        text("SELECT id FROM invoicing_products WHERE id = :pid AND org_id = :oid"),
+        {"pid": product_id, "oid": ctx.org.id},
+    )
+    if row is None:
+        raise AppError(
+            "validation",
+            "errors.validation",
+            status_code=422,
+            fields={"product_id": "errors.not_found"},
+        )
 
 
 #: The event `invoicing` shifts its claims on: which way these agreements' periods now run.
@@ -733,7 +769,7 @@ class SubscriptionService:
             months = period_months(sub.interval, sub.interval_count)
             rows = lines_by_sub.get(sub.id) or []
             span = (
-                period_span(boundary, months, advance=directions[sub.id])
+                period_of(boundary, months, advance=directions[sub.id])
                 if boundary
                 else (None, None)
             )
@@ -880,7 +916,7 @@ class SubscriptionService:
                     (with_note(row.description, note), row.quantity, row.unit_amount)
                     for row in rows
                 ) or ((with_note(sub.name, note), Decimal(1), amount),)
-                period_start, period_end = period_span(boundary, months, advance=advance)
+                period_start, period_end = period_of(boundary, months, advance=advance)
                 periods.append(
                     OpenPeriod(
                         period_start=period_start,
@@ -991,6 +1027,7 @@ class SubscriptionService:
             await self._ensure_type(data.subscription_type_id)
         if data.subscription_template_id is not None:
             await self._ensure_template(data.subscription_template_id)
+        await ensure_product(self.ctx, data.product_id)
         custom = await self.custom_fields.validate(
             ENTITY_TYPE,
             data.custom or {},
@@ -1003,6 +1040,7 @@ class SubscriptionService:
             company_id=data.company_id,
             subscription_type_id=data.subscription_type_id,
             subscription_template_id=data.subscription_template_id,
+            product_id=data.product_id,
             name=data.name.strip(),
             status=data.status.value,
             currency=data.currency.upper(),
@@ -1084,6 +1122,10 @@ class SubscriptionService:
             if data.subscription_template_id is not None:
                 await self._ensure_template(data.subscription_template_id)
             values["subscription_template_id"] = data.subscription_template_id
+        if "product_id" in sent:
+            # And for the product it sells; null detaches, a value must be this tenant's.
+            await ensure_product(self.ctx, data.product_id)
+            values["product_id"] = data.product_id
         if "currency" in sent and data.currency is not None:
             values["currency"] = data.currency.upper()
         if "rollover" in sent and data.rollover is not None:
@@ -1539,10 +1581,14 @@ class SubscriptionService:
             return
         values: dict[str, Any] = {"activated_at": datetime.now(UTC)}
         if sub.next_invoice_date is None:
-            next_date = first_boundary_ahead(
-                sub.start_date,
-                period_months(sub.interval, sub.interval_count),
-                await self._org_today(),
+            months = period_months(sub.interval, sub.interval_count)
+            today = await self._org_today()
+            # A one-time agreement is billed on delivery: its start date, or today when the
+            # start is already behind us — a derived cycle date never lands in the past.
+            next_date = (
+                max(sub.start_date, today)
+                if months == 0
+                else first_boundary_ahead(sub.start_date, months, today)
             )
             if sub.end_date is None or next_date <= sub.end_date:
                 values["next_invoice_date"] = next_date
@@ -1610,13 +1656,14 @@ class SubscriptionService:
 
     async def _linkable_conditions(self, entity_type: str, entity_id: uuid.UUID) -> list[Any]:
         """Where the agreements that *could* cover ``entity`` are: the record's own client (a
-        website's is its domain's, a project's its own), alive, and — for a website — of a kind
-        that covers websites. A record this tenant does not hold answers an empty list, never
-        another client's agreements."""
+        website's is the one it names or else its domain's, a project's its own), alive, and —
+        for a website — of a kind that covers websites. A record this tenant does not hold
+        answers an empty list, never another client's agreements."""
         if entity_type == "website":
             company_id = await self.ctx.session.scalar(
                 text(
-                    "SELECT d.company_id FROM websites w JOIN domains d ON d.id = w.domain_id"
+                    f"SELECT {website_company_sql()} FROM websites w"
+                    " JOIN domains d ON d.id = w.domain_id"
                     " WHERE w.id = :eid AND w.org_id = :oid"
                 ),
                 {"eid": entity_id, "oid": self._org_id},
@@ -1760,7 +1807,12 @@ class SubscriptionService:
         is dropped, or a retainer's usage would silently shrink on upgrade."""
         months = period_months(sub.interval, sub.interval_count)
         period_end = sub.next_invoice_date
-        period_start = add_months(period_end, -months) if period_end else None
+        # A one-time job's included hours cover the whole engagement, not a rolling window.
+        period_start = (
+            (sub.start_date if months == 0 else add_months(period_end, -months))
+            if period_end
+            else None
+        )
         project_ids = [
             row.entity_id
             for row in await self.ctx.session.scalars(
@@ -1871,8 +1923,10 @@ class SubscriptionService:
             sub.billed_in_advance = directions[sub.id]  # type: ignore[attr-defined]
             sub.notes_on_invoice = note_flags[sub.id]  # type: ignore[attr-defined]
             sub.amount = amount  # type: ignore[attr-defined]
+            # A one-time agreement has no monthly equivalent: it is a sale, not run-rate, and
+            # counting it in MRR would announce revenue that never recurs.
             sub.monthly_equivalent = (  # type: ignore[attr-defined]
-                round(float(amount) / months, 2) if amount is not None else None
+                round(float(amount) / months, 2) if amount is not None and months else None
             )
             sub.lines = lines_by_sub.get(sub.id, [])  # type: ignore[attr-defined]
             sub.links = links_by_sub.get(sub.id, [])  # type: ignore[attr-defined]
@@ -2031,6 +2085,7 @@ class SubscriptionTemplateService:
         self.ctx.require("subscriptions.template.manage")
         if data.subscription_type_id is not None:
             await self._ensure_type(data.subscription_type_id)
+        await ensure_product(self.ctx, data.product_id)
         return await self.repo.create(**self._values(data, data.model_dump()))
 
     async def update(
@@ -2060,6 +2115,7 @@ class SubscriptionTemplateService:
         template = await self.repo.get_or_404(template_id)
         if data.subscription_type_id is not None:
             await self._ensure_type(data.subscription_type_id)
+        await ensure_product(self.ctx, data.product_id)
         old_name = template.name
         sent = data.model_dump(exclude_unset=True)
         flips = (

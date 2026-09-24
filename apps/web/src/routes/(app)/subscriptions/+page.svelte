@@ -58,6 +58,7 @@
     templates: data.templates,
     definitions: data.definitions,
     companyDefinitions: data.companyDefinitions,
+    products: data.products,
     orgAutoInvoiceMode: data.invoicingSettings?.auto_invoice_mode ?? null,
   });
   /** The client a create opens on — from the client page's `?company=`, else none. */
@@ -71,7 +72,7 @@
     splitCompanyOptions(data.companies, { selectedId: data.companyFilter }),
   );
   const companyItems = $derived(companyPicker.live);
-  const STATUSES = ["draft", "active", "paused", "cancelled"] as const;
+  const STATUSES = ["draft", "active", "paused", "cancelled", "completed"] as const;
 
   // Tenant-defined categories (#142): picker items, list labels, and the filter pills.
   const activeTypes = $derived(data.types.filter((st) => st.active));

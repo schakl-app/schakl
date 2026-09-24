@@ -197,10 +197,21 @@ async def delete_tax_rate(
 )
 async def list_products(
     include_inactive: bool = Query(False),
+    q: str | None = Query(None, description="matches name, article code and description"),
+    usage: bool = Query(
+        False,
+        description="attach how many agreements and standard subscriptions name each product",
+    ),
     ctx: RequestContext = Depends(require_context),
 ) -> list[ProductRead]:
-    items = await ProductService(ctx).list(include_inactive=include_inactive)
-    return [ProductRead.model_validate(p) for p in items]
+    service = ProductService(ctx)
+    items = await service.list(include_inactive=include_inactive, q=q)
+    # Opt-in: the editors' pick list never needs it, and it is two grouped reads the settings
+    # screen is the only caller of (docs/PERFORMANCE.md).
+    used = await service.usage(items) if usage else {}
+    return [
+        ProductRead.model_validate(p).model_copy(update=used.get(p.id, {})) for p in items
+    ]
 
 
 @router.post(

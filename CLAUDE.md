@@ -592,6 +592,29 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   resolution is one clause**, taken by the renewal cron, the list filter, the outstanding picker
   and the per-row read alike, so a screen and the cron can never disagree about which domains
   bill. Reported wherever it changes an answer, never silently applied.
+- **A website is a site at an address, and a domain may carry several** (`app/core/webaddress.py`).
+  A website was a strict 0/1 child of a domain with a root/`www` flag, so the agency's dev installs
+  — `breik.dev/briellaerd`, `breik.dev/nova`, one WordPress per client under one domain of the
+  agency's — could not be recorded: the domain normaliser stripped the path off anything typed into
+  the picker, the second site 409'd, and the one that landed sat under whichever client the domain
+  had been filed on. Three rules replace it. **The address is the identity**: `websites.path`
+  (`""` for the root, `NOT NULL` so the unique key can hold it) joins `root` in
+  `uq_websites_address`, and the API resolves `host` / `label` / `url` **once** on every row —
+  eight screens each composed `root ? name : "www." + name` and none of them knew about the path,
+  which is the "eight copies, the ninth forgets" failure `naming.py` already describes; the
+  borrowers' bare-table SQL (uptime, WordPress, marketing, subscriptions, the domains panel) reads
+  the same rule through `website_label_sql` / `website_company_sql`. **Whose it is may be the
+  site's own decision**: `company_override_id`, `NULL` = *follow the domain* (an override that
+  restates the domain's client is stored as `NULL`, so a form re-posting the default never freezes
+  it), read by the horizon clause, the client filter, the hub's panel, every borrower and the
+  restricted member's write guard alike — a client's dev site on the agency's domain is the
+  **client's**. And **the constraint shows itself working** (#305): the picker offers every domain
+  with what is already on it (`taken`), a typed `breik.dev/briellaerd` splits into the domain
+  quick-create and the path box, and a taken address is refused naming the address — in the
+  service, and in the import's preview (`validate_row`), where a domain-only file still matches a
+  domain carrying one site and never guesses among several. Its sibling was a core bug it found:
+  the validation envelope dropped every `loc` segment named `body`, `query` or `path`, so a body
+  field called `path` failed with no field named at all.
 - **The client portal is a module, and what it sells is not what it enforces** (#193/#296,
   `docs/PORTAL.md`). Everything the portal does happens on a *contact's* page, which is why it
   started life inside `contacts` and why that was wrong: it is a product the agency buys
@@ -1091,6 +1114,32 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   refused is named on the receipt *and* in the task's own notes (`tasks.intake.attachment_skipped`)
   — a loss with nothing taking its place is stated where the person will look. The confirmation
   notification was never broken; it was the tenth row under nine that shared its timestamp.
+- **A header name is the RFC's to spell, and a mail is one line of HTML source** (the second
+  live week of `taak@`, `core/mailbox/matching.HeaderMap`, `core/htmlmd.py`). Two mails sent
+  from an iPhone each became two tasks, minutes apart, with the whole mail — signature, forward
+  marker and the client's message — pasted into the notes. Neither fault was in the intake. **The
+  RFC-822 id was `NULL`**: Apple Mail writes `Message-Id`, Gmail hands the name back as the client
+  spelled it, and the feed's header map was a `dict` keyed on the spelling — so the receipt's
+  cross-mailbox key was empty and the fallback key (the provider's own id) differs between the
+  sender's Sent copy and the copy the address delivered to a colleague's mailbox. The same map fed
+  the timeline's `LOGGED_ELSEWHERE` dedup, which was therefore blind to every Apple Mail message
+  for as long as it has existed. A header name is case-insensitive by RFC 5322, so the map is
+  (`HeaderMap`), and the metadata fetch asks Gmail for both spellings because the filter is the
+  provider's to match. **The HTML reading was `None`**: Apple Mail and Outlook open every body
+  with `<head><meta …></head>`, `meta` sat in the converter's drop set, and a void element has no
+  end tag to close the scope it opened — so the counter stayed at one after `</head>` and every
+  such body converted to nothing. The plain reading then took over and flattened each `<div>` to
+  a space, which put the sign-off, `Begin forwarded message:` and the original's headers on the
+  instruction's own line, where nothing that reads a mail *by its lines* could find them. A void
+  tag is skipped, never counted; `html_to_text` ends a line where a block element does; and the
+  parser learned Apple Mail's marker in its three languages plus `Reply-To` as a header of the
+  block rather than the first line of its body. **And the notes are the model's summary alone**
+  (`_description`): a summary over the words it summarises was the mail in the task twice, so the
+  colleague's own words are the notes only when no model wrote any, the schema says the summary is
+  always written because those words are not stored with the task, and the forwarded mail stays
+  what it was — a contact moment on the task, never notes. The general lesson is the one the test
+  now pins from the raw HTML rather than from a hand-typed markdown body: **a fixture written in
+  the shape you expect cannot find the fault in the shape you receive.**
 - **Somebody is always on a task, and a create resolves where an update refuses** (tasks' roster,
   `docs/UX.md`). #392's argument one column over: an unassigned task is on no board and in no
   one's nudges, so every door asks — `taskCreateBody` refuses a rendered roster that names nobody,
@@ -1359,6 +1408,28 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   kind over the page), so the agreement's page can print what it covers without a lookup of its
   own. The per-record routes (`POST /{id}/links`, `DELETE /{id}/links/{type}/{id}`) exist because a
   host page holds one link, not the agreement's whole set.
+- **A product sold once is an agreement with no cycle, and a second record for it would be
+  a second copy of everything an agreement has** (`SubscriptionInterval.ONCE`,
+  `docs/INVOICING.md`). The first cut built a separate `invoicing_product_sales` row — client,
+  project, snapshot price, its own claim column, its own panels and backlog source — and it was
+  wrong in kind before it was wrong in detail: a website build wants the standard subscription it
+  is made from, the type whose task templates spawn, the project link, the notes with variables,
+  the custom fields, the auto-invoice level, and every one of those would have had to be built
+  twice. So `once` is **zero months**, and zero months means *no cycle* everywhere
+  `period_months` is read: `period_boundaries` offers the anchor alone, activation derives it as
+  the start date (or today — never in the past), the cron fires once and sets `completed`, and
+  `monthly_equivalent` is `None` so MRR never announces a sale as run-rate. Three rules
+  generalise. **A status that is a fact about the paper is set by the paper, not the form**:
+  `completed` is written by the cron that drafts and by `subscriptions/events.py` when a
+  document claims the period by hand — `invoicing` owns the claim tables, so its claim writes
+  emit `subscription.period_claimed` / `period_released` and the owner decides what they mean
+  (§6's event bus, both directions: a deleted draft reopens the agreement). **Provenance is a
+  column, never a copy source**: `product_id` on a preset and on an agreement says what
+  price-list product it sells, the pick copies name and amount and both stay the agreement's
+  own, and the price list learns where it is used (`?usage=true`). And **the fix for "was this
+  ever billed" is one seam, not one screen**: a picker whose confirm was a bare `Button` inside
+  the document form submitted the form with the stale empty `lines` field — every `Button`
+  rendered inside a form needs `type="button"` unless it is the submit.
 - **A ride-along write carries the gates of the module it writes into, not of the route it rode
   in on** (#314). Finishing a task and recording the hours it took were two unrelated acts, so
   the hours got logged later from memory or not at all; `TaskUpdate.log_time` makes them one
@@ -2208,6 +2279,23 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   record time, the minutes' subject when the words are in; a typed title is never touched). And
   **a browser's streamed WebM is remuxed at fold** (`-c copy`), because a header that says
   *unknown duration* is a player that cannot be scrubbed.
+- **The minutes are the record from the moment they exist, and a record is never frozen** (the
+  owner's reversal of the confirm step above, `docs/MEETINGS.md`). "Nothing the model wrote is
+  a record until a person confirms it" was right about the model and wrong about the button: a
+  confirmed meeting could not be corrected, a contact moment sat unwritten until somebody
+  pressed a step nobody asked for, and tasks were made by checkbox in bulk. Four things replace
+  it. **One state after the worker** — `review` and `done` collapsed into `ready`
+  (`b7d4f2c9a1e6`), editable for ever, saved by itself from the page. **The contact moment is
+  automatic and follows every edit**: the worker files the draft as the recorder
+  (`member_context`, the intake's shape) the moment it lands, and `sync_interaction` rewrites
+  it on every save of the minutes, the title, the filing and the roster — a refusal there is
+  logged and swallowed, because the meeting is the record and the moment its mirror, and the
+  page's own button is the strict form that carries the reason. **A task is made one item at a
+  time** (the e-mail approve's sheet), never by a checkbox; a save that drops the link gets it
+  back matched on the item's words, never its position. And **the hours have their own button**
+  (`POST …/time`, #314's gates). The rule to carry: a stage that exists only to gate a write the
+  system could make itself, and that freezes what it gates, is a stage — the write goes in as
+  soon as it is true, and stays editable.
 - **A redeploy must be a non-event for a tab in the middle of a recording, and a piece that
   does not land is retried by the browser, never by the person** (`meetings/upload.ts`,
   `docs/MEETINGS.md`). The API rolls start-first (§11), which keeps the healthcheck green and says

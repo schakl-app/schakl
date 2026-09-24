@@ -394,10 +394,9 @@ def test_the_draft_keeps_an_unquotable_item_and_marks_it() -> None:
     first, second = draft.action_items
     assert (
         first.assignee_user_id == staff
-        and first.create_task
         and first.due_date == date(2026, 9, 25)
     )
-    assert second.assignee_user_id is None and not second.create_task and second.due_date is None
+    assert second.assignee_user_id is None and second.due_date is None
     assert second.owner_label == "Jan (klant)"
 
 
@@ -471,7 +470,7 @@ def test_an_owner_is_grounded_in_the_participants_and_a_contact_outranks_a_colle
         contact_ids=contact_ids,
     )
     logo, both, unknown = draft.action_items
-    assert logo.owner_contact_id == contact and logo.create_task is False
+    assert logo.owner_contact_id == contact
     assert both.owner_contact_id == contact and both.assignee_user_id is None
     assert unknown.owner_contact_id is None and unknown.owner_label == "Karel (klant)"
 

@@ -17,8 +17,9 @@
   so. Before this, a ``recording`` row was the one state nothing ever ended: it sat there
   claiming a recording was running, was polled by every page load that opened it, and could be
   cleared only by deleting the meeting.
-* ``meetings_sweep_audio`` — nightly, per org. The recording of a confirmed meeting is dropped
-  after :data:`AUDIO_RETENTION_DAYS`; the transcript and the minutes stay. A recording is the
+* ``meetings_sweep_audio`` — nightly, per org. The recording of a minuted meeting is
+  dropped :data:`AUDIO_RETENTION_DAYS` after the minutes landed; the transcript and the
+  minutes stay. A recording is the
   most personal thing this product stores and the AVG asks for a stated retention, so the
   screen states this number where the person presses record.
 
@@ -46,6 +47,7 @@ from app.core.entitlements.service import sku_cron_enabled
 from app.core.events import emit
 from app.core.jobs import enqueue, run_per_org, system_context
 from app.core.models import Org, OrgStatus
+from app.core.principal import member_context
 from app.core.storage.backend import storage_for
 from app.core.storage.models import StoredFile
 from app.core.storage.service import drop_file
@@ -70,6 +72,7 @@ from app.modules.meetings.pipeline import (
 )
 from app.modules.meetings.service import (
     CHUNK_PREFIX,
+    MeetingService,
     agency_name,
     drop_audio,
     org_locale,
@@ -94,9 +97,9 @@ RUN_TIMEOUT_SECONDS = 80 * 60
 #: with room, and the reaper runs four times an hour, so a dead recording is ended inside half
 #: an hour rather than never.
 RECORDING_STALE_AFTER_MINUTES = 20
-#: How long a confirmed meeting keeps its audio. Stated on the recording screen.
+#: How long a minuted meeting keeps its audio. Stated on the recording screen.
 AUDIO_RETENTION_DAYS = 30
-#: The notification the colleague who recorded it gets when the draft lands on ``review``
+#: The notification the colleague who recorded it gets when the draft lands on ``ready``
 #: (registered in ``notifications/events.py``; ``MEETING_READY`` there must match).
 READY_EVENT = "meeting.ready"
 #: The notification the colleague who recorded it gets when the server had to end a recording
@@ -220,7 +223,7 @@ async def _fold(ctx, session: AsyncSession, row: Meeting) -> tuple[bytes, str]: 
 async def run_pipeline(
     session: AsyncSession, org: Org, meeting_id: uuid.UUID, *, stage: str = "full"
 ) -> None:
-    """The whole run for one meeting, ending on ``review`` or ``failed``. Never raises.
+    """The whole run for one meeting, ending on ``ready`` or ``failed``. Never raises.
 
     ``stage="minutes"`` skips the fold and the transcription and drafts over the transcript the
     row already holds — the reviewer named the speakers and wants the draft to say who took
@@ -343,9 +346,12 @@ async def run_pipeline(
             "diarized": any(s.get("speaker") for s in segments),
             "chat_model": chat.model,
         }
-        row.status = MeetingStatus.REVIEW.value
+        row.status = MeetingStatus.READY.value
         row.status_at = datetime.now(UTC)
         row.error_key = None
+        # The minutes are the record now: filed on the client as a contact moment, as the
+        # colleague who recorded it, in the same commit as the draft.
+        await _file(session, org, row)
         # Told before the commit, so the row's state and the sentence about it land together:
         # the colleague who pressed record is the one waiting, and a worker has no actor to
         # exclude, so they are named outright. Deduped per run, not per meeting — a redraft is
@@ -360,9 +366,32 @@ async def run_pipeline(
         await _fail(session, org_id, meeting_id, "meetings.error.failed")
 
 
+async def _file(session: AsyncSession, org: Org, row: Meeting) -> None:
+    """The minutes onto the client's timeline, as the person who recorded them.
+
+    A worker has no person behind it, and the contact moment must have one — its trail, its
+    owner, the horizon it lands inside — so the recorder's own request context is rebuilt
+    (``member_context``, the e-mail intake's shape) and the interactions module is asked as
+    them. Where that is not possible (the recorder left, or holds no write on interactions any
+    more) the meeting simply stays unfiled and the page offers the button; and nothing raised
+    here may fail a transcription that was already paid for, so every fault is logged and
+    swallowed. On a redraft the moment already exists and is rewritten.
+    """
+    if row.owner_user_id is None:
+        return
+    try:
+        actor = await member_context(session, org, row.owner_user_id)
+        if actor is None:
+            logger.info("meetings: %s not filed — the recorder is no member here", row.id)
+            return
+        await MeetingService(actor).sync_interaction(row)
+    except Exception:  # noqa: BLE001 — never the transcription's failure
+        logger.exception("meetings: %s could not be filed as a contact moment", row.id)
+
+
 async def _notify_ready(ctx, row: Meeting, draft) -> None:  # noqa: ANN001
-    """The recorder is told their minutes are ready to review — in the app and, by this
-    event's own default, by mail (``notifications/defaults.EMAIL_DEFAULT_ON_EVENTS``)."""
+    """The recorder is told their minutes are in — in the app and, by this event's own
+    default, by mail (``notifications/defaults.EMAIL_DEFAULT_ON_EVENTS``)."""
     if row.owner_user_id is None:
         return
     await emit(
@@ -538,9 +567,11 @@ async def _sweep_org(org: Org, session: AsyncSession) -> None:
             await session.execute(
                 select(Meeting).where(
                     Meeting.org_id == org.id,
-                    Meeting.status == MeetingStatus.DONE.value,
+                    Meeting.status == MeetingStatus.READY.value,
                     Meeting.audio_file_id.isnot(None),
-                    Meeting.confirmed_at < cutoff,
+                    # ``status_at`` is when the minutes landed (a redraft restarts the clock,
+                    # which is the honest reading: the words were in use again).
+                    Meeting.status_at < cutoff,
                 )
             )
         )

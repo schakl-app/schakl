@@ -52,8 +52,7 @@
       kind: "pills",
       key: "status",
       options: [
-        { value: "review", label: t("meetings.status.review") },
-        { value: "done", label: t("meetings.status.done") },
+        { value: "ready", label: t("meetings.status.ready") },
         { value: "failed", label: t("meetings.status.failed") },
       ],
     },

@@ -38,10 +38,20 @@ from typing import Any
 
 from sqlalchemy import Select, column, func, select, table
 
+from app.core.webaddress import normalize_path, website_company_expr, website_label
+
 #: Two of another module's tables, referenced as bare tables (§6) — the idiom `cloudflare`
 #: already uses for `domains`. A lookup is not a data path into another module.
 _domains = table("domains", column("id"), column("org_id"), column("company_id"), column("name"))
-_websites = table("websites", column("id"), column("org_id"), column("domain_id"), column("root"))
+_websites = table(
+    "websites",
+    column("id"),
+    column("org_id"),
+    column("domain_id"),
+    column("root"),
+    column("path"),
+    column("company_override_id"),
+)
 _hosting = table("hosting", column("id"), column("org_id"), column("company_id"))
 
 #: What a monitor's link may point at. `hosting` is linkable by hand but never *matched*: a
@@ -81,6 +91,9 @@ class LinkCandidate:
     entity_id: uuid.UUID
     label: str
     company_id: uuid.UUID | None
+    #: A website's path under its host (``""`` for the root) — what tells
+    #: ``breik.dev/briellaerd`` from ``breik.dev/nova`` when both answer on one host.
+    path: str = ""
 
     def as_json(self) -> dict[str, Any]:
         return {
@@ -88,6 +101,7 @@ class LinkCandidate:
             "entity_id": str(self.entity_id),
             "label": self.label,
             "company_id": str(self.company_id) if self.company_id else None,
+            "path": self.path,
         }
 
 
@@ -112,6 +126,26 @@ def host_of(target: str | None) -> str | None:
         value = value.split(":", 1)[0]
     value = value.rstrip(".")
     return value or None
+
+
+def path_of(target: str | None) -> str:
+    """The path a monitor watches, in the form ``websites.path`` stores (``""`` for the root).
+
+    A bare host has none; a URL's query and fragment are not part of where a site lives.
+    Something that is not a path at all answers the root rather than raising — this is a
+    matcher, and a monitor with an odd target is one to list, not one to fail on.
+    """
+    value = (target or "").strip()
+    if "://" not in value:
+        return ""
+    rest = value.split("://", 1)[1]
+    if "/" not in rest:
+        return ""
+    path = rest.split("/", 1)[1].split("?", 1)[0].split("#", 1)[0]
+    try:
+        return normalize_path(path)
+    except ValueError:
+        return ""
 
 
 def lookup_hosts(hosts: set[str]) -> set[str]:
@@ -142,8 +176,18 @@ def index_query(
     lives too (`Website.__company_horizon_clause__`).
     """
     conditions = [_domains.c.org_id == org_id, func.lower(_domains.c.name).in_(names)]
+    website_company = website_company_expr(
+        _websites.c.company_override_id, _domains.c.company_id
+    )
+    join_on = (_websites.c.domain_id == _domains.c.id) & (
+        _websites.c.org_id == _domains.c.org_id
+    )
     if scope is not None:
         conditions.append(_domains.c.company_id.in_(scope))
+        # A site may name a client of its own (a dev install on the agency's domain), so
+        # the website half of the join carries the horizon too: the domain being visible
+        # does not make every site on it visible.
+        join_on = join_on & website_company.in_(scope)
     return (
         select(
             _domains.c.id,
@@ -151,14 +195,10 @@ def index_query(
             _domains.c.company_id,
             _websites.c.id.label("website_id"),
             _websites.c.root,
+            _websites.c.path,
+            website_company.label("website_company_id"),
         )
-        .select_from(
-            _domains.outerjoin(
-                _websites,
-                (_websites.c.domain_id == _domains.c.id)
-                & (_websites.c.org_id == _domains.c.org_id),
-            )
-        )
+        .select_from(_domains.outerjoin(_websites, join_on))
         .where(*conditions)
     )
 
@@ -184,8 +224,15 @@ def build_index(rows: list[Any]) -> tuple[Index, Index]:
             existing.append(LinkCandidate("domain", row.id, apex, row.company_id))
         if row.website_id is not None:
             host = apex if row.root else f"www.{apex}"
+            path = row.path or ""
             websites.setdefault(host, []).append(
-                LinkCandidate("website", row.website_id, host, row.company_id)
+                LinkCandidate(
+                    "website",
+                    row.website_id,
+                    website_label(apex, bool(row.root), path),
+                    row.website_company_id,
+                    path,
+                )
             )
     return websites, domains
 
@@ -194,6 +241,7 @@ def candidates_for(
     host: str | None,
     websites: dict[str, list[LinkCandidate]],
     domains: dict[str, list[LinkCandidate]],
+    path: str = "",
 ) -> list[LinkCandidate]:
     """The anchors this host could mean — most specific first, and never narrowed to one.
 
@@ -207,7 +255,18 @@ def candidates_for(
         return []
     exact = websites.get(host)
     if exact:
-        return list(exact)
+        # One host, several sites (``breik.dev/briellaerd`` beside ``breik.dev/nova``):
+        # the monitor's own path decides. The longest site path the target sits under
+        # wins; a target under none of them means the root site where there is one, and
+        # otherwise every site on the host, for a person to pick from.
+        under = [
+            c for c in exact if c.path and (path == c.path or path.startswith(c.path + "/"))
+        ]
+        if under:
+            longest = max(len(c.path) for c in under)
+            return [c for c in under if len(c.path) == longest]
+        roots = [c for c in exact if not c.path]
+        return roots if roots else list(exact)
     labels = host.split(".")
     found: list[LinkCandidate] = []
     for cut in range(0, min(len(labels) - 1, _MAX_PARENTS)):
@@ -234,10 +293,13 @@ def anchor_query(
     """
     if kind == "website":
         conditions = [_websites.c.org_id == org_id, _websites.c.id.in_(ids)]
+        website_company = website_company_expr(
+            _websites.c.company_override_id, _domains.c.company_id
+        )
         if scope is not None:
-            conditions.append(_domains.c.company_id.in_(scope))
+            conditions.append(website_company.in_(scope))
         return (
-            select(_websites.c.id, _domains.c.company_id)
+            select(_websites.c.id, website_company)
             .select_from(_websites.join(_domains, _websites.c.domain_id == _domains.c.id))
             .where(*conditions)
         )

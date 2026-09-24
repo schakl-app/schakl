@@ -1,7 +1,8 @@
 # Meetings
 
-A recorded meeting into a transcript, minutes, decisions and action items — the action items
-as tasks, the minutes as a contact moment on the client. `apps/api/app/modules/meetings/`,
+A recorded meeting into a transcript, minutes, decisions and action items — the minutes as a
+contact moment on the client from the moment they land, editable for ever; an action item as a
+task the moment somebody makes one of it. `apps/api/app/modules/meetings/`,
 `apps/web/src/lib/modules/meetings/`, screens under `routes/(app)/meetings/`. Phase 1: the
 microphone, a browser tab's call, an uploaded file. Google Meet's own recordings are phase 2
 (see the end).
@@ -18,10 +19,17 @@ microphone, a browser tab's call, an uploaded file. Google Meet's own recordings
   `files` row (`entity_type = "meeting"`, `audio_file_id`), the recording goes to the tenant's
   speech provider in as many requests as that provider takes (`pipeline.py`), the transcript
   lands on the row as JSONB segments, and one forced tool call (`minutes.py`) drafts the minutes.
-- **A person confirms** (`POST /meetings/{id}/confirm`): the reviewer's edited draft becomes an
-  interaction of kind `physical_meeting` / `online_meeting` through the interactions module's
-  own service and a task per ticked action item through the tasks module's — as the reviewer,
-  so every rule a hand-made record meets applies and the trail names the person.
+- **The minutes are filed, and stay editable.** The moment the draft lands the worker writes it
+  onto the client's timeline as an interaction of kind `physical_meeting` / `online_meeting`,
+  through the interactions module's own service **as the colleague who recorded it**
+  (`member_context`, the e-mail intake's shape; `jobs._file`), and every later edit — the
+  minutes, the title, the filing, the roster — rewrites that moment
+  (`MeetingService.sync_interaction`). A task is made of one action item at a time from the page
+  (`POST …/action-items/task`, checked in the task sheet), and the hours are booked from their
+  own button (`POST …/time`). There is **no confirm step**: there was one, and it froze the
+  minutes the moment somebody spotted a typo in them, held the contact moment back until a button
+  nobody asked for was pressed, and made tasks by checkbox in bulk. Every write still goes through
+  the owning module's service as the person acting, so the trail names them.
 
 ## The three decisions worth knowing
 
@@ -66,15 +74,15 @@ reviewer judges a paraphrase in a second, a dropped item is a decision nobody se
 buys is precise: a model cannot *invent* an agreement without the review screen saying so.
 Assignees are grounded in the staff shortlist (a misheard name is *nobody*, never a colleague who
 was not there), and a due date is bounded to the window every model-read date gets. The client's
-own promises land with an `owner_label` and `create_task: false`: they are minuted, not put on our
-board, unless the reviewer ticks them to chase.
+own promises land with an `owner_label` (or a contact on the roster): they are minuted, not put on
+our board, unless somebody makes a task of them — which assigns it to the contact.
 
 **Recording is a statement before it is a capture.** `POST /meetings` refuses without
 `participants_informed: true`. Recording a conversation you take part in is legal in the
 Netherlands; not telling the others is not (AVG art. 13; Sr 139a/b for a secret recording), and
 the screen states what the person is asked to say — why, who reads it, how long the audio is kept.
-The audio has a retention: `meetings_sweep_audio` drops the recording of a confirmed meeting after
-`AUDIO_RETENTION_DAYS` (30); the transcript and the minutes stay. A reviewer can drop it earlier.
+The audio has a retention: `meetings_sweep_audio` drops the recording `AUDIO_RETENTION_DAYS` (30)
+after the minutes landed; the transcript and the minutes stay. A colleague can drop it earlier.
 
 ## Who was there, and who took what on
 
@@ -97,9 +105,10 @@ Three things follow from the roster being *people*:
   the contact, because a client's promise is never a colleague's task.
 - **The minutes are written by side and then by person**: *Voor ons* under each colleague,
   *Voor de klant* under each contact, *Overig* for the rest — the review screen groups the same
-  way, so either side reads its own list. Confirm puts the client's contacts on the contact
-  moment as its roster (`contact_ids`), and a ticked item owned by a contact becomes a task
-  **assigned to that contact** (`assignee_contact_id`, the "waiting on the client" shape).
+  way, so either side reads its own list. The client's contacts on the roster are the contact
+  moment's roster (`contact_ids`, kept in step on every roster save), and a task made of an item
+  owned by a contact is **assigned to that contact** (`assignee_contact_id`, the "waiting on the
+  client" shape).
 - **Naming the speakers after the draft is the common case**, so `POST /meetings/{id}/redraft`
   writes the minutes again over the transcript already on the row (`meetings_process` with
   `stage="minutes"`): no new transcription, no audio cost, the people known this time. The
@@ -115,13 +124,15 @@ model was `gpt-transcribe`, which answers text only, and nothing on any screen h
 
 ## Lifecycle
 
-`recording → queued → transcribing → summarising → review → done`, or `failed` with the reason as
-an i18n key on the row. The worker owns the two middle states and stamps `status_at`;
+`recording → queued → transcribing → summarising → ready`, or `failed` with the reason as an
+i18n key on the row. `ready` is the only state after the worker: the minutes are in, on the
+client's timeline, and editable for as long as the meeting exists (`review` and `done` collapsed
+into it in `b7d4f2c9a1e6`). The worker owns the two middle states and stamps `status_at`;
 `meetings_reap_stale` fails a row held past `STALE_AFTER_MINUTES` (90 — a three-hour recording
 through a slow provider is a legitimate forty minutes) and ends a `recording` row nothing has
 posted a piece to for `RECORDING_STALE_AFTER_MINUTES` (20; see below). `retry` re-queues a
-`failed` or `review` row over the folded recording. The detail page polls `GET /meetings/{id}/status` — three columns —
-while the row is in flight.
+`failed` or `ready` row over the folded recording. The detail page polls
+`GET /meetings/{id}/status` — three columns — while the row is in flight.
 
 ## What a redeploy does to a recording, and what a dead tab leaves behind
 
@@ -197,21 +208,26 @@ The person who would press the button is in the meeting. Four rules now hold.
   `queued`, which handed a ten-second restart to the ninety-minute reaper and then to a person
   pressing retry. A row in a worker state is resumed now — from the minutes where the transcript
   is already committed (the row was stamped `summarising` in the same commit that stored it), so a
-  second transcription is never bought for the same audio. A row on `review`, `done` or `failed`
-  is still nobody's to resume.
+  second transcription is never bought for the same audio. A row on `ready` or `failed` is
+  still nobody's to resume.
 
 ## Gates
 
-- `meetings.meeting.read` (member), `.write` (member — record, review, name the
-  participants, redraft, confirm),
-  `.delete` (admin). The router carries the module's licence write gate (`sku="meetings"`).
+- `meetings.meeting.read` (member), `.write` (member — record, edit the minutes, name the
+  participants, redraft, file, book the hours), `.delete` (admin). The router carries the
+  module's licence write gate (`sku="meetings"`).
 - Recording needs `meeting_assist` on (`AI_FEATURES`, its own key: a meeting is mostly *other
   people's* words sent whole to a model) and a speech provider that can transcribe
   (`SPEECH_FEATURES`); `POST /meetings` answers 409 otherwise and the screen draws no button.
-- What confirm produces carries its own gates: the interaction write and the task create are
-  refused by their own modules, and a refused task is *reported* on the result (`skipped`, with
-  the field named) rather than failing the confirm — the minutes are the record, the tasks a
-  convenience (§18's split).
+- What the meeting writes elsewhere carries that module's gates. The **contact moment** is the
+  interactions module's write: a refusal there (the kind deactivated, no `interactions.
+  interaction.write` for the recorder, the module off) is logged and swallowed by
+  `sync_interaction` — the meeting is the record and the moment its mirror, so an edit is never
+  lost to save the mirror — and the page then offers *Als contactmoment vastleggen*
+  (`POST …/interaction`, the strict form) whose refusal carries the reason. The **task** is the
+  tasks module's own 422s, on the sheet. The **hours** are #314's gates on `POST …/time`:
+  `time.entry.write` (`:any` for anyone but the caller), the `time` sku writable, every id one of
+  the org's staff — asked before anything is written.
 - **Who may see a meeting** is answered in three layers, and each is stated once. The
   **permission** is `meetings.meeting.read` on every route, in the service and on the hub
   panel. The **company horizon** rides the tenant-scoped repository: a member restricted to a
@@ -308,14 +324,13 @@ of a dead player (`audio_content_type` on the row).
 **The AI box** (`assist.py`, `POST /meetings/{id}/ai/revise`, the task revise's shape) changes a
 meeting in a colleague's own words, applied *as them* through the service an ordinary edit goes
 through: the title, kind, date, client and project; the roster and its speaker labels; and —
-while the minutes are under review — every part of the draft, each addressed by the index the
-document numbered it with. Every id is grounded in what the model was shown, a due date is
-bounded, and a confirmed meeting's minutes are not touched whatever the answer says. The
-reviewer's unsaved draft is saved before the model reads it, so the box changes what the reader
-sees.
+once the minutes exist — every part of them, each addressed by the index the document numbered
+it with. Every id is grounded in what the model was shown, a due date is bounded, and minutes not
+yet written are not invented whatever the answer says. The page's unsaved edits are flushed
+before the model reads it, so the box changes what the reader sees.
 
-**The recorder is told when the minutes are ready** (`meeting.ready`, emitted by the worker the
-moment the draft lands on `review`, deduped per run so a redraft is heard too). Immediate in the
+**The recorder is told when the minutes are in** (`meeting.ready`, emitted by the worker the
+moment the draft lands on `ready`, deduped per run so a redraft is heard too). Immediate in the
 app, and — the one event that mails by its own default (`EMAIL_DEFAULT_ON_EVENTS`) — by mail,
 because the person waiting for it recorded from a phone and walked out of the room; a person or
 an org switches it off in the matrix like any other row.
@@ -331,31 +346,33 @@ moment the item was said (`taskdraft._excerpt`), through `core/ai/taskdraft.draf
 own per-type grounding, with the client and project pinned to the meeting's. The reviewer reads
 it beside the quote, corrects it, and `POST …/action-items/task` writes it in one call (steps and
 links included, the dictation's shape) through the tasks module's own service as the reviewer.
-The item then carries `task_id`: the confirm files it on the contact moment beside the tasks it
-makes itself and never makes it twice, and on a meeting already confirmed the task is filed on
-the contact moment at once. The page saves the reviewer's unsaved draft before the sheet opens,
-so the item the API reads is the item on the screen. A draft the provider refuses still opens
-the form, filled from the minutes, and the sheet says which of the two happened.
+The item then carries `task_id` and the contact moment lists the task at once; a second press
+over the same item is a 409, and a save of the minutes that drops the link gets it back, matched
+on the item's words rather than its position (a reordered list must never hand one item another
+item's task). This is the **only** way an action item becomes a task — the checkbox that made
+them in bulk on confirm is gone with the confirm. The page flushes its unsaved edits before the
+sheet opens, so the item the API reads is the item on the screen. A draft the provider refuses
+still opens the form, filled from the minutes, and the sheet says which of the two happened.
 
-**The hours are booked on confirm, and every entry is on the dialog before the press.**
-`MeetingConfirm.log_time` names the colleagues (the staff at the table, each a choice — the
-entry lands on *their* timesheet), a duration (the recording's own unless typed) and a line
-(the minutes' `time_note`, one sentence the model writes for a timesheet, unless typed). Each
-entry goes through `time.system.record_entry`, typed after the contact moment's kind (#182) and
-filed on it, in the confirm's transaction; the gates are #314's — `time.entry.write` (`:any` for
-anyone but the caller), the `time` sku still writable (a 402 refuses the whole confirm, because
-a ride-along must never be the one way an uncovered module is written to), every id one of the
-org's staff — and they are asked *before* the contact moment is written. The record then says
-whose hours were booked, by name (`time_entries` on the detail, `time_entry_ids` on the row),
-because a time entry somebody did not type is a surprise on their timesheet unless the record
-says so.
+**The hours have their own button, and every entry is on the dialog before the press.**
+*Uren registreren* (`POST /meetings/{id}/time`, `MeetingLogTime`) names the colleagues (the
+staff at the table, each a choice — the entry lands on *their* timesheet), a duration (the
+recording's own unless typed) and a line (the minutes' `time_note`, one sentence the model
+writes for a timesheet, unless typed). Each entry goes through `time.system.record_entry`, typed
+after the contact moment's kind (#182) and filed on it (a meeting not yet filed is filed first;
+where that is refused the hours still land, unfiled); the gates are #314's — `time.entry.write`
+(`:any` for anyone but the caller), the `time` sku still writable (a 402, because a ride-along
+must never be the one way an uncovered module is written to), every id one of the org's staff —
+and they are asked *before* anything is written. The record then says whose hours were booked,
+by name (`time_entries` on the detail, `time_entry_ids` on the row), because a time entry
+somebody did not type is a surprise on their timesheet unless the record says so.
 
 **A meeting left unnamed is named twice, and a typed name is never touched.** The recorder's
 title box may be left empty: the API names the row after the client and the day
 ("Bespreking met Nova Fietsen · 23-09-2026", `meetings.title.auto*`, the org's language and
 calendar) and marks it `title_auto`; when the minutes land, a row still marked takes the
-model's `title` once — and the screen draws a ✦ beside a title schakl chose. Editing the title,
-or confirming with one, clears the mark.
+model's `title` once — and the screen draws a ✦ beside a title schakl chose. Editing the title
+(on the page, or in the minutes' own title box) clears the mark.
 
 **A browser's recording is remuxed once so it can be scrubbed.** `MediaRecorder` streams a WebM
 whose header says *unknown duration* and carries no cues, so `<audio>` reported `Infinity`,
@@ -369,6 +386,20 @@ workaround (seek past the end, then back) and prints the length beside the playe
 the top of the minutes (a long set of minutes ended in the two buttons that matter, a screen
 below the last open question), and the AI box is the first card on the right, in the brand's
 tint, with the field taking the width and the microphone inside it.
+
+## The page: one mode, saved by itself
+
+The detail page has no review desk and no record view: the minutes are edited where they are
+read, whenever they exist, by whoever holds the write key. Every edit is **saved by itself** — a
+debounced `PUT /meetings/{id}/minutes` a moment after the last keystroke, with one state word
+beside the title (*Opslaan…* / *Opgeslagen* / *Niet opgeslagen* with a retry), flushed before a
+navigation, before the AI box reads the meeting and before the task sheet opens, and sent
+`keepalive` on the browser's own exits — because a document with a Save button at the foot is
+one that is read once and corrected never, and a dropped edit is the one thing an autosave must
+never do quietly. The filing (client, project, kind) saves on pick. The *Vastgelegd* card beside
+the minutes states three facts with one control each: the contact moment (a link, or the button
+that files it where the automatic filing was refused), the tasks made from action items, and the
+hours (with *Uren registreren*). Nothing on the page decides something on a later press.
 
 ## Costs
 

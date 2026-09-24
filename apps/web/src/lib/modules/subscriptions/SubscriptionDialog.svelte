@@ -54,29 +54,39 @@
     try {
       type Page<T> = { items: T[] };
       type Row = { id: string; name: string; status?: string | null; company_id?: string | null };
-      const [companies, projects, types, templates, definitions, companyDefinitions, invoicing] =
-        await Promise.all([
-          read<Page<Row>>("/api/v1/companies?limit=200&offset=0&count=false&sort=name", {
-            items: [],
-          }),
-          read<Page<Row>>("/api/v1/projects?limit=200&offset=0&count=false", { items: [] }),
-          read<SubscriptionFormLookups["types"]>("/api/v1/subscriptions/types", []),
-          read<SubscriptionFormLookups["templates"]>("/api/v1/subscriptions/templates", []),
-          read<SubscriptionFormLookups["definitions"]>(
-            "/api/v1/custom-fields/definitions?entity_type=subscription",
-            [],
-          ),
-          read<SubscriptionFormLookups["companyDefinitions"]>(
-            "/api/v1/custom-fields/definitions?entity_type=company",
-            [],
-          ),
-          // Only to name the inherited level in the form's "follow the organisation" hint. A
-          // caller who cannot read invoicing settings simply gets the seeded default there.
-          read<{ auto_invoice_mode?: SubscriptionFormLookups["orgAutoInvoiceMode"] } | null>(
-            "/api/v1/invoicing/settings",
-            null,
-          ),
-        ]);
+      const [
+        companies,
+        projects,
+        types,
+        templates,
+        definitions,
+        companyDefinitions,
+        invoicing,
+        products,
+      ] = await Promise.all([
+        read<Page<Row>>("/api/v1/companies?limit=200&offset=0&count=false&sort=name", {
+          items: [],
+        }),
+        read<Page<Row>>("/api/v1/projects?limit=200&offset=0&count=false", { items: [] }),
+        read<SubscriptionFormLookups["types"]>("/api/v1/subscriptions/types", []),
+        read<SubscriptionFormLookups["templates"]>("/api/v1/subscriptions/templates", []),
+        read<SubscriptionFormLookups["definitions"]>(
+          "/api/v1/custom-fields/definitions?entity_type=subscription",
+          [],
+        ),
+        read<SubscriptionFormLookups["companyDefinitions"]>(
+          "/api/v1/custom-fields/definitions?entity_type=company",
+          [],
+        ),
+        // Only to name the inherited level in the form's "follow the organisation" hint. A
+        // caller who cannot read invoicing settings simply gets the seeded default there.
+        read<{ auto_invoice_mode?: SubscriptionFormLookups["orgAutoInvoiceMode"] } | null>(
+          "/api/v1/invoicing/settings",
+          null,
+        ),
+        // The price list, for the product picker; no read permission means no picker.
+        read<NonNullable<SubscriptionFormLookups["products"]>>("/api/v1/invoicing/products", []),
+      ]);
       lookups = {
         companies: companies.items.map((c) => ({ id: c.id, name: c.name, status: c.status })),
         projects: projects.items.map((p) => ({
@@ -89,6 +99,7 @@
         templates,
         definitions,
         companyDefinitions,
+        products,
         orgAutoInvoiceMode: invoicing?.auto_invoice_mode ?? null,
       };
       phase = "idle";

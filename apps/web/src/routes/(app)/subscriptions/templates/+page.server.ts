@@ -19,7 +19,7 @@ import {
 
 import type { Actions, PageServerLoad } from "./$types";
 
-const INTERVAL_ORDER: Record<string, number> = { monthly: 1, quarterly: 2, yearly: 3 };
+const INTERVAL_ORDER: Record<string, number> = { once: 0, monthly: 1, quarterly: 2, yearly: 3 };
 
 /** The catalog is small and fetched whole, so this load — not the API — honours `?sort=`. */
 function sortTemplates(
@@ -72,11 +72,13 @@ export const load: PageServerLoad = async (event) => {
   const typeFilter = event.url.searchParams.get("type") || "";
   const q = event.url.searchParams.get("q") || "";
 
-  const [templates, types] = await Promise.all([
+  const [templates, types, products] = await Promise.all([
     api.GET("/api/v1/subscriptions/templates"),
     // Inactive types included: an existing preset may still reference one, and its label
     // must not silently disappear from the table.
     api.GET("/api/v1/subscriptions/types", { params: { query: { include_inactive: true } } }),
+    // The price list, for the "which product does this preset sell" picker.
+    api.GET("/api/v1/invoicing/products").catch(() => ({ data: undefined })),
   ]);
 
   const allTypes = types.data ?? [];
@@ -90,6 +92,7 @@ export const load: PageServerLoad = async (event) => {
   return {
     templates: sortTemplates(filtered, sort, allTypes, event.locals.locale),
     types: allTypes,
+    products: products.data ?? [],
     typeFilter,
     q,
     table: { pref, sort: sort ?? null, widths: resolved.widths },

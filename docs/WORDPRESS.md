@@ -428,7 +428,7 @@ So the surface is **routes on the `wordpress` router**, keyed on the credential 
 | `GET` / `PATCH /sites/{id}/content/{type}/{wp_id}` | `content.read` / `content.write` | one record whole: raw, rendered, `acf`, `meta` |
 | `POST /sites/{id}/content` | `content.write` | a new record, a draft unless told otherwise |
 | `GET /sites/{id}/media[/{wp_id}]` | `content.read` | what an ACF image id resolves to |
-| `GET` / `POST` / `PATCH /sites/{id}/forms[/{wp_id}]` | `forms.read` / `forms.write` | Contact Form 7: template, field names, both mails, messages |
+| `GET` / `POST` / `PATCH /sites/{id}/forms[/{wp_id}]` | `forms.read` / `forms.write` | Contact Form 7 through its own REST namespace: template, field names, both mails, messages (the plugin's twin in §9 adds delete, merged writes and WPML) |
 | `GET /sites/{id}/abilities` | `ability.read` | every ability registered for REST, with schema and `readonly` |
 | `POST /sites/{id}/abilities/run` | `ability.read`, refined | one ability by name; a write needs `ability.run` |
 
@@ -588,8 +588,8 @@ ACF 6.8 container with a REST-hidden post type and the vangessel `pre_get_posts`
 
 ### What schakl adds, and the rules it keeps
 
-`bridge.py` is the surface: **22 routes under `/sites/{id}/bridge/…`**, one per plugin
-operation, which is 22 tools in `/mcp/wordpress` whether the agency holds one site or four
+`bridge.py` is the surface: **28 routes under `/sites/{id}/bridge/…`**, one per plugin
+operation, which is 28 tools in `/mcp/wordpress` whether the agency holds one site or four
 hundred (§7's rule, and `test_the_bridge_tools_ride_the_wordpress_section` counts them).
 
 | Route | Permission | What |
@@ -603,6 +603,7 @@ hundred (§7's rule, and `test_the_bridge_tools_ride_the_wordpress_section` coun
 | `GET /bridge/menus[/{menu}]` · `POST` / `DELETE …/items` | `content.read` / **`publish`** | menus, live at once |
 | `GET /bridge/languages` · `GET` / `POST /bridge/records/{wp_id}/translations` | `content.read` / `write` (+ `publish`) | WPML: the group, create a translation, connect one |
 | `GET` / `PUT /bridge/strings` | `content.read` / **`publish`** | String Translation |
+| `GET` / `POST /bridge/forms` · `GET` / `PATCH` / `DELETE /bridge/forms/{wp_id}` · `POST …/translations` | `forms.read` / `forms.write` / **`forms.delete`** | Contact Form 7 (plugin 1.2.0): the template and the fields CF7 parses off it, both mails, messages, `config_errors`, the shortcode; mails and messages merge on update; WPML both ways — a linked form per language, or one form's `strings` |
 
 Four rules, three of them §7's restated because they were easy to lose one namespace over:
 
@@ -627,7 +628,24 @@ Four rules, three of them §7's restated because they were easy to lose one name
 - **Every write is a trail line on the site row** (§16): `content_created` / `content_updated`
   (with `via: schakl-wordpress-mcp-bridge` and the touched fields or `ops×n`), `content_deleted`,
   `media_uploaded`, `term_created`, `options_updated`, `menu_updated`,
-  `translation_created`, `string_translated`.
+  `translation_created`, `string_translated`, and for forms `form_created` / `form_updated`
+  (with `via`), `content_deleted` (`type: wpcf7_contact_form`) and `translation_created`.
+
+**Forms, and how WPML knows them.** The `/sites/{id}/forms` routes of §7 reach Contact Form 7
+through its own REST namespace and stay for a site without the plugin; the `/bridge/forms`
+routes are the plugin's `forms.*` and add what that namespace never had — the fields CF7 parses
+off the template, its configuration validator's objections (`config_errors`: CF7 sends nothing
+while a mail is misconfigured), `mail` / `mail_2` / `messages` merged over what the form holds
+so a changed recipient does not blank the subject, delete (permanent: CF7 has no trash, hence
+its own key), and WPML. WPML knows a form two ways, and the plugin serves both: where WPML lists
+`wpcf7_contact_form` as a translatable post type, a form has one linked copy per language and
+`POST …/translations` makes it (the source copied, the locale set to the language's, the
+translated template and mails on top; the answer's own shortcode is what a page in that language
+embeds); where the *Contact Form 7 Multilingual* add-on is used, one form serves every language
+and its texts are String Translation strings in a package bound to the form — the read lists
+them under `strings`, the update takes `strings: {lang: {name: translation}}`, and `translations`
+answers 409 pointing there. Neither has met a live WPML site from here; both are written to
+WPML's hooks and tables and stay defensive until they have (§1's checklist).
 
 Two wire facts worth keeping. `WordPressTranslationCreate.copy_source` is the plugin's `copy`
 under an alias, because `copy` is a `BaseModel` method, and `_clean()` dumps `by_alias` so the

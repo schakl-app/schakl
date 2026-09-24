@@ -586,12 +586,62 @@ class ProductService:
         self.ctx = ctx
         self.repo = ctx.repo(Product)
 
-    async def list(self, *, include_inactive: bool = False) -> Sequence[Product]:
+    async def list(
+        self, *, include_inactive: bool = False, q: str | None = None
+    ) -> Sequence[Product]:
         stmt = self.repo.scoped_select()
         if not include_inactive:
             stmt = stmt.where(Product.active.is_(True))
+        if q:
+            needle = f"%{q.strip()}%"
+            stmt = stmt.where(
+                Product.name.ilike(needle)
+                | Product.code.ilike(needle)
+                | Product.description.ilike(needle)
+            )
         stmt = stmt.order_by(Product.position, func.lower(Product.name))
         return list((await self.ctx.session.execute(stmt)).scalars().all())
+
+    async def usage(self, products: Sequence[Product]) -> dict[uuid.UUID, dict[str, Any]]:
+        """Where each product is **sold**: the agreements (recurring or one-time) and the
+        standard subscriptions that name it, and the day the latest agreement started.
+
+        Two bare-table reads over the subscriptions module's published ``product_id`` columns
+        (§6 — the claim tables read ``subscriptions`` the same way), grouped, for the whole
+        list at once. A line pick in the editor copies values and leaves no trace, so this
+        counts recorded agreements only; the settings screen says so.
+        """
+        if not products:
+            return {}
+        ids = [p.id for p in products]
+        out: dict[uuid.UUID, dict[str, Any]] = {}
+        agreements = await self.ctx.session.execute(
+            text(
+                "SELECT product_id, count(*) AS n, max(start_date) AS last"
+                " FROM subscriptions WHERE org_id = :oid AND product_id IN :ids"
+                " GROUP BY product_id"
+            ).bindparams(bindparam("ids", expanding=True)),
+            {"oid": self.ctx.org.id, "ids": ids},
+        )
+        for row in agreements:
+            out[row.product_id] = {
+                "agreement_count": int(row.n),
+                "template_count": 0,
+                "last_sold_on": row.last,
+            }
+        templates = await self.ctx.session.execute(
+            text(
+                "SELECT product_id, count(*) AS n FROM subscription_templates"
+                " WHERE org_id = :oid AND product_id IN :ids GROUP BY product_id"
+            ).bindparams(bindparam("ids", expanding=True)),
+            {"oid": self.ctx.org.id, "ids": ids},
+        )
+        for row in templates:
+            out.setdefault(
+                row.product_id,
+                {"agreement_count": 0, "template_count": 0, "last_sold_on": None},
+            )["template_count"] = int(row.n)
+        return out
 
     async def create(self, data: ProductCreate) -> Product:
         self.ctx.require("invoicing.settings.manage")
@@ -3817,6 +3867,7 @@ class InvoiceService(_DocumentService):
         for row in existing:
             if (getattr(row, spec.column), row.period_end) not in wanted:
                 await claims.delete(row)
+                await self._claim_event(spec, "released", row, invoice.id)
         held = {(getattr(row, spec.column), row.period_end) for row in existing}
         fresh = {key: line for key, line in wanted.items() if key not in held}
         if not fresh:
@@ -3839,12 +3890,36 @@ class InvoiceService(_DocumentService):
                 fields={"lines": "errors.invoicing.period_already_billed"},
             )
         for (source_id, period_end), line in fresh.items():
-            await claims.create(
+            row = await claims.create(
                 invoice_id=invoice.id,
                 **{spec.column: source_id},
                 period_start=line.period_start,
                 period_end=period_end,
             )
+            await self._claim_event(spec, "claimed", row, invoice.id)
+
+    async def _claim_event(
+        self, spec: _ClaimSource, action: str, row: Any, invoice_id: uuid.UUID
+    ) -> None:
+        """Tell the agreement's owner that a period of it was claimed or let go.
+
+        Only the subscription source has a listener: a one-time agreement is *completed* by the
+        document that bills its one period and reopened by the one that releases it
+        (``subscriptions/events.py``). Emitted from the claim table's own writes, so the hand-
+        picked line, the backlog build and the delete/cancel/credit paths all say so through
+        one seam rather than each remembering (§6).
+        """
+        if spec.column != "subscription_id":
+            return
+        await emit(
+            f"subscription.period_{action}",
+            self.ctx,
+            {
+                "subscription_id": str(row.subscription_id),
+                "period_end": row.period_end.isoformat(),
+                "invoice_id": str(invoice_id),
+            },
+        )
 
     async def _release_subscription_periods(self, invoice_id: uuid.UUID) -> None:
         """Give this invoice's claimed periods back to the crons (delete/cancel path)."""
@@ -3854,6 +3929,7 @@ class InvoiceService(_DocumentService):
                 claims.scoped_select().where(spec.model.invoice_id == invoice_id)
             ):
                 await claims.delete(row)
+                await self._claim_event(spec, "released", row, invoice_id)
 
     async def billed_periods(
         self, *, source: BacklogSource, source_id: uuid.UUID

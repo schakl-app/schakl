@@ -79,20 +79,28 @@
   /**
    * The hostname this record *is*, for the create form's suggestion (#366).
    *
-   * A website has no URL column of its own: its host is the apex or `www.` plus the apex,
-   * depending on `websites.root` — which is exactly what `matching.build_index` derives on the
-   * API side when it decides which website a found monitor belongs to. Mirrored here rather than
-   * fetched, because the host page has already loaded the record and one more request per website
-   * and domain page load, to serve a form most visits never open, is the trade docs/PERFORMANCE.md
-   * bans. The suggestion is put **in a visible field** the user can correct, so a drift between
-   * the two is something you see rather than something you find out about later.
+   * A website's host and URL come resolved on the record (`host` / `url`, the API's one rule
+   * in `app/core/webaddress.py` — the same rule `matching.build_index` applies when it decides
+   * which website a found monitor belongs to). Read off the loaded record rather than fetched,
+   * because one more request per website and domain page load, to serve a form most visits
+   * never open, is the trade docs/PERFORMANCE.md bans. The suggestion is put **in a visible
+   * field** the user can correct, so a drift between the two is something you see rather than
+   * something you find out about later. The host-composing fallback covers a record from an
+   * older API.
    */
   const anchorHost = $derived.by(() => {
     if (anchorType === "domain") return String(page.data.domain?.name ?? "").toLowerCase();
     const site = page.data.website;
+    if (site?.host) return String(site.host).toLowerCase();
     const apex = String(site?.domain_name ?? "").toLowerCase();
     if (!apex) return "";
     return site?.root ? apex : `www.${apex}`;
+  });
+  /** The address to watch for the HTTP family: a dev install under a path is watched *at* that
+   *  path, not at the host's root, which may be a different site or nothing at all. */
+  const anchorUrl = $derived.by(() => {
+    if (anchorType === "website" && page.data.website?.url) return String(page.data.website.url);
+    return anchorHost ? `https://${anchorHost}` : "";
   });
 
   const inputClass =
@@ -106,7 +114,7 @@
   /** What a type wants in the target box — a URL for the HTTP family, a bare host for the rest.
    *  `profiles.target_field` says the same thing on the API side. */
   const suggestFor = (type: string) =>
-    !anchorHost ? "" : type === "http" || type === "keyword" ? `https://${anchorHost}` : anchorHost;
+    !anchorHost ? "" : type === "http" || type === "keyword" ? anchorUrl : anchorHost;
 
   let monitorType = $state("http");
   let target = $state("");

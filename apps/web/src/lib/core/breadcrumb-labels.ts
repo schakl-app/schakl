@@ -172,9 +172,12 @@ const RECORDS: {
   {
     key: "website",
     type: "website",
-    // A website has no name of its own — the host it answers on is the name, resolved exactly as
-    // its page title and its list row do (`root` decides whether the `www.` prefix is part of it).
+    // A website has no name of its own — its address is the name, and the API resolves it once
+    // (`label`: host plus path, `app/core/webaddress.py`) so no screen composes it. The fallback
+    // covers a row from an older API that carried no label yet.
     label: (r) => {
+      const label = str(r.label);
+      if (label) return label;
       const host = str(r.domain_name);
       return host && (r.root ? host : `www.${host}`);
     },

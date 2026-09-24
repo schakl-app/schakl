@@ -119,8 +119,13 @@ async def _app_error_handler(_: Request, exc: AppError) -> JSONResponse:
 async def _validation_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
     fields: dict[str, str] = {}
     for err in exc.errors():
-        # loc is like ("body", "email"); use the last string segment as the field name.
-        loc = [str(p) for p in err.get("loc", []) if p not in ("body", "query", "path")]
+        # loc is like ("body", "email"); use the last string segment as the field name. Only
+        # the *leading* segment is the parameter source — filtering the words out of every
+        # position made a body field that happens to be called ``path`` (a website's) vanish
+        # from the envelope, so its refusal named no field at all.
+        loc = [str(p) for p in err.get("loc", [])]
+        if loc and loc[0] in ("body", "query", "path", "header", "cookie"):
+            loc = loc[1:]
         field = loc[-1] if loc else "_"
         fields[field] = _field_key(err)
     return JSONResponse(

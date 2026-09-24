@@ -17,15 +17,13 @@ export function sourceLabel(source: string): string {
   return t(`meetings.source.${source}`);
 }
 
-/** The same meaning in the fixed state palette (docs/UX.md §1): `review` is the one a person
- *  must act on, `failed` has gone wrong, `done` is fine, and the worker's states are in flight. */
+/** The same meaning in the fixed state palette (docs/UX.md §1): `ready` is fine (the minutes
+ *  are in and editable), `failed` has gone wrong, and the worker's states are in flight. */
 export function statusState(status: string): UiState {
   switch (status) {
-    case "review":
-      return "today";
     case "failed":
       return "late";
-    case "done":
+    case "ready":
       return "ok";
     case "queued":
     case "transcribing":

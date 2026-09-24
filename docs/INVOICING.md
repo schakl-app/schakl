@@ -207,6 +207,42 @@ invoice that owes nothing.
   several. Credit notes and quote conversions copy the kind and deliberately **not** the
   provenance: a correction claims nothing.
 
+## A one-time product is an agreement with no cycle (`interval = once`)
+
+A website build, a licence, a batch of photos: sold once, attached to a client and usually to
+a project, and everything a recurring agreement already has — a standard subscription it is
+made from, a type whose task templates spawn on activation, project and website links, notes
+with variables on the invoice, custom fields, the auto-invoice level, the backlog and the
+editor's picker. Building a second record for it (the first cut of this, `invoicing_product_sales`,
+never released) would have meant a second copy of every one of those. So `SubscriptionInterval
+.ONCE` is zero months, and "zero months" means *no cycle* everywhere `period_months` is read:
+
+- **One period, billed on delivery.** `period_boundaries(months=0)` offers the anchor and
+  nothing before or after it; activation derives that anchor as the start date — or today,
+  when the start is behind us (a derived cycle date never lands in the past). The period has
+  no span (`period_of` → `(None, boundary)`), so the document prints the one date rather than
+  "24-09-2026 - 24-09-2026", the shape an agreement with no cycle already had.
+- **Fires once, then `completed`.** The cycle cron emits `subscription.due` once, sets
+  `next_invoice_date = NULL` and the status to `SubscriptionStatus.COMPLETED` — a status never
+  chosen on a form, because it is a fact about the paper. `billed_until` past the anchor
+  completes it without drafting.
+- **A hand-picked line completes it too, and the delete reopens it.** `invoicing` owns the
+  claim tables, so it says what happened: `_claim_event` emits `subscription.period_claimed` /
+  `subscription.period_released` from the claim writes (the editor's picker, a backlog build,
+  a delete, cancel or full credit alike), and `subscriptions/events.py` completes or reopens
+  a `once` agreement — in the emitter's transaction, so the claim and the status commit
+  together. A recurring agreement ignores both.
+- **Not run-rate.** `monthly_equivalent` is `None` for `once`, so MRR/ARR never announce
+  revenue that does not recur; the list sorts it ahead of monthly (zero months).
+- **The product is provenance.** `subscription_templates.product_id` and
+  `subscriptions.product_id` (bare UUIDs, §6) say which price-list product a preset or an
+  agreement sells: the form's pick copies the name and the amount and both stay editable, a
+  re-priced product changes no agreement, and `GET /products?usage=true` answers where each
+  product is used (`agreement_count`, `template_count`, `last_sold_on`) — the *In gebruik*
+  column on Instellingen → Facturatie, which is now a searchable table with the deactivated
+  rows folded away. A line picked in the editor copies values and leaves no trace, and the
+  screen says so.
+
 ## Automatic invoicing is a level, not a switch (`AutoInvoiceMode`)
 
 `app/core/billing.py` — core vocabulary, because `subscriptions` and `domains` each store an

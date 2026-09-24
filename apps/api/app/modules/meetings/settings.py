@@ -154,7 +154,7 @@ class MeetingSettingsService:
             self.ctx.repo(Meeting)
             .scoped_select()
             .where(Meeting.minutes.isnot(None))
-            .where(Meeting.status.in_([MeetingStatus.DONE.value, MeetingStatus.REVIEW.value]))
+            .where(Meeting.status == MeetingStatus.READY.value)
             .order_by(Meeting.occurred_at.desc())
             .limit(1)
         )

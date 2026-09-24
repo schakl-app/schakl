@@ -43,6 +43,7 @@ from app.core.periods import (
 from app.core.tagmanager import company_containers
 from app.core.tenancy import RequestContext
 from app.core.timezone import org_zoneinfo
+from app.core.webaddress import website_company_sql, website_label_sql
 
 # The credential seam, not the module (§6). ``wordpress`` may be disabled, in which case the
 # resolver answers ``None`` — the same answer as "this website has no credential yet", which
@@ -645,18 +646,21 @@ class MarketingService:
         return await self.ctx.repo(Company).get_or_404(company_id)
 
     async def _company_websites(self, company_id: uuid.UUID) -> list[WebsiteRef]:
-        """The client's websites (id + domain name), for the link pickers and group labels.
+        """The client's websites (id + address), for the link pickers and group labels.
 
         Raw SQL by table name (the websites module's own `_attach` pattern) — modules never
-        import each other's internals. A website's display name *is* its domain.
+        import each other's internals. A website's display name is its address, and whose
+        it is may be the client it names rather than its domain's — both are core's rule
+        (app/core/webaddress.py), so a dev site on the agency's domain lists under the
+        client it was built for.
         """
         rows = (
             await self.ctx.session.execute(
                 text(
-                    "SELECT w.id, d.name FROM websites w"
+                    f"SELECT w.id, {website_label_sql()} FROM websites w"
                     " JOIN domains d ON d.id = w.domain_id"
-                    " WHERE w.org_id = :org_id AND d.company_id = :company_id"
-                    " ORDER BY d.name"
+                    f" WHERE w.org_id = :org_id AND {website_company_sql()} = :company_id"
+                    " ORDER BY d.name, w.path"
                 ),
                 {"org_id": self.ctx.org.id, "company_id": company_id},
             )
@@ -664,13 +668,13 @@ class MarketingService:
         return [WebsiteRef(id=row[0], name=row[1]) for row in rows]
 
     async def _website_names(self, website_ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
-        """{website_id: domain name} for links that carry one — one query, display-only."""
+        """{website_id: address} for links that carry one — one query, display-only."""
         if not website_ids:
             return {}
         rows = (
             await self.ctx.session.execute(
                 text(
-                    "SELECT w.id, d.name FROM websites w"
+                    f"SELECT w.id, {website_label_sql()} FROM websites w"
                     " JOIN domains d ON d.id = w.domain_id"
                     " WHERE w.org_id = :org_id AND w.id IN :ids"
                 ).bindparams(bindparam("ids", expanding=True)),

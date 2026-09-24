@@ -2,7 +2,7 @@
   /** Domains attached to a client, shown on the company detail page (issue #90). */
   import { page } from "$app/state";
   import { fmtMoney, fmtNumericDate } from "$lib/core/format";
-  import { t } from "$lib/core/i18n";
+  import { t, tn } from "$lib/core/i18n";
   import { fromHref } from "$lib/core/origin";
   import { can } from "$lib/core/permissions";
   import PanelRow from "$lib/core/ui/PanelRow.svelte";
@@ -15,6 +15,8 @@
     status: string;
     email_enabled: boolean;
     website_id?: string | null;
+    /** Every site on the domain, by address — a domain may carry several (one per path). */
+    websites?: { id: string; label: string }[];
     next_invoice_date?: string | null;
     resolved_price?: string | null;
     resolved_currency?: string | null;
@@ -80,7 +82,16 @@
           >
             {#snippet trailing()}
               {#if websitesEnabled}
-                {#if domain.website_id}
+                {#if (domain.websites?.length ?? 0) > 1}
+                  <!-- Several sites on one domain (dev installs under paths): the domain's page
+                       lists them by address, so the chip says how many rather than picking one. -->
+                  <a
+                    href={`${fromHref(`/domains/${domain.id}`, page.url)}#website`}
+                    class="shrink-0 text-xs text-text-muted hover:text-brand hover:underline"
+                  >
+                    {tn("websites.panel.count", domain.websites!.length)}
+                  </a>
+                {:else if domain.website_id}
                   <!-- Straight to the site's own page. The id was already resolved server-side,
                        so this costs nothing the boolean did not. -->
                   <a
@@ -91,7 +102,7 @@
                   </a>
                 {:else if can(page.data.user, "websites.website.write")}
                   <a
-                    href={`${fromHref(`/domains/${domain.id}`, page.url)}#website`}
+                    href={`/websites?domain=${domain.id}&new=1`}
                     class="shrink-0 text-xs text-brand hover:underline"
                   >
                     ＋ {t("domains.panel.add_website")}

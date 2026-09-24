@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
-from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -113,9 +112,9 @@ class MinutesActionItem(BaseModel):
     description: str | None = Field(default=None, max_length=4000)
     #: A colleague from the org's staff shortlist — grounded, never guessed (#382).
     assignee_user_id: uuid.UUID | None = None
-    #: A contact of the client who took it on — grounded in the meeting's participants. On
-    #: confirm a ticked item becomes a task *assigned to that contact* (``assignee_contact_id``,
-    #: #273), the "waiting on the client" shape, never a colleague's task wearing their name.
+    #: A contact of the client who took it on — grounded in the meeting's participants. A task
+    #: made of such an item is *assigned to that contact* (``assignee_contact_id``, #273), the
+    #: "waiting on the client" shape, never a colleague's task wearing their name.
     owner_contact_id: uuid.UUID | None = None
     #: Who was named when it is neither: "Jan (leverancier)". Free text, display only.
     owner_label: str | None = Field(default=None, max_length=255)
@@ -123,13 +122,10 @@ class MinutesActionItem(BaseModel):
     at: float | None = Field(default=None, ge=0)
     quote: str | None = Field(default=None, max_length=500)
     verified: bool = True
-    #: The reviewer's decision to make a task of it. On by default for an item with an
-    #: assignee among staff; a client's promise is recorded in the minutes, not on a board.
-    create_task: bool = True
-    #: The task this item already became — made from the review desk with schakl's draft
-    #: (``POST /meetings/{id}/action-items/{index}/task``) before or after the confirm. An item
-    #: with one is never created a second time by the confirm; it is filed onto the contact
-    #: moment instead.
+    #: The task this item became — made from the page with schakl's draft, one item at a time
+    #: (``POST /meetings/{id}/action-items/task``), and filed on the contact moment. The only
+    #: way an action item becomes a task: a stored ``create_task`` from before the confirm step
+    #: was removed is ignored on read.
     task_id: uuid.UUID | None = None
 
 
@@ -148,8 +144,8 @@ class MinutesDraft(BaseModel):
     action_items: list[MinutesActionItem] = Field(default_factory=list, max_length=60)
     open_questions: list[str] = Field(default_factory=list, max_length=40)
     #: One line for a timesheet — what this meeting was, in the words a colleague would type
-    #: beside the hours ("Kick-off homepage met Nova: planning en teksten"). The confirm's
-    #: ``log_time`` uses it as every entry's description unless the reviewer types another.
+    #: beside the hours ("Kick-off homepage met Nova: planning en teksten"). ``log_time`` uses
+    #: it as every entry's description unless the person types another.
     time_note: str | None = Field(default=None, max_length=200)
     #: The model was cut off, or the transcript was too long to send whole: say so on screen.
     truncated: bool = False
@@ -158,10 +154,10 @@ class MinutesDraft(BaseModel):
 
 
 class MeetingLogTime(BaseModel):
-    """"Ook de uren registreren" for a meeting (#175's ride-along, #314's gates): one time entry
-    per colleague named, for the meeting's duration, filed on the contact moment the confirm
-    writes. The reviewer sees every entry it will write — who, how long, the line beside it —
-    before pressing confirm, because hours written for a colleague are on *their* timesheet.
+    """"Uren registreren" for a meeting (#175's ride-along, #314's gates): one time entry per
+    colleague named, for the meeting's duration, filed on the contact moment. The dialog shows
+    every entry it will write — who, how long, the line beside it — before the press, because
+    hours written for a colleague are on *their* timesheet.
     """
 
     #: The colleagues to book — staff ids, each one a participant or the reviewer themself.
@@ -173,18 +169,6 @@ class MeetingLogTime(BaseModel):
     description: str | None = Field(default=None, max_length=2000)
     #: Left out defers to the project (#284), exactly as the entry form does.
     billable: bool | None = None
-
-
-class MeetingConfirm(BaseModel):
-    """The reviewer's final word: these minutes become a contact moment and these tasks."""
-
-    minutes: MinutesDraft
-    #: The interaction kind key the minutes land as, if not the meeting's own (#174: kinds are
-    #: tenant-configurable, so a tenant may have a third).
-    interaction_kind: str | None = Field(default=None, max_length=50, pattern=r"^[a-z0-9_]+$")
-    #: The hours the meeting took, booked for the colleagues named — in the same transaction as
-    #: the contact moment they are filed on. Absent means no hours are written.
-    log_time: MeetingLogTime | None = None
 
 
 class MeetingTimeEntry(BaseModel):
@@ -265,14 +249,14 @@ class MeetingDetail(MeetingRow):
     minutes: MinutesDraft | None = None
     interaction_id: uuid.UUID | None = None
     task_ids: list[uuid.UUID] = Field(default_factory=list)
-    #: The hours a confirm booked, one row per colleague — said on the page, because a time
-    #: entry somebody did not type is a surprise on their timesheet unless the record says so.
+    #: The hours booked for the colleagues at the table, one row each — said on the page,
+    #: because a time entry somebody did not type is a surprise on their timesheet unless the
+    #: record says so.
     time_entries: list[MeetingTimeEntry] = Field(default_factory=list)
-    confirmed_at: dt.datetime | None = None
-    #: The reviewer may write the draft and confirm it: the two keys the screen mirrors.
+    #: The caller may edit the minutes, the roster and the filing: the keys the screen mirrors.
     can_write: bool = False
     can_delete: bool = False
-    #: The reviewer may make a task of an action item here (the tasks module's own key), and
+    #: The caller may make a task of an action item here (the tasks module's own key), and
     #: may book the meeting's hours — for themself, and (``:any``) for the colleagues named.
     can_create_task: bool = False
     can_log_time_own: bool = False
@@ -288,17 +272,6 @@ class MeetingStatusRead(BaseModel):
     status: MeetingStatus
     error_key: str | None = None
     status_at: dt.datetime
-
-
-
-class MeetingConfirmResult(BaseModel):
-    interaction_id: uuid.UUID
-    task_ids: list[uuid.UUID]
-    #: Action items the reviewer ticked that could not become a task, with the field the
-    #: refusal named — reported, never raised, so the minutes still land (§18's split).
-    skipped: list[dict[str, Any]] = Field(default_factory=list)
-    #: The hours written, one per colleague named in ``log_time``.
-    time_entries: list[MeetingTimeEntry] = Field(default_factory=list)
 
 
 class MeetingTaskDraftRequest(BaseModel):
@@ -342,8 +315,6 @@ class MeetingTaskCreate(BaseModel):
     links: list[MeetingTaskLink] = Field(default_factory=list, max_length=10)
     requires_interaction: bool = False
     visible_to_client: bool = False
-
-
 
 
 class MeetingTaskCreated(BaseModel):

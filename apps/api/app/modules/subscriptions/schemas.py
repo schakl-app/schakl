@@ -109,6 +109,8 @@ class SubscriptionTypeSaved(SubscriptionTypeRead):
 class SubscriptionTemplateBase(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     subscription_type_id: uuid.UUID | None = None
+    #: The price-list product this preset sells; ``None`` for a preset that is not one.
+    product_id: uuid.UUID | None = None
     currency: str = Field(default="EUR", min_length=3, max_length=3)
     interval: SubscriptionInterval = SubscriptionInterval.MONTHLY
     interval_count: int = Field(default=1, ge=1, le=12)
@@ -133,6 +135,8 @@ class SubscriptionTemplateCreate(SubscriptionTemplateBase):
 
 class SubscriptionTemplateUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
+    #: Sent as ``null`` it detaches the product (``exclude_unset`` keeps "absent" distinct).
+    product_id: uuid.UUID | None = None
     subscription_type_id: uuid.UUID | None = None
     currency: str | None = Field(default=None, min_length=3, max_length=3)
     interval: SubscriptionInterval | None = None
@@ -174,6 +178,8 @@ class SubscriptionTemplateSaved(SubscriptionTemplateRead):
 class SubscriptionBase(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     subscription_type_id: uuid.UUID | None = None
+    #: The price-list product this agreement sells (provenance; the money is the agreement's).
+    product_id: uuid.UUID | None = None
     status: SubscriptionStatus = SubscriptionStatus.ACTIVE
     currency: str = Field(default="EUR", min_length=3, max_length=3)
     interval: SubscriptionInterval = SubscriptionInterval.MONTHLY
@@ -218,6 +224,8 @@ class SubscriptionCreate(SubscriptionBase):
 
 class SubscriptionUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
+    #: Sent as ``null`` it detaches the product (``exclude_unset`` keeps "absent" distinct).
+    product_id: uuid.UUID | None = None
     company_id: uuid.UUID | None = None
     #: Sent as ``null`` it clears the type (``exclude_unset`` keeps "absent" distinct).
     subscription_type_id: uuid.UUID | None = None
@@ -280,6 +288,7 @@ class SubscriptionRead(BaseModel):
     subscription_type_id: uuid.UUID | None = None
     #: The preset it was created from, if any (a rename there follows through to this name).
     subscription_template_id: uuid.UUID | None = None
+    product_id: uuid.UUID | None = None
     name: str
     status: SubscriptionStatus
     #: First-ever activation instant; the web resolves the type's label from its own lookup.

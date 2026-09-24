@@ -75,6 +75,8 @@ export function subscriptionBody(form: FormData) {
   return {
     name: String(form.get("name") ?? "").trim(),
     subscription_type_id: String(form.get("subscription_type_id") ?? "").trim() || null,
+    // The price-list product it sells: provenance, and "" detaches (an explicit null).
+    product_id: String(form.get("product_id") ?? "").trim() || null,
     status: String(form.get("status") ?? "active") as "active",
     interval: String(form.get("interval") ?? "monthly") as "monthly",
     start_date: String(form.get("start_date") ?? "").trim(),

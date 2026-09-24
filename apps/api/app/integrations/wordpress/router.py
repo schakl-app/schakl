@@ -27,6 +27,12 @@ from app.integrations.wordpress.schemas import (
     WordPressAbilityRun,
     WordPressBrand,
     WordPressBridgeDelete,
+    WordPressBridgeForm,
+    WordPressBridgeFormCreate,
+    WordPressBridgeFormDelete,
+    WordPressBridgeFormList,
+    WordPressBridgeFormTranslate,
+    WordPressBridgeFormUpdate,
     WordPressBridgeInfo,
     WordPressBridgeMedia,
     WordPressBridgeSchema,
@@ -823,3 +829,114 @@ async def bridge_string_update(
 ) -> WordPressStringResult:
     """WPML String Translation: set a string's translation — live at once, hence `publish`."""
     return await WordPressBridgeService(ctx).string_update(site_id, payload)
+
+
+@router.get(
+    "/sites/{site_id}/bridge/forms",
+    response_model=WordPressBridgeFormList,
+    dependencies=[require_permission("wordpress.forms.read")],
+)
+async def bridge_forms(
+    site_id: uuid.UUID,
+    search: str | None = Query(None, max_length=200, description="Title and template."),
+    lang: str | None = Query(
+        None, max_length=10, description="WPML language, where forms are a translatable post type."
+    ),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=1, le=100),
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressBridgeFormList:
+    """Contact Form 7 forms through the plugin: id, title, the shortcode a page embeds, locale,
+    last change and — with WPML, where forms are translated as records — language and
+    translation ids. 409 on a site without Contact Form 7."""
+    return await WordPressBridgeService(ctx).list_forms(
+        site_id, search=search, lang=lang, page=page, per_page=per_page
+    )
+
+
+@router.post(
+    "/sites/{site_id}/bridge/forms",
+    response_model=WordPressBridgeForm,
+    status_code=201,
+    dependencies=[require_permission("wordpress.forms.write")],
+)
+async def bridge_create_form(
+    site_id: uuid.UUID,
+    payload: WordPressBridgeFormCreate,
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressBridgeForm:
+    """A new form, live at once (forms have no draft state), from CF7's default template in
+    the locale with what you send on top — a title alone makes a working form. Returns it
+    with its shortcode and `config_errors`."""
+    return await WordPressBridgeService(ctx).create_form(site_id, payload)
+
+
+@router.get(
+    "/sites/{site_id}/bridge/forms/{wp_id}",
+    response_model=WordPressBridgeForm,
+    dependencies=[require_permission("wordpress.forms.read")],
+)
+async def bridge_form(
+    site_id: uuid.UUID,
+    wp_id: int,
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressBridgeForm:
+    """One form whole: the template, the fields CF7 parses off it (name, type, required,
+    options), both mails, the messages with `messages_help`, the additional settings, the
+    shortcode, `config_errors` (what CF7's validator objects to — it sends nothing while a
+    mail is misconfigured), and with WPML the translations or the form's `strings`."""
+    return await WordPressBridgeService(ctx).get_form(site_id, wp_id)
+
+
+@router.patch(
+    "/sites/{site_id}/bridge/forms/{wp_id}",
+    response_model=WordPressBridgeForm,
+    dependencies=[require_permission("wordpress.forms.write")],
+)
+async def bridge_update_form(
+    site_id: uuid.UUID,
+    wp_id: int,
+    payload: WordPressBridgeFormUpdate,
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressBridgeForm:
+    """Change a form — live the moment it saves, on every page that embeds it. `mail`,
+    `mail_2` and `messages` merge over what the form holds; `form` and `additional_settings`
+    replace whole; unknown message keys and locales are refused before anything is written.
+    With the WPML Contact Form 7 Multilingual add-on, `strings` translates the form's texts."""
+    return await WordPressBridgeService(ctx).update_form(site_id, wp_id, payload)
+
+
+@router.delete(
+    "/sites/{site_id}/bridge/forms/{wp_id}",
+    response_model=WordPressBridgeFormDelete,
+    dependencies=[require_permission("wordpress.forms.delete")],
+)
+async def bridge_delete_form(
+    site_id: uuid.UUID,
+    wp_id: int,
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressBridgeFormDelete:
+    """Delete a form permanently — CF7 has no trash for forms, and pages embedding its
+    shortcode show nothing there afterwards."""
+    return await WordPressBridgeService(ctx).delete_form(site_id, wp_id)
+
+
+@router.post(
+    "/sites/{site_id}/bridge/forms/{wp_id}/translations",
+    response_model=WordPressBridgeForm,
+    status_code=201,
+    dependencies=[require_permission("wordpress.forms.write")],
+)
+async def bridge_translate_form(
+    site_id: uuid.UUID,
+    wp_id: int,
+    payload: WordPressBridgeFormTranslate,
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressBridgeForm:
+    """WPML, where forms are a translatable post type: create this form's linked translation
+    in `lang` — the source copied, its locale set to the language's, your translated
+    template, mails and messages on top — and get back the new form with its own shortcode
+    for pages in that language; or, with `translation_id`, link an existing form. Where one
+    form serves every language (the Contact Form 7 Multilingual add-on) the plugin answers
+    409 and points at `strings` on the update."""
+    return await WordPressBridgeService(ctx).translate_form(site_id, wp_id, payload)

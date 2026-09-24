@@ -11,13 +11,16 @@ and the review screen simple.
 Shape decisions:
 
 - **A meeting is a record with a lifecycle** (``MeetingStatus``): recorded → queued →
-  transcribing → summarising → ``review`` (a person reads the draft) → ``done`` (the minutes are
-  a contact moment and the action items are tasks) — or ``failed``, with the reason as an i18n
-  key. The worker owns the two middle states; ``status_at`` is what the reaper reads.
-- **Nothing the model wrote is a record until a person confirms it.** ``minutes`` holds the
-  draft (and the reviewer's edits to it); the interaction and the tasks are written on confirm,
-  through their own modules' services, as the reviewer. That is the dictation posture (#382),
-  not the e-mail one (#327): a colleague pressed record and a colleague presses confirm.
+  transcribing → summarising → ``ready`` (the minutes are in) — or ``failed``, with the reason
+  as an i18n key. The worker owns the two middle states; ``status_at`` is what the reaper reads.
+- **The minutes are the record, and they are never frozen.** ``minutes`` holds what the model
+  drafted and every edit a colleague made since; there is no confirm step (there was one, and
+  it was removed: a meeting whose minutes cannot be corrected after the fact is a meeting whose
+  minutes are wrong the moment somebody spots a typo, and "only after confirming" is a stage
+  nobody asked for). The moment the draft lands the meeting is *filed* — a contact moment on the
+  client, written as the recorder through the interactions module's own service, and rewritten
+  on every edit so the timeline and the meeting cannot disagree. A task is made from one action
+  item at a time, checked by a person in the task sheet, never by a checkbox on confirm.
 - **The owner is snapshotted** (``owner_name``, #64): the colleague who recorded it keeps their
   name on the minutes after they leave.
 - **The roster is a list of people, not a map of labels.** ``participants`` names who was there
@@ -66,8 +69,10 @@ class MeetingStatus(StrEnum):
     QUEUED = "queued"
     TRANSCRIBING = "transcribing"
     SUMMARISING = "summarising"
-    REVIEW = "review"
-    DONE = "done"
+    #: The minutes are in. Editable for ever; a redraft or a retry passes through ``queued``
+    #: and lands here again. (``review`` and ``done`` collapsed into this in migration
+    #: ``b7d4f2c9a1e6``: the confirm step between them was removed.)
+    READY = "ready"
     FAILED = "failed"
 
 
@@ -192,17 +197,22 @@ class Meeting(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, AuditableMixi
     #: The drafted minutes and the reviewer's edits to them (``minutes.MinutesDraft``).
     minutes: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
-    # What confirming produced.
+    # What the meeting produced on other modules' tables.
+    #: The contact moment the minutes are filed as — written when the draft lands and kept in
+    #: step with every edit (``service.MeetingService.sync_interaction``). ``SET NULL`` when
+    #: somebody deletes the moment; the next edit files it again.
     interaction_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("interactions.id", ondelete="SET NULL"), nullable=True
     )
-    #: The tasks confirm created, as ids — a list, because a meeting produces several and the
-    #: ids are all the detail page needs to link them.
+    #: The tasks made from action items, as ids — a list, because a meeting produces several
+    #: and the ids are all the detail page needs to link them.
     task_ids: Mapped[list[Any] | None] = mapped_column(JSONB, nullable=True)
-    #: The time entries a confirm booked for the colleagues at the table (``confirm``'s
-    #: ``log_time``), as ids — so the page can say *whose* hours were written and link them,
-    #: because hours nobody asked to see written are a surprise on a timesheet.
+    #: The time entries booked for the colleagues at the table (``log_time``), as ids — so the
+    #: page can say *whose* hours were written and link them, because hours nobody asked to see
+    #: written are a surprise on a timesheet.
     time_entry_ids: Mapped[list[Any] | None] = mapped_column(JSONB, nullable=True)
+    #: When the old confirm step ran, on rows that predate its removal. No longer written, kept
+    #: for one release (expand/contract) and read by nothing.
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 

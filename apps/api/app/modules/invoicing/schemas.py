@@ -217,6 +217,13 @@ class ProductRead(ProductBase):
     org_id: uuid.UUID
     created_at: datetime
     updated_at: datetime
+    #: How the price list is *used* (``?usage=true``): the agreements — recurring or one-time —
+    #: and the standard subscriptions that name this product, and when the latest agreement
+    #: started. Zero and ``None`` without the flag. A line pick in the editor copies values and
+    #: leaves no trace, so this counts recorded agreements only; the settings screen says so.
+    agreement_count: int = 0
+    template_count: int = 0
+    last_sold_on: date | None = None
 
 
 # --------------------------------------------------------------------------- #

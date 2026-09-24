@@ -36,7 +36,12 @@ from dataclasses import dataclass, field
 from html.parser import HTMLParser
 
 #: Content we never want the words of, let alone the markup.
-_DROP = frozenset({"script", "style", "head", "title", "meta", "link", "noscript"})
+_DROP = frozenset({"script", "style", "head", "title", "noscript"})
+#: Void elements with nothing to say: skipped outright. They must **not** open a drop scope,
+#: because a void tag has no end tag to close it — ``<meta>`` inside ``<head>`` left the
+#: counter at one after ``</head>``, and every Apple Mail and Outlook body (which open with
+#: exactly that) converted to ``None``.
+_VOID_DROP = frozenset({"meta", "link", "base"})
 
 #: Anything that ends the current run of inline text.
 _BLOCK = frozenset(
@@ -150,6 +155,8 @@ class _Converter(HTMLParser):
     # --- parser callbacks --------------------------------------------------- #
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
+        if tag in _VOID_DROP:
+            return
         if tag in _DROP:
             self._drop += 1
             return
@@ -225,6 +232,8 @@ class _Converter(HTMLParser):
 
     def handle_endtag(self, tag: str) -> None:
         tag = tag.lower()
+        if tag in _VOID_DROP:
+            return
         if tag in _DROP:
             self._drop = max(0, self._drop - 1)
             return

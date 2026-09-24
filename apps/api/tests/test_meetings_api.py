@@ -1,4 +1,4 @@
-"""Meetings end to end: recording, folding, the worker run, review, confirm — with the
+"""Meetings end to end: recording, folding, the worker run, the filing, the edits — with the
 provider faked at the two seams every AI feature here goes through (``stream_chat`` and the
 transcription call), so these exercise the platform's own rules with no network."""
 
@@ -219,7 +219,7 @@ async def test_the_worker_folds_transcribes_and_drafts(client_for, tmp_path, mon
         await _run(t.org.id, meeting["id"])
 
         detail = (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()
-        assert detail["status"] == "review", detail
+        assert detail["status"] == "ready", detail
         assert detail["company_name"] == "Nova"
         # The recording exists as one file; the two pieces were folded into it and dropped.
         assert detail["audio_file_id"] and detail["chunks_received"] == 0
@@ -230,8 +230,8 @@ async def test_the_worker_folds_transcribes_and_drafts(client_for, tmp_path, mon
         assert minutes["summary"].startswith("Kick-off")
         assert [d["verified"] for d in minutes["decisions"]] == [True, False]
         ours, theirs = minutes["action_items"]
-        assert ours["assignee_user_id"] == str(t.user.id) and ours["create_task"] is True
-        assert theirs["assignee_user_id"] is None and theirs["create_task"] is False
+        assert ours["assignee_user_id"] == str(t.user.id) and ours["task_id"] is None
+        assert theirs["assignee_user_id"] is None and theirs["task_id"] is None
         assert theirs["verified"] is True
 
     async with async_session_maker() as session:
@@ -257,12 +257,16 @@ async def test_the_worker_folds_transcribes_and_drafts(client_for, tmp_path, mon
         assert any(u.tokens_in == 1200 for u in usage)
 
 
-async def test_confirm_writes_a_contact_moment_and_the_ticked_tasks(
+async def test_the_minutes_are_filed_as_a_contact_moment_and_follow_every_edit(
     client_for, tmp_path, monkeypatch
 ) -> None:
+    """No confirm step: the moment the draft lands the worker files it on the client as the
+    recorder, and every save of the minutes rewrites that moment — title, words, roster — so
+    the timeline never shows words the page no longer does. A moment somebody deleted is filed
+    again by the next edit, because the meeting is the record and the moment its mirror."""
     monkeypatch.setattr(settings, "storage_path", str(tmp_path))
     monkeypatch.setattr("app.modules.meetings.pipeline.provider_transcribe", _fake_transcribe())
-    t = await make_tenant("meet-confirm")
+    t = await make_tenant("meet-filed")
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:
         await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
@@ -273,70 +277,126 @@ async def test_confirm_writes_a_contact_moment_and_the_ticked_tasks(
         )
         await _run(t.org.id, meeting["id"])
         detail = (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()
-        minutes = detail["minutes"]
-        # The reviewer corrects the invented decision away, ticks the client's promise too.
-        minutes["decisions"] = minutes["decisions"][:1]
-        minutes["action_items"][1]["create_task"] = True
-
-        res = await c.post(
-            f"/api/v1/meetings/{meeting['id']}/confirm", json={"minutes": minutes}, headers=headers
-        )
-        assert res.status_code == 200, res.text
-        result = res.json()
-        assert len(result["task_ids"]) == 2 and result["skipped"] == []
+        assert detail["status"] == "ready" and detail["interaction_id"], detail
 
         interaction = (
-            await c.get(f"/api/v1/interactions/{result['interaction_id']}", headers=headers)
+            await c.get(f"/api/v1/interactions/{detail['interaction_id']}", headers=headers)
         ).json()
         assert interaction["kind"] == "physical_meeting"
         assert interaction["subject"] == "Kick-off homepage"
         assert interaction["company_id"] == company["id"]
+        assert interaction["owner_user_id"] == str(t.user.id)  # the recorder, not the system
         assert "3 oktober" in interaction["body_text"]
-        assert {task["id"] for task in interaction["tasks"]} == set(result["task_ids"])
+        assert "Iets dat niemand zei" in interaction["body_text"]
+        trail = (
+            await c.get(
+                "/api/v1/activity",
+                params={"entity_type": "meeting", "entity_id": meeting["id"]},
+                headers=headers,
+            )
+        ).json()
+        actions = [row["action"] for row in (trail["items"] if isinstance(trail, dict) else trail)]
+        assert "meeting.filed" in actions
 
-        task = (await c.get(f"/api/v1/tasks/{result['task_ids'][0]}", headers=headers)).json()
-        assert task["title"] == "Homepageteksten aanleveren"
-        assert task["company_id"] == company["id"]
-        assert task["due_date"] == "2026-09-30"
-        assert task["assignee_user_id"] == str(t.user.id)
-        assert "Sanne pakt de teksten" in task["description"]
-
-        done = (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()
-        assert done["status"] == "done" and done["interaction_id"] == result["interaction_id"]
-        assert set(done["task_ids"]) == set(result["task_ids"])
-        # A second confirm is refused: the minutes are a record now.
-        again = await c.post(
-            f"/api/v1/meetings/{meeting['id']}/confirm", json={"minutes": minutes}, headers=headers
+        # An edit: the invented decision goes, the title is typed — and the moment follows.
+        minutes = detail["minutes"]
+        minutes["decisions"] = minutes["decisions"][:1]
+        minutes["title"] = "Kick-off homepage (definitief)"
+        saved = await c.put(
+            f"/api/v1/meetings/{meeting['id']}/minutes", json=minutes, headers=headers
         )
-        assert again.status_code == 409
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["title"] == "Kick-off homepage (definitief)"
+        assert saved.json()["title_auto"] is False
+        assert saved.json()["interaction_id"] == detail["interaction_id"]
+        interaction = (
+            await c.get(f"/api/v1/interactions/{detail['interaction_id']}", headers=headers)
+        ).json()
+        assert interaction["subject"] == "Kick-off homepage (definitief)"
+        assert "Iets dat niemand zei" not in interaction["body_text"]
+        assert "3 oktober" in interaction["body_text"]
+
+        # Moving the meeting to another client moves the moment with it.
+        other = (await c.post("/api/v1/companies", json={"name": "Elders"}, headers=headers)).json()
+        moved = await c.patch(
+            f"/api/v1/meetings/{meeting['id']}", json={"company_id": other["id"]}, headers=headers
+        )
+        assert moved.status_code == 200, moved.text
+        interaction = (
+            await c.get(f"/api/v1/interactions/{detail['interaction_id']}", headers=headers)
+        ).json()
+        assert interaction["company_id"] == other["id"]
+
+        # The moment deleted by hand: the next edit files the meeting again.
+        gone = await c.delete(
+            f"/api/v1/interactions/{detail['interaction_id']}", headers=headers
+        )
+        assert gone.status_code in (200, 204), gone.text
+        unfiled = (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()
+        assert unfiled["interaction_id"] is None
+        saved = await c.put(
+            f"/api/v1/meetings/{meeting['id']}/minutes", json=minutes, headers=headers
+        )
+        assert saved.status_code == 200, saved.text
+        refiled = saved.json()["interaction_id"]
+        assert refiled and refiled != detail["interaction_id"]
+        assert (
+            await c.get(f"/api/v1/interactions/{refiled}", headers=headers)
+        ).json()["subject"] == "Kick-off homepage (definitief)"
 
 
-async def test_confirm_reports_a_task_it_could_not_make(client_for, tmp_path, monkeypatch) -> None:
-    """No client on the meeting: the minutes still land, the task is named as skipped with the
-    field the tasks module refused on (§18's split, never a rolled-back confirm)."""
+async def test_a_refused_filing_leaves_the_meeting_unfiled_and_the_button_says_why(
+    client_for, tmp_path, monkeypatch
+) -> None:
+    """The interactions module refusing to write must never cost the transcription or an edit:
+    the meeting stays unfiled and readable (the refusal is logged), and the page's own button
+    (``POST /interaction``) is the strict form that carries the reason — and files it once the
+    reason is gone."""
     monkeypatch.setattr(settings, "storage_path", str(tmp_path))
     monkeypatch.setattr("app.modules.meetings.pipeline.provider_transcribe", _fake_transcribe())
-    t = await make_tenant("meet-skip")
+    t = await make_tenant("meet-unfiled")
     headers = await auth_cookie(t.user)
+
+    from app.errors import AppError
+    from app.modules.interactions.service import InteractionService
+
+    real_create = InteractionService.create
+
+    async def refusing(self, data):  # noqa: ANN001, ANN202
+        raise AppError("validation", "errors.interactions_kind_not_manual", status_code=422)
+
     async with client_for(t.host) as c:
         await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
-        meeting = await _record(c, headers)
+        company = (await c.post("/api/v1/companies", json={"name": "Nova"}, headers=headers)).json()
+        meeting = await _record(c, headers, company_id=company["id"])
         monkeypatch.setattr(
             "app.core.ai.providers.stream_chat", _fake_stream(_submit(**_minutes(str(t.user.id))))
         )
+        monkeypatch.setattr(InteractionService, "create", refusing)
         await _run(t.org.id, meeting["id"])
         detail = (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()
-        res = await c.post(
-            f"/api/v1/meetings/{meeting['id']}/confirm",
-            json={"minutes": detail["minutes"]},
-            headers=headers,
+        assert detail["status"] == "ready" and detail["minutes"], detail
+        assert detail["interaction_id"] is None
+
+        # An edit still lands; the moment is still not there.
+        saved = await c.put(
+            f"/api/v1/meetings/{meeting['id']}/minutes", json=detail["minutes"], headers=headers
         )
-        assert res.status_code == 200, res.text
-        assert res.json()["task_ids"] == []
-        assert res.json()["skipped"][0]["fields"] == {"company_id": "errors.tasks_company_required"}
-        assert (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()[
-            "status"
-        ] == "done"
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["interaction_id"] is None
+
+        refused = await c.post(f"/api/v1/meetings/{meeting['id']}/interaction", headers=headers)
+        assert refused.status_code == 422, refused.text
+        assert refused.json()["error"]["message"] == "errors.interactions_kind_not_manual"
+
+        monkeypatch.setattr(InteractionService, "create", real_create)
+        filed = await c.post(f"/api/v1/meetings/{meeting['id']}/interaction", headers=headers)
+        assert filed.status_code == 200, filed.text
+        assert filed.json()["interaction_id"]
+        interaction = (
+            await c.get(f"/api/v1/interactions/{filed.json()['interaction_id']}", headers=headers)
+        ).json()
+        assert interaction["subject"] == "Kick-off homepage"
 
 
 async def test_a_provider_failure_ends_on_failed_with_a_reason(
@@ -370,7 +430,7 @@ async def test_a_provider_failure_ends_on_failed_with_a_reason(
         await _run(t.org.id, meeting["id"])
         assert (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()[
             "status"
-        ] == "review"
+        ] == "ready"
 
 
 async def test_meetings_tenant_isolation(client_for, tmp_path, monkeypatch) -> None:
@@ -492,9 +552,9 @@ async def test_participants_are_people_and_a_contacts_promise_becomes_their_task
     client_for, tmp_path, monkeypatch
 ) -> None:
     """The roster names a colleague, a contact and a stranger; the labels are paired in review;
-    the model is shown the PARTICIPANTS block and grounds ``owner_contact_id`` in it; confirm
-    puts the contact on the contact moment and makes their ticked promise a task assigned to
-    *them* — and the minutes print by side, then by person."""
+    the model is shown the PARTICIPANTS block and grounds ``owner_contact_id`` in it; the
+    contact is on the contact moment's roster, and making a task of their promise assigns it
+    to *them* — and the minutes print by side, then by person."""
     monkeypatch.setattr(settings, "storage_path", str(tmp_path))
     monkeypatch.setattr("app.modules.meetings.pipeline.provider_transcribe", _fake_transcribe())
     t = await make_tenant("meet-roster")
@@ -548,10 +608,10 @@ async def test_participants_are_people_and_a_contacts_promise_becomes_their_task
         )
         await _run(t.org.id, meeting_id)
         detail = (await c.get(f"/api/v1/meetings/{meeting_id}", headers=headers)).json()
-        assert detail["status"] == "review" and detail["diarized"] is True
+        assert detail["status"] == "ready" and detail["diarized"] is True
         assert f"Jan de Vries\tcontact\t{jan}" in seen_prompts[-1]
         theirs = detail["minutes"]["action_items"][1]
-        assert theirs["owner_contact_id"] == jan and theirs["create_task"] is False
+        assert theirs["owner_contact_id"] == jan
 
         # Pair the labels with the people. A label names one person: S3 twice is refused.
         roster = detail["participants"]
@@ -592,17 +652,11 @@ async def test_participants_are_people_and_a_contacts_promise_becomes_their_task
         )
         assert res.status_code == 422, res.text
 
-        # The reviewer ticks the client's promise: it becomes the client's task.
-        minutes = detail["minutes"]
-        minutes["action_items"][1]["create_task"] = True
-        res = await c.post(
-            f"/api/v1/meetings/{meeting_id}/confirm", json={"minutes": minutes}, headers=headers
-        )
-        assert res.status_code == 200, res.text
-        result = res.json()
-        assert len(result["task_ids"]) == 2 and result["skipped"] == []
+        # The roster was saved after the filing: the moment's roster follows it.
+        detail = (await c.get(f"/api/v1/meetings/{meeting_id}", headers=headers)).json()
+        assert detail["interaction_id"], detail
         interaction = (
-            await c.get(f"/api/v1/interactions/{result['interaction_id']}", headers=headers)
+            await c.get(f"/api/v1/interactions/{detail['interaction_id']}", headers=headers)
         ).json()
         assert [x["id"] for x in interaction["contacts"]] == [jan]
         body = interaction["body_text"]
@@ -613,9 +667,25 @@ async def test_participants_are_people_and_a_contacts_promise_becomes_their_task
             < body.index("**Jan de Vries**")
             < body.index("- Nieuw logo sturen")
         )
-        logo = (await c.get(f"/api/v1/tasks/{result['task_ids'][1]}", headers=headers)).json()
+        # The client's promise, chased: a task assigned to the contact, listed on the moment.
+        made = await c.post(
+            f"/api/v1/meetings/{meeting_id}/action-items/task",
+            json={
+                "index": 1,
+                "title": "Nieuw logo sturen",
+                "due_date": "2026-09-30",
+                "assignee_contact_id": jan,
+            },
+            headers=headers,
+        )
+        assert made.status_code == 201, made.text
+        logo = (await c.get(f"/api/v1/tasks/{made.json()['task_id']}", headers=headers)).json()
         assert logo["title"] == "Nieuw logo sturen"
         assert logo["assignee_contact_id"] == jan and logo["assignee_user_id"] is None
+        interaction = (
+            await c.get(f"/api/v1/interactions/{detail['interaction_id']}", headers=headers)
+        ).json()
+        assert [x["id"] for x in interaction["tasks"]] == [made.json()["task_id"]]
 
 
 async def test_redraft_writes_the_minutes_again_without_transcribing(
@@ -672,7 +742,7 @@ async def test_redraft_writes_the_minutes_again_without_transcribing(
             await set_current_org(session, org.id)
             await run_pipeline(session, org, uuid.UUID(meeting["id"]), stage="minutes")
         detail = (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()
-        assert detail["status"] == "review", detail
+        assert detail["status"] == "ready", detail
         assert "S2\tSanne\tother\t-" in prompts[-1]
         # The audio was metered once: the redraft spent none.
     async with async_session_maker() as session:
@@ -780,7 +850,7 @@ async def _folded_recording(c, owner_h, t, monkeypatch, *, company_id: str) -> t
     )
     await _run(t.org.id, meeting["id"])
     detail = (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=owner_h)).json()
-    assert detail["status"] == "review" and detail["audio_file_id"], detail
+    assert detail["status"] == "ready" and detail["audio_file_id"], detail
     return meeting, detail["audio_file_id"]
 
 
@@ -951,20 +1021,20 @@ async def test_a_run_the_worker_restart_cut_short_is_resumed(
         await left_on("transcribing", meeting["id"])
         await _run(t.org.id, meeting["id"])
         detail = (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()
-        assert detail["status"] == "review", detail
+        assert detail["status"] == "ready", detail
         assert len(transcriptions) == 1
         # Stopped while summarising: the transcript is on the row, so the resume starts at the
         # minutes and the provider is not asked for the words again.
         await left_on("summarising", meeting["id"])
         await _run(t.org.id, meeting["id"])
         detail = (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()
-        assert detail["status"] == "review" and detail["minutes"], detail
+        assert detail["status"] == "ready" and detail["minutes"], detail
         assert len(transcriptions) == 1
         # A row a person is reviewing is not a run to resume: the worker still stands down.
         await _run(t.org.id, meeting["id"])
         assert (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()[
             "status"
-        ] == "review"
+        ] == "ready"
 
 
 # --------------------------------------------------------------------------- #
@@ -1193,12 +1263,13 @@ async def test_a_meeting_left_unnamed_is_named_by_the_client_and_then_by_the_min
         assert edited.json()["title_auto"] is False
 
 
-async def test_confirm_books_the_hours_for_the_colleagues_named(
+async def test_the_hours_are_booked_for_the_colleagues_named(
     client_for, tmp_path, monkeypatch
 ) -> None:
-    """``log_time`` writes one entry per colleague ticked, for the meeting's length, typed after
-    the contact moment's kind and filed on it; the page reads them back by name. A member may
-    book their own hours and not a colleague's (``time.entry.write:any``)."""
+    """``POST /time`` writes one entry per colleague ticked, for the meeting's length, typed
+    after the contact moment's kind and filed on it; the page reads them back by name. A
+    member may book their own hours and not a colleague's (``time.entry.write:any``), and a
+    refusal writes nothing."""
     monkeypatch.setattr(settings, "storage_path", str(tmp_path))
     monkeypatch.setattr("app.modules.meetings.pipeline.provider_transcribe", _fake_transcribe())
     t = await make_tenant("meet-hours")
@@ -1237,24 +1308,18 @@ async def test_confirm_books_the_hours_for_the_colleagues_named(
 
         # A member booking the owner's hours is refused before anything is written.
         refused = await c.post(
-            f"/api/v1/meetings/{meeting['id']}/confirm",
-            json={
-                "minutes": detail["minutes"],
-                "log_time": {"user_ids": [str(t.user.id), str(colleague.id)]},
-            },
+            f"/api/v1/meetings/{meeting['id']}/time",
+            json={"user_ids": [str(t.user.id), str(colleague.id)]},
             headers=colleague_headers,
         )
         assert refused.status_code == 403, refused.text
         assert (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()[
-            "status"
-        ] == "review"
+            "time_entries"
+        ] == []
 
         res = await c.post(
-            f"/api/v1/meetings/{meeting['id']}/confirm",
-            json={
-                "minutes": detail["minutes"],
-                "log_time": {"user_ids": [str(t.user.id), str(colleague.id)]},
-            },
+            f"/api/v1/meetings/{meeting['id']}/time",
+            json={"user_ids": [str(t.user.id), str(colleague.id)]},
             headers=headers,
         )
         assert res.status_code == 200, res.text
@@ -1265,6 +1330,7 @@ async def test_confirm_books_the_hours_for_the_colleagues_named(
             str(colleague.id),
         }
         assert {e["user_name"] for e in result["time_entries"]} >= {"Collega"}
+        assert result["interaction_id"], result
 
         done = (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()
         assert len(done["time_entries"]) == 2
@@ -1287,11 +1353,10 @@ async def test_confirm_books_the_hours_for_the_colleagues_named(
 async def test_an_action_item_becomes_a_task_with_schakls_draft(
     client_for, tmp_path, monkeypatch
 ) -> None:
-    """The review desk asks schakl to fill in the task for one action item — steps, a spoken
+    """The page asks schakl to fill in the task for one action item — steps, a spoken
     deadline, the owner — grounded in the transcript around it and pinned to the meeting's
-    client; the reviewed draft is created in one call, the item remembers its task, the confirm
-    files it on the contact moment without making it twice, and a task made after the confirm
-    is filed at once."""
+    client; the reviewed draft is created in one call, the item remembers its task (and keeps
+    it through every later save of the minutes), and the contact moment lists it at once."""
     monkeypatch.setattr(settings, "storage_path", str(tmp_path))
     monkeypatch.setattr("app.modules.meetings.pipeline.provider_transcribe", _fake_transcribe())
     t = await make_tenant("meet-itemtask")
@@ -1365,7 +1430,7 @@ async def test_an_action_item_becomes_a_task_with_schakls_draft(
         assert made.status_code == 201, made.text
         task_id = made.json()["task_id"]
         item = made.json()["meeting"]["minutes"]["action_items"][0]
-        assert item["task_id"] == task_id and item["create_task"] is False
+        assert item["task_id"] == task_id
         task = (await c.get(f"/api/v1/tasks/{task_id}", headers=headers)).json()
         assert task["company_id"] == company["id"]
         assert task["due_date"] == "2026-09-30"
@@ -1381,24 +1446,32 @@ async def test_an_action_item_becomes_a_task_with_schakls_draft(
         assert again.status_code == 409
 
         detail = (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()
-        minutes = detail["minutes"]
-        minutes["action_items"][1]["create_task"] = True
-        res = await c.post(
-            f"/api/v1/meetings/{meeting['id']}/confirm", json={"minutes": minutes}, headers=headers
-        )
-        assert res.status_code == 200, res.text
-        result = res.json()
-        assert task_id in result["task_ids"] and len(result["task_ids"]) == 2
         interaction = (
-            await c.get(f"/api/v1/interactions/{result['interaction_id']}", headers=headers)
+            await c.get(f"/api/v1/interactions/{detail['interaction_id']}", headers=headers)
         ).json()
-        assert {x["id"] for x in interaction["tasks"]} == set(result["task_ids"])
+        assert [x["id"] for x in interaction["tasks"]] == [task_id]
         tasks = (
             await c.get("/api/v1/tasks", params={"company_id": company["id"]}, headers=headers)
         ).json()
-        assert len(tasks["items"]) == 2  # the pre-made task was not made again
+        assert len(tasks["items"]) == 1
 
-        # After the confirm, the confirm's own task is remembered on its item too — so the
-        # record's page offers no second "maak een taak" over it.
-        done = (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()
-        assert done["minutes"]["action_items"][1]["task_id"] in result["task_ids"]
+        # A save of the minutes that does not carry the link keeps it (matched on the words,
+        # so a reordered list cannot hand one item another item's task); a save that carries
+        # it may rename the item freely.
+        minutes = detail["minutes"]
+        minutes["action_items"][0]["task_id"] = None
+        minutes["action_items"].reverse()
+        saved = await c.put(
+            f"/api/v1/meetings/{meeting['id']}/minutes", json=minutes, headers=headers
+        )
+        assert saved.status_code == 200, saved.text
+        items = saved.json()["minutes"]["action_items"]
+        assert [i["task_id"] for i in items] == [None, task_id]
+        items[1]["title"] = "Homepageteksten aanleveren (herzien)"
+        saved = await c.put(
+            f"/api/v1/meetings/{meeting['id']}/minutes",
+            json={**saved.json()["minutes"], "action_items": items},
+            headers=headers,
+        )
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["minutes"]["action_items"][1]["task_id"] == task_id

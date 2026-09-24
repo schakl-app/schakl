@@ -279,7 +279,11 @@
         class="rounded-lg border border-border px-4 py-2 text-sm text-text"
         onclick={() => (open = false)}>{t("common.cancel")}</button
       >
-      <Button disabled={pickedIds.length === 0} onclick={confirm}>
+      <!-- `type="button"`: the dialog is rendered inside the document's own <form>, and a
+           bare <button> there is a submit — the click added the lines to state and posted the
+           form in the same tick, before the hidden `lines` field had caught up, so the draft
+           landed empty. -->
+      <Button type="button" disabled={pickedIds.length === 0} onclick={confirm}>
         {t("invoicing.outstanding.add")}
       </Button>
     </div>

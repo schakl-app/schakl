@@ -1259,13 +1259,13 @@ async def test_auto_approve_logs_with_body_and_rfc822_dedup(client_for, monkeypa
             refresh_token_encrypted=encrypt("rt"),
         )
         del colleague  # (schema: one connection per user; dedup is asserted via the same poll)
-    stub2 = _StubGmail(
-        history=["msg-b"],
-        messages={
-            "msg-b": _message("msg-b", sender="klant@client.nl", rfc822="<shared@mail>")
-        },
-        history_id="9200",
-    )
+    # The colleague's client uses Apple Mail, which spells the header ``Message-Id``: the same
+    # id, whatever the spelling (RFC 5322 makes header names case-insensitive).
+    copy = _message("msg-b", sender="klant@client.nl", rfc822="<shared@mail>")
+    for header in copy["payload"]["headers"]:
+        if header["name"] == "Message-ID":
+            header["name"] = "Message-Id"
+    stub2 = _StubGmail(history=["msg-b"], messages={"msg-b": copy}, history_id="9200")
     assert await _poll(t, connection_id, stub2, monkeypatch) == 0
 
 

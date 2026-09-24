@@ -44,6 +44,12 @@ from app.integrations.wordpress.models import WordPressSite
 from app.integrations.wordpress.schemas import (
     LIVE_STATUSES,
     WordPressBridgeDelete,
+    WordPressBridgeForm,
+    WordPressBridgeFormCreate,
+    WordPressBridgeFormDelete,
+    WordPressBridgeFormList,
+    WordPressBridgeFormTranslate,
+    WordPressBridgeFormUpdate,
     WordPressBridgeInfo,
     WordPressBridgeMedia,
     WordPressBridgeSchema,
@@ -549,3 +555,98 @@ class WordPressBridgeService(WordPressSurfaceService):
             {"string_id": result.id, "lang": result.lang, "title": data.name or str(result.id)},
         )
         return result
+
+    # --- Contact Form 7 ------------------------------------------------------------------- #
+    async def list_forms(
+        self,
+        site_id: uuid.UUID,
+        *,
+        search: str | None,
+        lang: str | None,
+        page: int,
+        per_page: int,
+    ) -> WordPressBridgeFormList:
+        _, client = await self._open(site_id)
+        params: dict[str, Any] = {
+            "page": max(1, page),
+            "per_page": max(1, min(per_page, _MAX_PER_PAGE)),
+        }
+        if search:
+            params["search"] = search
+        if lang:
+            params["lang"] = lang
+        body = await self._bridge(client, "GET", "/forms", params=params)
+        return WordPressBridgeFormList(**(body if isinstance(body, dict) else {}))
+
+    async def get_form(self, site_id: uuid.UUID, wp_id: int) -> WordPressBridgeForm:
+        _, client = await self._open(site_id)
+        body = await self._bridge(client, "GET", f"/forms/{wp_id}")
+        return WordPressBridgeForm(**(body if isinstance(body, dict) else {}))
+
+    async def create_form(
+        self, site_id: uuid.UUID, data: WordPressBridgeFormCreate
+    ) -> WordPressBridgeForm:
+        site, client = await self._open(site_id)
+        body = await self._bridge(client, "POST", "/forms", json=_clean(data))
+        form = WordPressBridgeForm(**(body if isinstance(body, dict) else {}))
+        await self._trail(
+            site,
+            "form_created",
+            {"wp_id": form.id, "title": form.title, "lang": form.lang, "via": BRIDGE_PLUGIN},
+        )
+        return form
+
+    async def update_form(
+        self, site_id: uuid.UUID, wp_id: int, data: WordPressBridgeFormUpdate
+    ) -> WordPressBridgeForm:
+        payload = _clean(data)
+        if not payload:
+            raise AppError("validation", "errors.nothing_to_update", status_code=422)
+        site, client = await self._open(site_id)
+        body = await self._bridge(client, "PATCH", f"/forms/{wp_id}", json=payload)
+        form = WordPressBridgeForm(**(body if isinstance(body, dict) else {}))
+        touched = sorted(k for k in payload if k != "strings")
+        if data.strings:
+            touched.extend(f"strings.{lang}" for lang in sorted(data.strings))
+        await self._trail(
+            site,
+            "form_updated",
+            {"wp_id": wp_id, "title": form.title, "fields": touched, "via": BRIDGE_PLUGIN},
+        )
+        return form
+
+    async def delete_form(self, site_id: uuid.UUID, wp_id: int) -> WordPressBridgeFormDelete:
+        site, client = await self._open(site_id)
+        body = await self._bridge(client, "DELETE", f"/forms/{wp_id}")
+        result = WordPressBridgeFormDelete(**(body if isinstance(body, dict) else {"id": wp_id}))
+        await self._trail(
+            site,
+            "content_deleted",
+            {
+                "type": "wpcf7_contact_form",
+                "wp_id": wp_id,
+                "title": result.title,
+                "permanent": True,
+            },
+        )
+        return result
+
+    async def translate_form(
+        self, site_id: uuid.UUID, wp_id: int, data: WordPressBridgeFormTranslate
+    ) -> WordPressBridgeForm:
+        site, client = await self._open(site_id)
+        body = await self._bridge(client, "POST", f"/forms/{wp_id}/translate", json=_clean(data))
+        form = WordPressBridgeForm(**(body if isinstance(body, dict) else {}))
+        await self._trail(
+            site,
+            "translation_created",
+            {
+                "wp_id": wp_id,
+                "lang": data.lang,
+                "translation": form.id,
+                "connected": data.translation_id,
+                "title": form.title,
+                "link": form.shortcode,
+            },
+        )
+        return form

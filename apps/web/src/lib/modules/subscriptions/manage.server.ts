@@ -106,6 +106,8 @@ export const manageActions = {
     const body = {
       name,
       subscription_type_id: String(form.get("subscription_type_id") ?? "").trim() || null,
+      // The price-list product this preset sells; "" detaches (an explicit null).
+      product_id: String(form.get("product_id") ?? "").trim() || null,
       interval: String(form.get("interval") ?? "monthly") as "monthly",
       interval_count: Number(form.get("interval_count") ?? 1) || 1,
       amount: amount || null,

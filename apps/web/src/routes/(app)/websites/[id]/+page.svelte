@@ -48,12 +48,23 @@
   let confirmDelete = $state(false);
   // Radio selection is component state, never a one-way checked (docs/UX.md).
   let host = $state<"root" | "www">("root");
+  // The path under the host and the site's own client — both empty for the ordinary site.
+  let pathValue = $state("");
+  let clientOverride = $state("");
   const busy = new InFlight();
 
   const website = $derived(data.website);
-  // A website has no name of its own — the host it answers on is the name (§17's
-  // `natural_keys=("domain",)` is the same fact, stated for spreadsheets).
-  const title = $derived(website.root ? website.domain_name : `www.${website.domain_name}`);
+  // A website has no name of its own — its address is the name, resolved by the API once
+  // (`label`: host plus path, `app/core/webaddress.py`; §17's `natural_keys=("address", …)`
+  // is the same fact, stated for spreadsheets).
+  const title = $derived(
+    website.label || (website.root ? website.domain_name : `www.${website.domain_name}`),
+  );
+  // The domain's client, named beside the override picker as what the site otherwise follows.
+  const domainCompanyName = $derived(
+    data.companies.find((c) => c.id === website.domain_company_id)?.name ?? "",
+  );
+  const companyItems = $derived(data.companies.map((c) => ({ value: c.id, label: c.name })));
 
   const canWrite = $derived(can(page.data.user, "websites.website.write"));
   const canDelete = $derived(can(page.data.user, "websites.website.delete"));
@@ -87,11 +98,15 @@
   $effect(() => {
     const c = form?.inlineCreated;
     if (c?.slot === "hosting_account") hostingCreated = c.id;
+    // A client quick-created from the override picker selects itself there (#115).
+    if (c?.slot === "website_client") clientOverride = c.id;
   });
   const hostingItems = $derived(data.hosting.map((h) => ({ value: h.id, label: h.name })));
 
   function startEdit() {
     host = website.root ? "root" : "www";
+    pathValue = website.path ?? "";
+    clientOverride = website.company_override_id ?? "";
     editing = true;
   }
 
@@ -155,6 +170,13 @@
             <a href={`/companies/${website.company_id}`} class="text-brand hover:underline">
               {website.company_name}
             </a>
+            {#if !website.company_override_id && website.domain_company_id}
+              <!-- Nothing named on the site itself: it follows its domain. Said in words, since
+                   the resolved name alone cannot tell the two apart. -->
+              <span class="text-xs text-text-muted"
+                >· {t("websites.client_follows_domain", { name: "" }).replace(" ()", "")}</span
+              >
+            {/if}
           {:else}—{/if}
         </dd>
       </div>
@@ -162,6 +184,25 @@
         <dt class="text-text-muted">{t("websites.host")}</dt>
         <dd class="text-text">{website.root ? "@ (root)" : "www"}</dd>
       </div>
+      <div class="flex justify-between gap-4">
+        <dt class="text-text-muted">{t("websites.field.path")}</dt>
+        <dd class="text-text">{website.path || "—"}</dd>
+      </div>
+      {#if website.url}
+        <div class="flex justify-between gap-4">
+          <dt class="text-text-muted">{t("websites.open_site")}</dt>
+          <dd class="truncate">
+            <a
+              href={website.url}
+              target="_blank"
+              rel="noreferrer"
+              class="text-brand hover:underline"
+            >
+              {website.url}
+            </a>
+          </dd>
+        </div>
+      {/if}
       <div class="flex justify-between gap-4">
         <dt class="text-text-muted">{t("websites.technical_owner")}</dt>
         <dd class="text-text">{website.technical_owner?.label || "—"}</dd>
@@ -201,8 +242,9 @@
       })}
     >
       <div class="space-y-4">
-        <!-- The domain is not editable here: moving a site to another name is a different act
-             (delete + create), and the unique index on (org, domain) is what enforces it. -->
+        <!-- The domain is not editable here: moving a site to another domain is a different act
+             (delete + create). Where under it the site lives — host and path — is ordinary
+             editing, refused only onto an address that already names a site. -->
         <div>
           <span class="mb-1 block text-sm text-text">{t("websites.field.domain")}</span>
           <p class="text-sm text-text-muted">{website.domain_name}</p>
@@ -218,6 +260,37 @@
               www
             </label>
           </div>
+        </div>
+        <div>
+          <label for="website-path" class="mb-1 block text-sm text-text"
+            >{t("websites.field.path")}</label
+          >
+          <input
+            id="website-path"
+            name="path"
+            type="text"
+            bind:value={pathValue}
+            placeholder="/klant"
+            autocomplete="off"
+            class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
+          />
+          <p class="mt-1 text-xs text-text-muted">{t("websites.path_hint")}</p>
+        </div>
+        <div>
+          <label for="website-client" class="mb-1 block text-sm text-text"
+            >{t("websites.field.client")}</label
+          >
+          <!-- Empty follows the domain's client (the placeholder names it); a pick makes the
+               site somebody else's — a client's dev install on the agency's own domain. -->
+          <Combobox
+            items={companyItems}
+            name="company_override_id"
+            bind:value={clientOverride}
+            id="website-client"
+            placeholder={t("websites.client_follows_domain", { name: domainCompanyName })}
+            oncreate={(name) => quickCreateCompany(name, "website_client")}
+          />
+          <p class="mt-1 text-xs text-text-muted">{t("websites.client_hint")}</p>
         </div>
         <div>
           <span class="mb-1 block text-sm text-text">{t("websites.technical_owner")}</span>

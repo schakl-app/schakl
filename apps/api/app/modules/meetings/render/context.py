@@ -79,8 +79,6 @@ _LABEL_KEYS = (
     "client",
     "project",
     "duration",
-    "confirmed",
-    "draft",
     "generated",
     "parts",
     "page",
@@ -226,7 +224,7 @@ def group_by_owner(
                             "title": item.title.strip(),
                             "description_html": _html(item.description, images),
                             "due_label": short_date(item.due_date, locale),
-                            "is_task": bool(item.create_task),
+                            "is_task": item.task_id is not None,
                             **_evidence(item, show=evidence),
                         }
                         for item in owned
@@ -339,7 +337,10 @@ def build_context(
         "kind": kind,
         "kind_label": kind_label,
         "status": status,
-        "status_label": labels["confirmed"] if status == "done" else labels["draft"],
+        # Once printed "Vastgesteld" / "Concept"; the minutes are neither now (there is no
+        # confirm step). Kept as an empty string so a tenant's own template that names it
+        # still renders.
+        "status_label": "",
         "occurred_label": long_date(occurred_at, locale, zone),
         "duration_label": duration_label(duration_seconds, locale),
         "owner": owner_name or "",

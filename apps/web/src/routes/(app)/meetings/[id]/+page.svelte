@@ -1,24 +1,25 @@
 <script lang="ts">
   /**
-   * One meeting: the run while the worker has it, the review desk once it does not, the
-   * record once a person confirmed it.
+   * One meeting: the run while the worker has it, and the minutes once it does not.
    *
-   * The review desk is the dictation sheet's posture (docs/VOICE.md): the model drafted, a
-   * colleague reads every line beside the words it was drawn from, corrects, and only then
-   * does anything become a record. Two rules follow. **Every claim shows its evidence** — the
-   * quote and the timestamp the model gave, and a mark where the quote was *not* found in the
-   * transcript — because a summary reads plausibly whether or not it is true. And **the
-   * transcript stays on the screen** while the draft is edited: a misheard name is only fixable
-   * while the words are in view, and the speaker labels are named here, beside the lines they
-   * label.
+   * There is no confirm step. The minutes are the record the moment they exist and stay
+   * editable for as long as the meeting does — every field is edited where it is read and
+   * **saved by itself** (`scheduleSave` / `flushSave`, a debounced PUT with a state word beside
+   * the title), because a document with a Save button at the foot is one that is read once and
+   * corrected never. What used to happen on confirm now happens on its own or on its own
+   * button: the minutes are on the client's timeline as a contact moment from the moment the
+   * draft lands and follow every edit; a task is made of one action item at a time, checked in
+   * the sheet (*Taak maken met schakl*, the e-mail approve's shape); the hours have their own
+   * button and dialog.
    *
-   * The roster is the third thing on the desk. A speaker label is paired with a *person* — a
-   * colleague, a contact of the client, or a name — and the action items are drawn **by side
-   * and then by person** (what the agency took on, under each colleague; what the client took
-   * on, under each contact; the rest), because that is how either side reads a list of action
-   * items: for their own name. Naming the speakers after the draft was written is common, so
-   * *Notulen opnieuw opstellen* writes the minutes again over the same transcript, at no audio
-   * cost, with the people known this time.
+   * Two rules from the review desk this replaces still hold. **Every claim shows its
+   * evidence** — the quote and the timestamp the model gave, and a mark where the quote was
+   * *not* found in the transcript — because a summary reads plausibly whether or not it is true.
+   * And **the transcript stays on the screen** while the minutes are edited: a misheard name is
+   * only fixable while the words are in view, and the speaker labels are named here, beside the
+   * lines they label. The roster is the third thing on the desk: a label is paired with a
+   * *person*, and the action items are drawn **by side and then by person**, because that is
+   * how either side reads a list of action items — for their own name.
    */
   import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
   import ArrowLeft from "@lucide/svelte/icons/arrow-left";
@@ -30,10 +31,10 @@
   import RefreshCw from "@lucide/svelte/icons/refresh-cw";
   import Sparkles from "@lucide/svelte/icons/sparkles";
   import X from "@lucide/svelte/icons/x";
-  import { untrack } from "svelte";
+  import { onMount, untrack } from "svelte";
 
   import { enhance } from "$app/forms";
-  import { invalidate } from "$app/navigation";
+  import { beforeNavigate, invalidate } from "$app/navigation";
   import { page } from "$app/state";
   import { aiEnabled } from "$lib/core/ai";
   import { fmtDateTime, fmtDayMonth } from "$lib/core/format";
@@ -82,73 +83,10 @@
   const segments = $derived((meeting.segments ?? []) as TranscriptSegment[]);
   const speakers = $derived((meeting.speakers ?? {}) as Record<string, string>);
   const members = $derived(data.members);
-  const taskIds = $derived(meeting.task_ids ?? []);
   const busy = new InFlight();
-  let confirmOpen = $state(false);
   let confirmDelete = $state(false);
   let confirmAudio = $state(false);
   let exportOpen = $state(false);
-
-  /**
-   * "Taak maken met schakl" beside an action item: the sheet asks the API for a draft over the
-   * *stored* minutes, so the reviewer's unsaved edits are saved first (`saveDraftFirst`), and
-   * the row is re-read afterwards because the item now carries its task.
-   */
-  let taskSheetOpen = $state(false);
-  let taskSheetIndex = $state(0);
-  let taskSheetItem = $state<MinutesActionItem | null>(null);
-  const canMakeTask = $derived(!!meeting.can_create_task && !!meeting.company_id);
-  const taskDraftAvailable = $derived(aiEnabled(page.data.user, "meeting_assist"));
-  function openTaskSheet(index: number, item: MinutesActionItem) {
-    taskSheetIndex = index;
-    taskSheetItem = item;
-    taskSheetOpen = true;
-  }
-
-  /**
-   * The hours, on the confirm dialog. Every colleague at the table is offered, ticked where
-   * the viewer may book them (their own hours on `time.entry.write`, a colleague's on `:any`);
-   * the length is the recording's, the line is the minutes' `time_note`. Nothing is written
-   * without the section on, and what *will* be written is spelled out in the consequences.
-   */
-  let logTimeOn = $state(false);
-  let logTimeUsers = $state<string[]>([]);
-  let logTimeMinutes = $state<number | null>(null);
-  let logTimeDescription = $state("");
-  let logTimeFor = $state<string | null>(null);
-  const staffAtTable = $derived(
-    (meeting.participants ?? []).filter((p): p is typeof p & { user_id: string } => !!p.user_id),
-  );
-  const bookable = $derived(
-    staffAtTable.filter((p) =>
-      p.user_id === page.data.user?.id ? !!meeting.can_log_time_own : !!meeting.can_log_time_any,
-    ),
-  );
-  $effect(() => {
-    const row = meeting;
-    if (row.status !== "review" || untrack(() => logTimeFor) === row.id) return;
-    logTimeFor = row.id;
-    logTimeUsers = bookable.map((p) => p.user_id);
-    logTimeOn = logTimeUsers.length > 0 && !!row.duration_seconds;
-    logTimeMinutes = row.duration_seconds
-      ? Math.max(1, Math.ceil(row.duration_seconds / 60))
-      : null;
-    logTimeDescription = row.minutes?.time_note ?? "";
-  });
-  function toggleLogUser(id: string) {
-    logTimeUsers = logTimeUsers.includes(id)
-      ? logTimeUsers.filter((x) => x !== id)
-      : [...logTimeUsers, id];
-  }
-  const logTimePayload = $derived(
-    logTimeOn && logTimeUsers.length && logTimeMinutes
-      ? JSON.stringify({
-          user_ids: logTimeUsers,
-          minutes: logTimeMinutes,
-          description: logTimeDescription.trim() || null,
-        })
-      : "",
-  );
 
   // The worker owns the row for a while: ask again until it does not (`pollWhile`'s rule). A
   // row still recording is polled too — a recorder in another tab posts a piece a minute, and
@@ -181,10 +119,18 @@
       Date.now() - new Date(meeting.updated_at).getTime() > STALLED_AFTER_MS,
   );
 
+  const canWrite = $derived(meeting.can_write);
+  // The minutes exist and may be edited: `ready`, or `failed` with a draft from an earlier run.
+  const minuted = $derived(
+    (meeting.status === "ready" || meeting.status === "failed") && !!meeting.minutes,
+  );
+  const editable = $derived(minuted && canWrite);
+  const hasTranscript = $derived(segments.length > 0 || !!meeting.transcript_text);
+
   /**
-   * The draft under review. Copied off the row once per meeting, then the reviewer's — a
-   * re-read after a save must not overwrite a field they are typing in. `untrack` on the read
-   * of our own state, or the effect that seeds the draft restarts on every keystroke into it.
+   * The minutes under edit. Copied off the row once per meeting, then the editor's — a re-read
+   * after a save must not overwrite a field they are typing in. `untrack` on the read of our
+   * own state, or the effect that seeds the copy restarts on every keystroke into it.
    */
   type Draft = Required<
     Pick<MinutesDraft, "summary" | "topics" | "decisions" | "action_items" | "open_questions">
@@ -208,18 +154,109 @@
       partial_input: copy.partial_input ?? false,
     };
   }
+  /** The whole draft as one JSON body — the shape is nested and a form cannot spell it flat. */
+  function serialize(d: Draft): string {
+    return JSON.stringify({
+      ...d,
+      title: d.title?.trim() || null,
+      topics: d.topics.filter((x) => x.heading.trim() && x.text.trim()),
+      decisions: d.decisions.filter((x) => x.text.trim()),
+      action_items: d.action_items.filter((x) => x.title.trim()),
+      open_questions: d.open_questions.filter((x) => x.trim()),
+    });
+  }
   let draft = $state<Draft | null>(null);
   let draftFor = $state<string | null>(null);
   // Bumped whenever the draft is re-seeded from the row: the rich editors read their value
   // once, so a re-seed (after the AI box rewrote the minutes) remounts them under `{#key}`.
   let draftRev = $state(0);
+  // What the API last stored, as `serialize` spells it — the autosave's "is there anything to
+  // save" answer, and what the seed sets so seeding is never mistaken for an edit.
+  let lastSaved = $state("");
   $effect(() => {
     const row = meeting;
-    if (row.status !== "review" || !row.minutes) return;
+    if (!(row.status === "ready" || row.status === "failed") || !row.minutes) return;
     if (untrack(() => draftFor) === row.id) return;
-    draft = toDraft(row.minutes);
+    const seeded = toDraft(row.minutes);
+    lastSaved = serialize(seeded);
+    draft = seeded;
     draftFor = row.id;
     draftRev = untrack(() => draftRev) + 1;
+  });
+  const payload = $derived(draft ? serialize(draft) : "");
+
+  /**
+   * Autosave. Every edit schedules a save a moment after the last keystroke; a save in flight
+   * is never doubled (a second edit during one waits for it and runs after); the state word
+   * beside the title says which of the four it is in. A refused save stays red with a retry —
+   * quietly dropping an edit is the one thing this must never do.
+   */
+  type SaveState = "idle" | "pending" | "saving" | "saved" | "error";
+  let saveState = $state<SaveState>("idle");
+  let saveTimer: ReturnType<typeof setTimeout> | null = null;
+  let saving: Promise<boolean> | null = null;
+  const SAVE_AFTER_MS = 1200;
+  $effect(() => {
+    const body = payload;
+    if (!untrack(() => editable) || !body) return;
+    if (body === untrack(() => lastSaved)) return;
+    untrack(() => scheduleSave());
+  });
+  function scheduleSave() {
+    saveState = "pending";
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => void flushSave(), SAVE_AFTER_MS);
+  }
+  async function flushSave(options: { keepalive?: boolean } = {}): Promise<boolean> {
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+    }
+    if (saving) await saving;
+    if (!editable || !draft) return true;
+    const body = payload;
+    if (body === lastSaved) {
+      if (saveState === "pending") saveState = "saved";
+      return true;
+    }
+    saveState = "saving";
+    saving = (async () => {
+      try {
+        const res = await fetch(`/api/v1/meetings/${meeting.id}/minutes`, {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body,
+          keepalive: options.keepalive ?? false,
+        });
+        if (!res.ok) {
+          saveState = "error";
+          return false;
+        }
+        lastSaved = body;
+        // Edits made while the request was out are still unsaved: say so and go again.
+        saveState = payload === body ? "saved" : "pending";
+        if (saveState === "pending") scheduleSave();
+        return true;
+      } catch {
+        saveState = "error";
+        return false;
+      } finally {
+        saving = null;
+      }
+    })();
+    return saving;
+  }
+  // Leaving the page must not lose the last edit: a navigation flushes it, and the browser's
+  // own exits get a keepalive request the tab may close on.
+  beforeNavigate(() => {
+    if (saveState === "pending" || saveState === "error") void flushSave();
+  });
+  onMount(() => {
+    const onUnload = () => {
+      if (saveState === "pending") void flushSave({ keepalive: true });
+    };
+    window.addEventListener("beforeunload", onUnload);
+    return () => window.removeEventListener("beforeunload", onUnload);
   });
 
   /**
@@ -239,8 +276,7 @@
 
   /**
    * The roster under edit — the same copy-once rule as the draft, and re-seeded after its own
-   * save so a label the API just stored is what the editor shows. `participantsRev` is what the
-   * save bumps; the row's `updated_at` would also move on every draft save.
+   * save so a label the API just stored is what the editor shows.
    */
   let participants = $state<Participant[]>([]);
   let participantsFor = $state<string | null>(null);
@@ -324,8 +360,6 @@
     item.assignee_user_id = value.startsWith("u:") ? value.slice(2) : null;
     item.owner_contact_id = value.startsWith("c:") ? value.slice(2) : null;
     item.owner_label = value.startsWith("n:") ? value.slice(2) : null;
-    // A colleague's item is ours to do; anybody else's is minuted unless the reviewer ticks it.
-    item.create_task = !!item.assignee_user_id;
   }
   function ownerName(item: MinutesActionItem): string {
     const value = ownerValue(item);
@@ -363,41 +397,13 @@
       .map((side) => ({ side, groups: Array.from(sides[side].values()) }));
   }
   const draftGroups = $derived(draft ? groupItems(draft.action_items) : []);
-  const doneGroups = $derived(
-    meeting.status === "done" && meeting.minutes
-      ? groupItems((meeting.minutes.action_items ?? []) as MinutesActionItem[])
-      : [],
-  );
-
-  const companyPicker = $derived(
-    splitCompanyOptions(data.companies, { selectedId: meeting.company_id ?? "" }),
-  );
-  const projectPicker = $derived(
-    splitProjectOptions(data.projects, {
-      selectedId: meeting.project_id ?? "",
-      companyId: meeting.company_id ?? "",
-    }),
-  );
-
-  /** The whole draft as one field: the shape is nested and a form cannot say so in flat inputs. */
-  const payload = $derived(
-    draft
-      ? JSON.stringify({
-          ...draft,
-          title: draft.title?.trim() || null,
-          topics: draft.topics.filter((x) => x.heading.trim() && x.text.trim()),
-          decisions: draft.decisions.filter((x) => x.text.trim()),
-          action_items: draft.action_items.filter((x) => x.title.trim()),
-          open_questions: draft.open_questions.filter((x) => x.trim()),
-        })
-      : "",
-  );
-  const tasksToCreate = $derived(
-    draft?.action_items.filter((x) => x.create_task && x.title.trim()).length ?? 0,
-  );
   const unverified = $derived(
     (draft?.decisions.filter((d) => !d.verified).length ?? 0) +
       (draft?.action_items.filter((a) => !a.verified).length ?? 0),
+  );
+  /** The tasks this meeting produced: every action item that became one, by title. */
+  const madeTasks = $derived(
+    (draft?.action_items ?? meeting.minutes?.action_items ?? []).filter((item) => !!item.task_id),
   );
 
   function addDecision() {
@@ -418,7 +424,6 @@
         at: null,
         quote: null,
         verified: true,
-        create_task: true,
         task_id: null,
       },
     ];
@@ -439,9 +444,83 @@
     if (!draft) return;
     draft.open_questions = draft.open_questions.filter((_, i) => i !== index);
   }
-  const canWrite = $derived(meeting.can_write);
-  const reviewing = $derived(meeting.status === "review" && canWrite);
-  const hasTranscript = $derived(segments.length > 0 || !!meeting.transcript_text);
+
+  /**
+   * "Taak maken met schakl" beside an action item: the sheet asks the API for a draft over the
+   * *stored* minutes, so unsaved edits are flushed first (`flushSave`), and the row is re-read
+   * afterwards because the item now carries its task.
+   */
+  let taskSheetOpen = $state(false);
+  let taskSheetIndex = $state(0);
+  let taskSheetItem = $state<MinutesActionItem | null>(null);
+  const canMakeTask = $derived(editable && !!meeting.can_create_task && !!meeting.company_id);
+  const taskDraftAvailable = $derived(aiEnabled(page.data.user, "meeting_assist"));
+  function openTaskSheet(index: number, item: MinutesActionItem) {
+    taskSheetIndex = index;
+    taskSheetItem = item;
+    taskSheetOpen = true;
+  }
+
+  /**
+   * The hours: their own button and dialog. Every colleague at the table is offered, ticked
+   * where the viewer may book them (their own hours on `time.entry.write`, a colleague's on
+   * `:any`); the length is the recording's, the line is the minutes' `time_note`. What *will*
+   * be written is spelled out in the dialog's consequences before the press, because a
+   * colleague's hours land on *their* timesheet.
+   */
+  let hoursOpen = $state(false);
+  let logTimeUsers = $state<string[]>([]);
+  let logTimeMinutes = $state<number | null>(null);
+  let logTimeDescription = $state("");
+  const staffAtTable = $derived(
+    (meeting.participants ?? []).filter((p): p is typeof p & { user_id: string } => !!p.user_id),
+  );
+  const bookable = $derived(
+    staffAtTable.filter((p) =>
+      p.user_id === page.data.user?.id ? !!meeting.can_log_time_own : !!meeting.can_log_time_any,
+    ),
+  );
+  const canLogHours = $derived(
+    minuted && canWrite && (!!meeting.can_log_time_own || !!meeting.can_log_time_any),
+  );
+  function openHours() {
+    logTimeUsers = bookable.map((p) => p.user_id);
+    logTimeMinutes = meeting.duration_seconds
+      ? Math.max(1, Math.ceil(meeting.duration_seconds / 60))
+      : null;
+    logTimeDescription = draft?.time_note ?? meeting.minutes?.time_note ?? "";
+    hoursOpen = true;
+  }
+  function toggleLogUser(id: string) {
+    logTimeUsers = logTimeUsers.includes(id)
+      ? logTimeUsers.filter((x) => x !== id)
+      : [...logTimeUsers, id];
+  }
+  const logTimePayload = $derived(
+    logTimeUsers.length && logTimeMinutes
+      ? JSON.stringify({
+          user_ids: logTimeUsers,
+          minutes: logTimeMinutes,
+          description: logTimeDescription.trim() || null,
+        })
+      : "",
+  );
+
+  const companyPicker = $derived(
+    splitCompanyOptions(data.companies, { selectedId: meeting.company_id ?? "" }),
+  );
+  const projectPicker = $derived(
+    splitProjectOptions(data.projects, {
+      selectedId: meeting.project_id ?? "",
+      companyId: meeting.company_id ?? "",
+    }),
+  );
+  // The filing saves on pick: three fields and a Save button is a form, and this is a record.
+  let filingForm = $state<HTMLFormElement | null>(null);
+  function submitFiling() {
+    queueMicrotask(() => filingForm?.requestSubmit());
+  }
+
   // The document exists once there is something to print: minutes, or at least the words.
   const exportable = $derived(
     !inFlight(meeting.status) &&
@@ -456,20 +535,6 @@
       !inFlight(meeting.status) &&
       meeting.status !== "recording",
   );
-
-  /**
-   * Before the model reads the meeting, the reviewer's unsaved edits are saved — the box must
-   * change what the reader sees, not the draft as it was ten keystrokes ago.
-   */
-  async function saveDraftFirst(): Promise<boolean> {
-    if (!reviewing || !draft) return true;
-    const res = await fetch(`/api/v1/meetings/${meeting.id}/minutes`, {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: payload,
-    });
-    return res.ok;
-  }
   /** The row was rewritten under the page: re-read it and re-seed the copies the editors hold. */
   async function onRevised(): Promise<void> {
     draftFor = null;
@@ -522,9 +587,9 @@
           class={smallInput}
           bind:value={item.title}
           placeholder={t("meetings.review.item_placeholder")}
-          disabled={!reviewing}
+          disabled={!editable}
         />
-        {#if reviewing}
+        {#if editable}
           <button
             type="button"
             class="shrink-0 rounded p-1 text-text-muted hover:text-red-600"
@@ -536,81 +601,81 @@
       <div class="mt-2 grid gap-2 sm:grid-cols-2">
         <div>
           <span class="mb-1 block text-xs text-text-muted">{t("meetings.review.owner")}</span>
-          <Combobox
-            id={`item-owner-${i}`}
-            name={`_owner_${i}`}
-            items={ownerItems}
-            value={ownerValue(item)}
-            placeholder={t("meetings.review.nobody")}
-            onselect={(value: string) => setOwner(item, value)}
-            oncreate={(name: string) => setOwner(item, `n:${name.trim()}`)}
-          />
+          {#if editable}
+            <Combobox
+              id={`item-owner-${i}`}
+              name={`_owner_${i}`}
+              items={ownerItems}
+              value={ownerValue(item)}
+              placeholder={t("meetings.review.nobody")}
+              onselect={(value: string) => setOwner(item, value)}
+              oncreate={(name: string) => setOwner(item, `n:${name.trim()}`)}
+            />
+          {:else}
+            <p class="text-sm text-text">{ownerName(item) || t("meetings.review.nobody")}</p>
+          {/if}
         </div>
         <div>
           <label for={`item-due-${i}`} class="mb-1 block text-xs text-text-muted"
             >{t("meetings.review.due")}</label
           >
-          <DateInput
-            id={`item-due-${i}`}
-            name={`_due_${i}`}
-            value={item.due_date ?? ""}
-            onchange={(value: string) => (item.due_date = value || null)}
-          />
+          {#if editable}
+            <DateInput
+              id={`item-due-${i}`}
+              name={`_due_${i}`}
+              value={item.due_date ?? ""}
+              onchange={(value: string) => (item.due_date = value || null)}
+            />
+          {:else}
+            <p class="text-sm text-text">{item.due_date ? fmtDayMonth(item.due_date) : "—"}</p>
+          {/if}
         </div>
       </div>
       <div class="mt-2">
         <span class="mb-1 block text-xs text-text-muted"
           >{t("meetings.review.item_description")}</span
         >
-        <RichTextEditor
-          name={null}
-          rows={2}
-          value={item.description ?? ""}
-          placeholder={t("meetings.review.item_description_placeholder")}
-          {upload}
-          onchange={(value: string) => (item.description = value.trim() ? value : null)}
-        />
+        {#if editable}
+          <RichTextEditor
+            name={null}
+            rows={2}
+            value={item.description ?? ""}
+            placeholder={t("meetings.review.item_description_placeholder")}
+            {upload}
+            onchange={(value: string) => (item.description = value.trim() ? value : null)}
+          />
+        {:else if item.description}
+          <Markdown value={item.description} class="text-sm" images />
+        {/if}
       </div>
-      {#if item.task_id}
-        <p class="mt-2 flex items-center gap-2 text-sm text-text">
-          <Check size={14} class="text-green-600 dark:text-green-400" />
-          {t("meetings.review.task_made")}
-          <a
-            href={`/tasks/${item.task_id}`}
-            class="inline-flex items-center gap-1 text-brand hover:underline"
-          >
-            {t("meetings.review.open_task")}
-            <ExternalLink size={12} />
-          </a>
-        </p>
-      {:else}
-        <div class="mt-2 flex flex-wrap items-center justify-between gap-2">
-          <label class="flex items-center gap-2 text-sm text-text">
-            <input
-              type="checkbox"
-              class="size-4 rounded border-border"
-              bind:checked={item.create_task}
-              disabled={!reviewing}
-            />
-            {item.owner_contact_id
-              ? t("meetings.review.create_task_contact")
-              : t("meetings.review.create_task")}
-          </label>
-          {#if reviewing && canMakeTask}
-            <!-- The e-mail approve's "laat schakl deze taak invullen", one item at a time: a
-                 draft the reviewer checks, never a task that appears. -->
-            <button
-              type="button"
-              class="inline-flex items-center gap-1.5 rounded-lg border border-brand/40 bg-brand/5 px-2.5 py-1 text-xs font-medium text-brand hover:bg-brand/10"
-              title={t("meetings.review.make_task_hint")}
-              onclick={() => openTaskSheet(i, item)}
+      <div class="mt-2 flex flex-wrap items-center justify-between gap-2">
+        {#if item.task_id}
+          <p class="flex items-center gap-2 text-sm text-text">
+            <Check size={14} class="text-green-600 dark:text-green-400" />
+            {t("meetings.review.task_made")}
+            <a
+              href={`/tasks/${item.task_id}`}
+              class="inline-flex items-center gap-1 text-brand hover:underline"
             >
-              <Sparkles size={12} />
-              {t("meetings.review.make_task")}
-            </button>
-          {/if}
-        </div>
-      {/if}
+              {t("meetings.review.open_task")}
+              <ExternalLink size={12} />
+            </a>
+          </p>
+        {:else if canMakeTask}
+          <!-- The e-mail approve's "laat schakl deze taak invullen", one item at a time: a
+               draft the person checks, never a task that appears. The only way an action item
+               becomes a task. -->
+          <button
+            type="button"
+            class="inline-flex items-center gap-1.5 rounded-lg border border-brand/40 bg-brand/5 px-2.5 py-1 text-xs font-medium text-brand hover:bg-brand/10"
+            title={t("meetings.review.make_task_hint")}
+            onclick={() => openTaskSheet(i, item)}
+          >
+            <Sparkles size={12} />
+            {t("meetings.review.make_task")}
+          </button>
+        {/if}
+      </div>
       {@render evidence(item)}
     </div>
   {/if}
@@ -638,7 +703,7 @@
 {/snippet}
 
 <svelte:head>
-  <title>{pageTitle(meeting.title)}</title>
+  <title>{pageTitle(draft?.title?.trim() || meeting.title)}</title>
 </svelte:head>
 
 <a
@@ -652,8 +717,8 @@
 <div class="mb-6 flex flex-wrap items-start justify-between gap-4">
   <div class="min-w-0">
     <div class="flex flex-wrap items-center gap-2">
-      <h1 class="text-xl font-semibold text-text">{meeting.title}</h1>
-      {#if meeting.title_auto}
+      <h1 class="text-xl font-semibold text-text">{draft?.title?.trim() || meeting.title}</h1>
+      {#if meeting.title_auto && !draft?.title?.trim()}
         <span
           title={t("meetings.review.title_auto")}
           class="text-brand"
@@ -663,6 +728,31 @@
         </span>
       {/if}
       <MeetingStatusPill status={meeting.status} />
+      {#if editable}
+        <!-- The autosave's one word. `error` is the only state with a control: a dropped edit
+             must be recoverable from where the person is looking. -->
+        <span class="text-xs text-text-muted" aria-live="polite" data-save-state={saveState}>
+          {#if saveState === "pending"}
+            {t("meetings.review.autosave_pending")}
+          {:else if saveState === "saving"}
+            {t("meetings.review.autosave_saving")}
+          {:else if saveState === "saved"}
+            <span class="inline-flex items-center gap-1">
+              <Check size={12} class="text-green-600 dark:text-green-400" />
+              {t("meetings.review.autosave_saved")}
+            </span>
+          {:else if saveState === "error"}
+            <span class="inline-flex items-center gap-2 text-red-600 dark:text-red-400">
+              {t("meetings.review.autosave_failed")}
+              <button type="button" class="underline" onclick={() => void flushSave()}>
+                {t("meetings.review.autosave_retry")}
+              </button>
+            </span>
+          {:else}
+            {t("meetings.review.autosave_hint")}
+          {/if}
+        </span>
+      {/if}
     </div>
     <p class="mt-1 text-sm text-text-muted">
       {fmtDateTime(meeting.occurred_at)}
@@ -721,30 +811,6 @@
     role="alert"
   >
     {t(form.error)}
-  </p>
-{:else if form?.confirmed}
-  <p class="mb-4 rounded-lg bg-surface px-4 py-3 text-sm text-text">
-    {t("meetings.review.confirmed")}
-    {#if form.skipped?.length}
-      <span class="block text-amber-800 dark:text-amber-200">
-        {t("meetings.review.tasks_skipped", { count: String(form.skipped.length) })}
-        {#each form.skipped as skipped (skipped.title)}
-          · {skipped.title}{/each}
-      </span>
-    {/if}
-    {#if form.timeEntries?.length}
-      <span class="block text-text-muted">
-        {t("meetings.review.hours_logged")}:
-        {#each form.timeEntries as entry (entry.id)}
-          <span class="mr-2"
-            >{t("meetings.review.hours_entry", {
-              name: entry.user_name,
-              minutes: String(entry.minutes),
-            })}</span
-          >
-        {/each}
-      </span>
-    {/if}
   </p>
 {/if}
 
@@ -821,187 +887,23 @@
   </Card>
 {/if}
 
-{#if meeting.status === "done" && meeting.minutes}
-  <!-- The record: the minutes as confirmed, and where they went. -->
-  <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,380px)]">
-    <div class="space-y-6">
-      <Card kind="panel" title={t("meetings.review.minutes")}>
-        {#if meeting.interaction_id || taskIds.length || (meeting.time_entries ?? []).length}
-          <div class="mb-4 space-y-1 text-sm text-text-muted">
-            <p>
-              {#if meeting.interaction_id}
-                <a
-                  href={`/interactions?interaction=${meeting.interaction_id}`}
-                  class="text-brand hover:underline">{t("meetings.review.open_interaction")}</a
-                >
-              {/if}
-              {#if taskIds.length}
-                · {tn("meetings.review.tasks_created", taskIds.length)}
-                {#each taskIds as taskId, i (taskId)}
-                  <a href={`/tasks/${taskId}`} class="mr-1 text-brand hover:underline">#{i + 1}</a>
-                {/each}
-              {/if}
-            </p>
-            {#if (meeting.time_entries ?? []).length}
-              <!-- Hours somebody did not type are a surprise on their timesheet unless the
-                   record says so — so the record says so, by name. -->
-              <p class="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <Clock size={14} class="text-text-muted" />
-                <span class="font-medium text-text">{t("meetings.review.hours_logged")}:</span>
-                {#each meeting.time_entries ?? [] as entry (entry.id)}
-                  <span
-                    >{t("meetings.review.hours_entry", {
-                      name: entry.user_name,
-                      minutes: String(entry.minutes),
-                    })}</span
-                  >
-                {/each}
-                <a
-                  href={`/time?date=${(meeting.time_entries ?? [])[0]?.date ?? ""}`}
-                  class="text-brand hover:underline"
-                >
-                  {t("meetings.review.hours_open")}
-                </a>
-              </p>
-            {/if}
-          </div>
-        {/if}
-        {#if meeting.minutes.summary}
-          <Markdown value={meeting.minutes.summary} class="text-sm" images />
-        {/if}
-        {#each meeting.minutes.topics ?? [] as topic (topic.heading)}
-          <h3 class="mt-4 text-sm font-semibold text-text">{topic.heading}</h3>
-          <Markdown value={topic.text} class="text-sm" images />
-        {/each}
-        {#if meeting.minutes.decisions?.length}
-          <h3 class="mt-4 text-sm font-semibold text-text">{t("meetings.review.decisions")}</h3>
-          <ol class="mt-2 space-y-2 text-sm text-text">
-            {#each meeting.minutes.decisions ?? [] as decision, i (i)}
-              <li class="flex gap-2.5">
-                <span
-                  class="mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-brand text-[11px] font-semibold text-white tabular-nums"
-                  >{i + 1}</span
-                >
-                <div class="min-w-0 flex-1">
-                  <Markdown value={decision.text} class="text-sm font-medium" images />
-                  {#if decision.at != null}<span class="text-xs text-text-muted tabular-nums"
-                      >{fmtClock(decision.at)}</span
-                    >{/if}
-                </div>
-              </li>
-            {/each}
-          </ol>
-        {/if}
-        {#if meeting.minutes.action_items?.length}
-          <h3 class="mt-4 text-sm font-semibold text-text">{t("meetings.review.action_items")}</h3>
-          {#each doneGroups as block (block.side)}
-            <p class="mt-2 text-xs font-medium tracking-wide text-text-muted uppercase">
-              {t(`meetings.minutes.side_${block.side}`)}
-            </p>
-            {#each block.groups as group (group.key)}
-              {#if group.name}<p class="mt-1 text-sm font-medium text-text">{group.name}</p>{/if}
-              <ul class="mt-0.5 list-disc space-y-1 pl-5 text-sm text-text">
-                {#each group.indices as i (i)}
-                  {@const item = (meeting.minutes.action_items ?? [])[i]}
-                  <li>
-                    {item.title}
-                    {#if item.due_date}<span class="text-text-muted"
-                        >— {fmtDayMonth(item.due_date)}</span
-                      >{/if}
-                    {#if item.task_id}
-                      <a
-                        href={`/tasks/${item.task_id}`}
-                        class="ml-1 inline-flex items-center gap-1 text-xs text-brand hover:underline"
-                      >
-                        {t("meetings.review.open_task")}
-                        <ExternalLink size={11} />
-                      </a>
-                    {:else if canWrite && canMakeTask}
-                      <button
-                        type="button"
-                        class="ml-1 inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline"
-                        title={t("meetings.review.make_task_hint")}
-                        onclick={() => openTaskSheet(i, item)}
-                      >
-                        <Sparkles size={11} />
-                        {t("meetings.review.make_task")}
-                      </button>
-                    {/if}
-                    {#if item.description}
-                      <Markdown value={item.description} class="text-sm text-text-muted" images />
-                    {/if}
-                  </li>
-                {/each}
-              </ul>
-            {/each}
-          {/each}
-        {/if}
-        {#if meeting.minutes.open_questions?.length}
-          <h3 class="mt-4 text-sm font-semibold text-text">
-            {t("meetings.review.open_questions")}
-          </h3>
-          <ul class="mt-1 list-disc space-y-1 pl-5 text-sm text-text">
-            {#each meeting.minutes.open_questions ?? [] as question, i (i)}
-              <li><Markdown value={question} class="text-sm" images /></li>
-            {/each}
-          </ul>
-        {/if}
-      </Card>
-      {#if canRevise}
-        <MeetingAIRevise meetingId={meeting.id} onapplied={onRevised} />
-      {/if}
-    </div>
-    <div class="space-y-6">
-      {@render transcriptPanel(false)}
-    </div>
-  </div>
-{:else if meeting.status === "review" && draft}
+{#if draft}
   <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
-    <!-- The draft, every line editable, every claim with its evidence. -->
-    <form
-      id="minutes-form"
-      method="POST"
-      action="?/saveMinutes"
-      class="space-y-6"
-      use:enhance={busy.keep("save")}
-    >
-      <input type="hidden" name="minutes" value={payload} />
-
-      {#if reviewing}
-        <!-- Save and Confirm travel with the reader: a long set of minutes used to end in the
-             two buttons that matter, a screen below the last open question. -->
-        <div
-          class="sticky top-0 z-20 -mx-1 flex flex-wrap items-center gap-3 border-b border-border bg-surface/95 px-1 py-2.5 backdrop-blur"
-        >
-          <Button type="button" onclick={() => (confirmOpen = true)} disabled={busy.active}>
-            <Check size={15} />
-            {t("meetings.review.confirm")}
-          </Button>
-          <Button
-            type="submit"
-            variant="secondary"
-            loading={busy.is("save")}
-            disabled={busy.active}
-          >
-            {t("meetings.review.save_draft")}
-          </Button>
-          <span class="text-xs text-text-muted">
-            {#if unverified > 0}
-              <span class="text-amber-800 dark:text-amber-200">
-                {t("meetings.review.unverified_count", { count: String(unverified) })}
-              </span>
-            {:else}
-              {t("meetings.review.actions_hint")}
-            {/if}
-          </span>
-        </div>
-      {/if}
-
+    <!-- The minutes, every line editable in place, every claim with its evidence. -->
+    <div class="space-y-6">
       {#if draft.truncated || draft.partial_input}
         <p
           class="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-200"
         >
           {t(draft.partial_input ? "meetings.review.partial_input" : "meetings.review.truncated")}
+        </p>
+      {/if}
+      {#if unverified > 0}
+        <p
+          class="flex items-center gap-2 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-200"
+        >
+          <AlertTriangle size={15} />
+          {t("meetings.review.unverified_count", { count: String(unverified) })}
         </p>
       {/if}
 
@@ -1016,14 +918,14 @@
               class={inputClass}
               value={draft.title ?? meeting.title}
               oninput={(e) => draft && (draft.title = (e.currentTarget as HTMLInputElement).value)}
-              disabled={!reviewing}
+              disabled={!editable}
             />
           </div>
           <div>
             <label for="minutes-summary" class="mb-1 block text-xs font-medium text-text-muted"
               >{t("meetings.review.summary")}</label
             >
-            {#if reviewing}
+            {#if editable}
               {#key draftRev}
                 <RichTextEditor
                   id="minutes-summary"
@@ -1042,8 +944,8 @@
       </Card>
 
       <Card kind="panel" title={t("meetings.review.topics")}>
-        <p class="mb-2 text-xs text-text-muted">{t("meetings.review.topics_hint")}</p>
-        {#if reviewing}
+        {#if editable}
+          <p class="mb-2 text-xs text-text-muted">{t("meetings.review.topics_hint")}</p>
           {#key draftRev}
             <RichTextEditor
               name={null}
@@ -1069,7 +971,7 @@
                   >{i + 1}</span
                 >
                 <div class="min-w-0 flex-1">
-                  {#if reviewing}
+                  {#if editable}
                     {#key `${draftRev}:${draft.decisions.length}`}
                       <RichTextEditor
                         name={null}
@@ -1084,7 +986,7 @@
                     <Markdown value={decision.text} class="text-sm" images />
                   {/if}
                 </div>
-                {#if reviewing}
+                {#if editable}
                   <button
                     type="button"
                     class="mt-1.5 shrink-0 rounded p-1 text-text-muted hover:text-red-600"
@@ -1098,7 +1000,7 @@
           {:else}
             <p class="text-sm text-text-muted">{t("meetings.review.no_decisions")}</p>
           {/each}
-          {#if reviewing}
+          {#if editable}
             <Button type="button" variant="secondary" size="sm" onclick={addDecision}>
               <Plus size={14} />
               {t("meetings.review.add_decision")}
@@ -1108,7 +1010,9 @@
       </Card>
 
       <Card kind="panel" title={t("meetings.review.action_items")}>
-        <p class="mb-3 text-xs text-text-muted">{t("meetings.review.action_items_hint")}</p>
+        {#if editable}
+          <p class="mb-3 text-xs text-text-muted">{t("meetings.review.action_items_hint")}</p>
+        {/if}
         <div class="space-y-4">
           {#each draftGroups as block (block.side)}
             <div>
@@ -1131,7 +1035,7 @@
           {:else}
             <p class="text-sm text-text-muted">{t("meetings.review.no_action_items")}</p>
           {/each}
-          {#if reviewing}
+          {#if editable}
             <Button type="button" variant="secondary" size="sm" onclick={addItem}>
               <Plus size={14} />
               {t("meetings.review.add_item")}
@@ -1145,7 +1049,7 @@
           {#each draft.open_questions as _question, i (i)}
             <div class="flex items-start gap-2">
               <div class="min-w-0 flex-1">
-                {#if reviewing}
+                {#if editable}
                   {#key `${draftRev}:${draft.open_questions.length}`}
                     <RichTextEditor
                       name={null}
@@ -1159,7 +1063,7 @@
                   <Markdown value={draft.open_questions[i]} class="text-sm" images />
                 {/if}
               </div>
-              {#if reviewing}
+              {#if editable}
                 <button
                   type="button"
                   class="mt-1.5 shrink-0 rounded p-1 text-text-muted hover:text-red-600"
@@ -1171,7 +1075,7 @@
           {:else}
             <p class="text-sm text-text-muted">{t("meetings.review.no_questions")}</p>
           {/each}
-          {#if reviewing}
+          {#if editable}
             <Button type="button" variant="secondary" size="sm" onclick={addQuestion}>
               <Plus size={14} />
               {t("meetings.review.add_question")}
@@ -1179,16 +1083,26 @@
           {/if}
         </div>
       </Card>
-    </form>
+    </div>
 
     <div class="space-y-6">
       {#if canRevise}
         <!-- First on the right: the one control that changes any part of the desk in words. -->
-        <MeetingAIRevise meetingId={meeting.id} before={saveDraftFirst} onapplied={onRevised} />
+        <MeetingAIRevise meetingId={meeting.id} before={flushSave} onapplied={onRevised} />
       {/if}
-      {#if reviewing}
-        <Card kind="panel" title={t("meetings.review.filing")}>
-          <form method="POST" action="?/update" class="space-y-3" use:enhance={busy.keep("filing")}>
+
+      <!-- Where the meeting went: the client it is filed under, its contact moment, its tasks,
+           its hours. The filing saves on pick; the three lines below it are facts with one
+           control each — never a checkbox that decides something on a later press. -->
+      <Card kind="panel" title={t("meetings.review.record")}>
+        {#if canWrite}
+          <form
+            bind:this={filingForm}
+            method="POST"
+            action="?/update"
+            class="space-y-3"
+            use:enhance={busy.keep("filing")}
+          >
             <div>
               <label for="filing-company" class="mb-1 block text-xs text-text-muted"
                 >{t("meetings.field.client")}</label
@@ -1201,6 +1115,7 @@
                 archived={companyPicker.retired}
                 archivedLabel={companyArchivedLabel()}
                 placeholder={t("meetings.field.client_placeholder")}
+                onselect={submitFiling}
               />
             </div>
             <div>
@@ -1215,31 +1130,115 @@
                 archived={projectPicker.retired}
                 archivedLabel={projectArchivedLabel()}
                 placeholder={t("meetings.field.project_placeholder")}
+                onselect={submitFiling}
               />
             </div>
             <div>
               <label for="filing-kind" class="mb-1 block text-xs text-text-muted"
                 >{t("meetings.field.kind")}</label
               >
-              <select id="filing-kind" name="kind" class={smallInput} value={meeting.kind}>
+              <select
+                id="filing-kind"
+                name="kind"
+                class={smallInput}
+                value={meeting.kind}
+                onchange={submitFiling}
+              >
                 <option value="physical">{kindLabel("physical")}</option>
                 <option value="online">{kindLabel("online")}</option>
               </select>
             </div>
-            <Button type="submit" variant="secondary" size="sm" loading={busy.is("filing")}>
-              {t("common.save")}
-            </Button>
           </form>
-        </Card>
-      {/if}
-      {@render transcriptPanel(reviewing)}
+        {/if}
+        <dl class="mt-4 space-y-3 border-t border-border pt-4 text-sm">
+          <div>
+            <dt class="text-xs font-medium text-text-muted">{t("interactions.detail_title")}</dt>
+            <dd class="mt-0.5 text-text">
+              {#if meeting.interaction_id}
+                <a
+                  href={`/interactions?interaction=${meeting.interaction_id}`}
+                  class="inline-flex items-center gap-1 text-brand hover:underline"
+                >
+                  {t("meetings.review.open_interaction")}
+                  <ExternalLink size={12} />
+                </a>
+                <span class="block text-xs text-text-muted">{t("meetings.review.filed_hint")}</span>
+              {:else}
+                <span class="text-text-muted">{t("meetings.review.not_filed")}</span>
+                {#if editable}
+                  <form
+                    method="POST"
+                    action="?/fileInteraction"
+                    class="mt-1.5"
+                    use:enhance={busy.keep("file")}
+                  >
+                    <Button type="submit" variant="secondary" size="sm" loading={busy.is("file")}>
+                      {t("meetings.review.file_interaction")}
+                    </Button>
+                  </form>
+                {/if}
+              {/if}
+            </dd>
+          </div>
+          <div>
+            <dt class="text-xs font-medium text-text-muted">{t("meetings.review.tasks")}</dt>
+            <dd class="mt-0.5 text-text">
+              {#each madeTasks as item (item.task_id)}
+                <a
+                  href={`/tasks/${item.task_id}`}
+                  class="block truncate text-brand hover:underline"
+                  title={item.title}>{item.title}</a
+                >
+              {:else}
+                <span class="text-text-muted">{t("meetings.review.no_tasks_yet")}</span>
+              {/each}
+            </dd>
+          </div>
+          <div>
+            <dt class="text-xs font-medium text-text-muted">{t("meetings.review.hours")}</dt>
+            <dd class="mt-0.5 text-text">
+              {#each meeting.time_entries ?? [] as entry (entry.id)}
+                <!-- Hours somebody did not type are a surprise on their timesheet unless the
+                     record says so — so the record says so, by name. -->
+                <span class="mr-3 inline-flex items-center gap-1">
+                  <Clock size={12} class="text-text-muted" />
+                  {t("meetings.review.hours_entry", {
+                    name: entry.user_name,
+                    minutes: String(entry.minutes),
+                  })}
+                </span>
+              {:else}
+                <span class="text-text-muted">{t("meetings.review.no_hours_yet")}</span>
+              {/each}
+              <div class="mt-1.5 flex flex-wrap items-center gap-3">
+                {#if canLogHours}
+                  <Button type="button" variant="secondary" size="sm" onclick={openHours}>
+                    <Clock size={14} />
+                    {t("meetings.review.log_time")}
+                  </Button>
+                {/if}
+                {#if (meeting.time_entries ?? []).length}
+                  <a
+                    href={`/time?date=${(meeting.time_entries ?? [])[0]?.date ?? ""}`}
+                    class="text-xs text-brand hover:underline"
+                  >
+                    {t("meetings.review.hours_open")}
+                  </a>
+                {/if}
+              </div>
+            </dd>
+          </div>
+        </dl>
+      </Card>
+
+      {@render transcriptPanel(editable)}
     </div>
   </div>
-{:else if meeting.status === "failed" || (meeting.status === "review" && !draft)}
-  <div class="mt-6">{@render transcriptPanel(false)}</div>
+{:else if meeting.status === "failed" || meeting.status === "ready"}
+  <div class="mt-6">{@render transcriptPanel(canWrite)}</div>
 {/if}
 
-{#snippet transcriptPanel(editable: boolean)}
+{#snippet transcriptPanel(rosterEditable: boolean)}
   <!-- Redraft rides the participants form: `formaction` picks the action, and the roster in
        the hidden field travels with it so the redraft reads what the screen shows. -->
   {#if meeting.audio_file_id}
@@ -1325,13 +1324,13 @@
           companyId={meeting.company_id ?? ""}
           companyName={meeting.company_name ?? null}
           {speakerLabels}
-          {editable}
+          editable={rosterEditable}
           definitions={data.contactDefinitions}
           locale={data.locale}
           created={form?.inlineCreated ?? null}
           qcError={form?.qcError ?? null}
         />
-        {#if editable}
+        {#if rosterEditable}
           <div class="mt-2 flex flex-wrap items-center gap-2">
             <Button
               type="submit"
@@ -1342,7 +1341,7 @@
             >
               {t("meetings.review.save_participants")}
             </Button>
-            {#if meeting.status === "review"}
+            {#if hasTranscript}
               <Button
                 type="submit"
                 variant="secondary"
@@ -1378,101 +1377,86 @@
   {/if}
 {/snippet}
 
+<!-- The hours: who, how long, the line — every entry it will write, before the press. A
+     colleague's hours land on *their* timesheet, which is why each name is a choice. -->
 <ConfirmDialog
-  bind:open={confirmOpen}
-  title={t("meetings.review.confirm_title")}
-  message={t("meetings.review.confirm_message")}
-  consequences={[
-    t("meetings.review.confirm_interaction", { kind: kindLabel(meeting.kind) }),
-    tn("meetings.review.confirm_tasks", tasksToCreate),
-    ...(logTimePayload
-      ? [
-          tn("meetings.review.confirm_hours", logTimeUsers.length, {
-            minutes: String(logTimeMinutes ?? 0),
-          }),
-        ]
-      : []),
-  ]}
-  action="?/confirm"
-  fields={{ minutes: payload, log_time: logTimePayload }}
-  confirmLabel={t("meetings.review.confirm")}
+  bind:open={hoursOpen}
+  title={t("meetings.review.log_time_title")}
+  message={t("meetings.review.log_time_hint")}
+  consequences={logTimePayload
+    ? [
+        tn("meetings.review.log_time_summary", logTimeUsers.length, {
+          minutes: String(logTimeMinutes ?? 0),
+        }),
+      ]
+    : []}
+  action="?/logTime"
+  fields={{ log_time: logTimePayload }}
+  confirmLabel={t("meetings.review.log_time")}
   variant="primary"
-  confirmDisabled={logTimeOn && (logTimeUsers.length === 0 || !logTimeMinutes)}
-  onsuccess={() => (confirmOpen = false)}
+  confirmDisabled={!logTimePayload}
+  onsuccess={() => (hoursOpen = false)}
 >
-  {#if bookable.length}
-    <!-- The hours: who, how long, the line — every entry it will write, before the press. A
-         colleague's hours land on *their* timesheet, which is why each name is a choice. -->
-    <div class="mt-4 rounded-lg border border-border p-3">
-      <label class="flex items-start gap-2 text-sm text-text">
-        <input
-          type="checkbox"
-          class="mt-0.5 size-4 rounded border-border"
-          bind:checked={logTimeOn}
-        />
-        <span>
-          <span class="block font-medium">{t("meetings.review.log_time")}</span>
-          <span class="block text-xs text-text-muted">{t("meetings.review.log_time_hint")}</span>
-        </span>
-      </label>
-      {#if logTimeOn}
-        <div class="mt-3 space-y-3">
-          <div class="flex flex-wrap gap-2">
-            {#each bookable as p (p.user_id)}
-              <label
-                class="inline-flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1.5 text-sm {logTimeUsers.includes(
-                  p.user_id,
-                )
-                  ? 'border-brand bg-brand/10 text-text'
-                  : 'border-border text-text-muted'}"
-              >
-                <input
-                  type="checkbox"
-                  class="sr-only"
-                  checked={logTimeUsers.includes(p.user_id)}
-                  onchange={() => toggleLogUser(p.user_id)}
-                />
-                {p.name}
-              </label>
-            {/each}
-          </div>
-          {#if logTimeUsers.length === 0}
-            <p class="text-xs text-amber-800 dark:text-amber-200">
-              {t("meetings.review.log_time_nobody")}
-            </p>
-          {/if}
-          <div class="grid gap-3 sm:grid-cols-[8rem_minmax(0,1fr)]">
-            <div>
-              <label for="log-time-minutes" class="mb-1 block text-xs text-text-muted"
-                >{t("meetings.review.log_time_minutes")}</label
-              >
-              <input
-                id="log-time-minutes"
-                type="number"
-                min="1"
-                max="1440"
-                class={smallInput}
-                value={logTimeMinutes ?? ""}
-                oninput={(e) =>
-                  (logTimeMinutes = Number((e.currentTarget as HTMLInputElement).value) || null)}
-              />
-            </div>
-            <div>
-              <label for="log-time-description" class="mb-1 block text-xs text-text-muted"
-                >{t("meetings.review.log_time_description")}</label
-              >
-              <input
-                id="log-time-description"
-                class={smallInput}
-                bind:value={logTimeDescription}
-                placeholder={draft?.title ?? meeting.title}
-              />
-            </div>
-          </div>
-        </div>
+  <div class="mt-4 space-y-3">
+    {#if bookable.length}
+      <div class="flex flex-wrap gap-2">
+        {#each bookable as p (p.user_id)}
+          <label
+            class="inline-flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1.5 text-sm {logTimeUsers.includes(
+              p.user_id,
+            )
+              ? 'border-brand bg-brand/10 text-text'
+              : 'border-border text-text-muted'}"
+          >
+            <input
+              type="checkbox"
+              class="sr-only"
+              checked={logTimeUsers.includes(p.user_id)}
+              onchange={() => toggleLogUser(p.user_id)}
+            />
+            {p.name}
+          </label>
+        {/each}
+      </div>
+      {#if logTimeUsers.length === 0}
+        <p class="text-xs text-amber-800 dark:text-amber-200">
+          {t("meetings.review.log_time_nobody")}
+        </p>
       {/if}
+    {:else}
+      <p class="text-sm text-amber-800 dark:text-amber-200">
+        {t("meetings.review.log_time_none_bookable")}
+      </p>
+    {/if}
+    <div class="grid gap-3 sm:grid-cols-[8rem_minmax(0,1fr)]">
+      <div>
+        <label for="log-time-minutes" class="mb-1 block text-xs text-text-muted"
+          >{t("meetings.review.log_time_minutes")}</label
+        >
+        <input
+          id="log-time-minutes"
+          type="number"
+          min="1"
+          max="1440"
+          class={smallInput}
+          value={logTimeMinutes ?? ""}
+          oninput={(e) =>
+            (logTimeMinutes = Number((e.currentTarget as HTMLInputElement).value) || null)}
+        />
+      </div>
+      <div>
+        <label for="log-time-description" class="mb-1 block text-xs text-text-muted"
+          >{t("meetings.review.log_time_description")}</label
+        >
+        <input
+          id="log-time-description"
+          class={smallInput}
+          bind:value={logTimeDescription}
+          placeholder={draft?.title ?? meeting.title}
+        />
+      </div>
     </div>
-  {/if}
+  </div>
 </ConfirmDialog>
 
 {#if taskSheetItem}
@@ -1489,7 +1473,7 @@
     {members}
     projects={data.projects}
     aiAvailable={taskDraftAvailable}
-    before={saveDraftFirst}
+    before={flushSave}
     onsaved={onRevised}
   />
 {/if}
@@ -1518,6 +1502,6 @@
   confirmLabel={t("common.delete")}
 />
 
-{#if !canWrite && meeting.status === "review"}
+{#if !canWrite && minuted}
   <p class="mt-4 text-xs text-text-muted">{t("meetings.review.read_only")}</p>
 {/if}

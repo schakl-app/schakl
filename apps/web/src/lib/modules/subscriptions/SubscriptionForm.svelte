@@ -24,6 +24,8 @@
   import { can } from "$lib/core/permissions";
   import { InFlight } from "$lib/core/submit.svelte";
   import Button from "$lib/core/ui/Button.svelte";
+  import { getCurrency } from "$lib/core/currency";
+  import { dateLocale } from "$lib/core/format";
   import Combobox from "$lib/core/ui/Combobox.svelte";
   import DateInput from "$lib/core/ui/DateInput.svelte";
   import I18nLocaleSwitcher from "$lib/core/ui/I18nLocaleSwitcher.svelte";
@@ -126,7 +128,27 @@
     includedHours: String(editing?.included_hours ?? ""),
     startDate: editing?.start_date ?? "",
     notes: editing?.notes ?? "",
+    productId: editing?.product_id ?? "",
   });
+
+  // The price-list product this agreement sells: a pick **copies** the name and the amount
+  // (both stay editable — the agreement's money is its own from then on) and is recorded as
+  // provenance, so the price list can say where it is used.
+  const products = $derived((lookups.products ?? []).filter((p) => p.active !== false));
+  const productItems = $derived(
+    products.map((p) => ({
+      value: p.id,
+      label: p.name,
+      hint: [p.code, money(Number(p.unit_price))].filter(Boolean).join(" · "),
+    })),
+  );
+  function pickProduct(id: string) {
+    pv.productId = id;
+    const product = products.find((p) => p.id === id);
+    if (!product) return;
+    if (!prefill) pv.name = product.name;
+    pv.amount = String(Number(product.unit_price));
+  }
 
   function applyTemplate(tpl: SubscriptionTemplate | null) {
     prefill = tpl;
@@ -135,6 +157,7 @@
     pv.typeId = tpl.subscription_type_id ?? "";
     pv.amount = String(tpl.amount ?? "");
     pv.interval = tpl.interval ?? "monthly";
+    pv.productId = tpl.product_id ?? "";
     pv.includedHours = String(tpl.included_hours ?? "");
     pv.notes = tpl.notes ?? "";
   }
@@ -165,8 +188,14 @@
   );
   const companyItems = $derived(companyPicker.live);
 
-  const STATUSES = ["draft", "active", "paused", "cancelled"] as const;
-  const INTERVALS = ["monthly", "quarterly", "yearly"] as const;
+  // `completed` is never chosen on a form — it is what a one-off becomes once an invoice
+  // bills it — but an agreement that *is* completed must still be able to show its own status.
+  const STATUSES = $derived(
+    editing?.status === "completed"
+      ? (["draft", "active", "paused", "cancelled", "completed"] as const)
+      : (["draft", "active", "paused", "cancelled"] as const),
+  );
+  const INTERVALS = ["once", "monthly", "quarterly", "yearly"] as const;
 
   const activeTypes = $derived(lookups.types.filter((st) => st.active));
   const typeItems = $derived(
@@ -225,13 +254,17 @@
       headers: { accept: "application/json" },
     })
       .then((r) => (r.ok ? r.json() : { items: [] }))
-      .then((page: { items: { id: string; domain_name: string; root: boolean }[] }) => {
-        websites = page.items.map((w) => ({
-          id: w.id,
-          name: w.root ? w.domain_name : `www.${w.domain_name}`,
-          company,
-        }));
-      })
+      .then(
+        (page: { items: { id: string; label?: string; domain_name: string; root: boolean }[] }) => {
+          websites = page.items.map((w) => ({
+            id: w.id,
+            // The address the API resolved (host plus path); the composed host only for a row
+            // from an older API that carried no label.
+            name: w.label || (w.root ? w.domain_name : `www.${w.domain_name}`),
+            company,
+          }));
+        },
+      )
       .catch(() => {});
   });
   const websiteItems = $derived(
@@ -276,6 +309,13 @@
         )
       : "",
   );
+
+  const money = (value: number) =>
+    new Intl.NumberFormat(dateLocale(), {
+      style: "currency",
+      currency: getCurrency(),
+      trailingZeroDisplay: "stripIfInteger",
+    }).format(value);
 
   const inputClass =
     "w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
@@ -338,6 +378,22 @@
         </p>
       {/if}
     </div>
+    {#if products.length > 0 || pv.productId}
+      <div>
+        <label for="sub-product" class="mb-1 block text-sm font-medium text-text"
+          >{t("subscriptions.field.product")}</label
+        >
+        <Combobox
+          id="sub-product"
+          name="product_id"
+          items={productItems}
+          value={pv.productId}
+          placeholder={t("subscriptions.field.product_placeholder")}
+          onselect={pickProduct}
+        />
+        <p class="mt-1 text-xs text-text-muted">{t("subscriptions.field.product_hint")}</p>
+      </div>
+    {/if}
     <div>
       <label for="sub-company" class="mb-1 block text-sm font-medium text-text"
         >{t("subscriptions.field.company")}</label
@@ -396,6 +452,9 @@
             <option value={interval}>{t(`subscriptions.interval.${interval}`)}</option>
           {/each}
         </select>
+        {#if pv.interval === "once"}
+          <p class="mt-1 text-xs text-text-muted">{t("subscriptions.once_hint")}</p>
+        {/if}
       </div>
       <div>
         <label for="sub-amount" class="mb-1 block text-sm font-medium text-text"

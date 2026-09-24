@@ -127,11 +127,15 @@
           <label for="wp-url" class="mb-1 block text-sm text-text">
             {t("wordpress.field.base_url")}
           </label>
+          <!-- Suggested from the website's own address (`url`, resolved by the API): a dev
+               install under a path lives *at* that path, and typing it again is how the
+               credential ends up on the wrong site. Visible and editable, never assumed. -->
           <input
             id="wp-url"
             name="base_url"
             type="url"
             required
+            value={String(page.data.website?.url ?? "")}
             placeholder="https://klant.nl"
             class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm"
           />

@@ -8,8 +8,10 @@ import { apiFor } from "$lib/core/session";
 import type { Actions, PageServerLoad } from "./$types";
 
 /**
- * One meeting: its state while the worker has it, the draft to review, the record once it is
- * confirmed. One API call; the screen re-reads *this* load while a worker holds the row.
+ * One meeting: its state while the worker has it, the minutes once it does not. One API call;
+ * the screen re-reads *this* load while a worker holds the row. The minutes themselves are
+ * saved by the page directly (an autosave against `PUT /minutes`); the actions here are the
+ * ones a form posts.
  */
 export const load: PageServerLoad = async (event) => {
   event.depends("meetings:meeting");
@@ -25,7 +27,7 @@ type ParticipantBody = components["schemas"]["MeetingParticipant"];
 type LogTimeBody = components["schemas"]["MeetingLogTime"];
 type ItemTaskBody = components["schemas"]["MeetingTaskCreate"];
 
-/** The hours section of the confirm dialog, or nothing when it was switched off. */
+/** The hours dialog's body, or nothing when it named nobody. */
 function logTimeFrom(form: FormData): LogTimeBody | null {
   const raw = String(form.get("log_time") ?? "");
   if (!raw) return null;
@@ -127,7 +129,7 @@ export const actions: Actions = {
 
   createContact: createContactAction,
 
-  /** The edited draft, kept without confirming. */
+  /** The minutes, whole — the autosave's fallback for a browser without fetch. */
   saveMinutes: async (event) => {
     const minutes = minutesFrom(await event.request.formData());
     if (!minutes) return fail(400, { error: "errors.validation" });
@@ -139,26 +141,33 @@ export const actions: Actions = {
     return { saved: true };
   },
 
-  /** The draft becomes a contact moment and tasks — and, when the dialog says so, the
-   *  meeting's hours for the colleagues ticked, in the same transaction. */
-  confirm: async (event) => {
-    const form = await event.request.formData();
-    const minutes = minutesFrom(form);
-    if (!minutes) return fail(400, { error: "errors.validation" });
-    const logTime = logTimeFrom(form);
-    const { data, error } = await apiFor(event).POST("/api/v1/meetings/{meeting_id}/confirm", {
+  /** The meeting's hours for the colleagues ticked, filed on the contact moment. */
+  logTime: async (event) => {
+    const logTime = logTimeFrom(await event.request.formData());
+    if (!logTime) return fail(400, { error: "errors.validation" });
+    const { error } = await apiFor(event).POST("/api/v1/meetings/{meeting_id}/time", {
       params: { path: { meeting_id: event.params.id } },
-      body: { minutes, ...(logTime ? { log_time: logTime } : {}) },
+      body: logTime,
     });
     if (error) {
       const e = apiErrorKey(error);
       return fail(400, { error: e.fields?.log_time ?? e.key, fields: e.fields });
     }
-    return {
-      confirmed: true,
-      skipped: data?.skipped ?? [],
-      timeEntries: data?.time_entries ?? [],
-    };
+    return { saved: true };
+  },
+
+  /** File the minutes on the client's timeline now — for a meeting the automatic filing
+   *  skipped; the refusal, if any, is the sentence the person needs. */
+  fileInteraction: async (event) => {
+    const { error } = await apiFor(event).POST("/api/v1/meetings/{meeting_id}/interaction", {
+      params: { path: { meeting_id: event.params.id } },
+    });
+    if (error) {
+      const e = apiErrorKey(error);
+      const field = e.fields ? Object.values(e.fields)[0] : undefined;
+      return fail(400, { error: field ?? e.key });
+    }
+    return { saved: true };
   },
 
   /**

@@ -56,6 +56,9 @@ class WordPressSiteRead(BaseModel):
     company_id: uuid.UUID | None = None
     company_name: str | None = None
     domain_name: str | None = None
+    #: The website's address as every screen prints it (``breik.dev/briellaerd``) — the
+    #: name to pick a site by where several share one domain.
+    website_label: str | None = None
     rankmath_version: str | None = None
     #: Whether this Rank Math is new enough to have AI Visibility at all (≥ 1.0.273). Resolved
     #: server-side so the panel never re-implements a version comparison in two languages.
@@ -811,3 +814,160 @@ class WordPressStringResult(_BridgeOpen):
     lang: str
     value: str
     updated: bool = True
+
+
+# ------------------------------------------------------------------ Contact Form 7 via the plugin
+#
+# The plugin's `forms.*` operations (schakl WordPress MCP Bridge 1.2.0): the same forms the
+# `/sites/{id}/forms` routes reach through CF7's own REST namespace, plus what that namespace
+# never had — the fields CF7 parses off the template, the validator's objections, merged mail
+# and message writes, delete, and WPML both ways (a linked form per language, or one form
+# whose texts are String Translation strings).
+
+
+class WordPressBridgeFormMail(BaseModel):
+    """One of a form's two mails. Every key optional: the plugin merges what is sent over what
+    the form holds, so changing the recipient does not blank the subject. Mail tags such as
+    ``[your-name]`` refer to the template's fields."""
+
+    subject: str | None = None
+    sender: str | None = None
+    recipient: str | None = None
+    body: str | None = None
+    additional_headers: str | None = None
+    attachments: str | None = None
+    use_html: bool | None = None
+    exclude_blank: bool | None = None
+    #: Whether the mail is sent at all. The first mail is always active; this is the
+    #: autoresponder's switch.
+    active: bool | None = None
+
+
+class WordPressBridgeFormRow(_BridgeOpen):
+    id: int
+    title: str
+    slug: str | None = None
+    #: What a page embeds: ``[contact-form-7 id="…" title="…"]``.
+    shortcode: str | None = None
+    locale: str | None = None
+    modified: str | None = None
+    #: WPML, where forms are a translatable post type: the language and ``{lang: id}``.
+    lang: str | None = None
+    translations: dict[str, int] | None = None
+
+
+class WordPressBridgeFormList(_BridgeOpen):
+    items: list[WordPressBridgeFormRow] = Field(default_factory=list)
+    total: int = 0
+    page: int = 1
+    per_page: int = 50
+    pages: int = 0
+
+
+class WordPressBridgeForm(WordPressBridgeFormRow):
+    """One form whole. ``fields`` is CF7's own parse of the template (name, type, required,
+    options, values), ``config_errors`` what its configuration validator objects to by section
+    — CF7 sends nothing while a mail is misconfigured — and ``strings``, under the WPML
+    Contact Form 7 Multilingual add-on, the form's String Translation strings with their
+    translations per language."""
+
+    form: str = ""
+    fields: list[dict[str, Any]] = Field(default_factory=list)
+    mail: dict[str, Any] = Field(default_factory=dict)
+    mail_2: dict[str, Any] = Field(default_factory=dict)
+    messages: dict[str, str] = Field(default_factory=dict)
+    messages_help: dict[str, str] = Field(default_factory=dict)
+    additional_settings: str = ""
+    config_errors: dict[str, Any] = Field(default_factory=dict)
+    strings: dict[str, Any] | None = None
+
+
+_FORM_TEMPLATE_DOC = (
+    "The form template in CF7's tag language: [text* your-name] [email* your-email] "
+    '[textarea your-message] [submit "Send"]. Replaces the template whole.'
+)
+_FORM_MESSAGES_DOC = (
+    "Response texts keyed by message name (mail_sent_ok, validation_error, invalid_required, "
+    "…; the form's messages_help describes each). Merged over what the form holds."
+)
+
+
+class WordPressBridgeFormWrite(BaseModel):
+    """What every form write shares. Absent keys are left alone."""
+
+    locale: str | None = Field(
+        None,
+        max_length=20,
+        description="WordPress locale (nl_NL, en_US): the language of CF7's own default texts.",
+    )
+    form: str | None = Field(None, description=_FORM_TEMPLATE_DOC)
+    mail: WordPressBridgeFormMail | None = Field(None, description="The notification mail.")
+    mail_2: WordPressBridgeFormMail | None = Field(
+        None, description="The second mail (autoresponder); set active: true to send it."
+    )
+    messages: dict[str, str] | None = Field(None, description=_FORM_MESSAGES_DOC)
+    additional_settings: str | None = Field(
+        None, description="CF7 additional settings, one per line (e.g. skip_mail: on)."
+    )
+
+
+class WordPressBridgeFormCreate(WordPressBridgeFormWrite):
+    """A new Contact Form 7 form through the plugin — live at once, since forms have no draft
+    state. Starts from CF7's default template in the locale, so a title alone makes a working
+    form; what is sent is applied on top."""
+
+    title: str = Field(min_length=1, max_length=200)
+    lang: str | None = Field(
+        None,
+        max_length=10,
+        description="WPML language (only where forms are a translatable post type).",
+    )
+    translation_of: int | None = Field(None, description="WPML: the form this one translates.")
+
+
+class WordPressBridgeFormUpdate(WordPressBridgeFormWrite):
+    """Change a form through the plugin — live the moment it saves, on every page embedding
+    it. ``mail``, ``mail_2`` and ``messages`` merge over what the form holds; ``form`` and
+    ``additional_settings`` replace whole. Under the WPML Contact Form 7 Multilingual add-on,
+    ``strings`` translates the form's texts."""
+
+    title: str | None = Field(None, min_length=1, max_length=200)
+    strings: dict[str, dict[str, str]] | None = Field(
+        None,
+        description=(
+            'WPML String Translation: {"<lang>": {"<string name or id>": "translation"}} '
+            "for the strings the form read lists."
+        ),
+    )
+
+
+class WordPressBridgeFormTranslate(WordPressBridgeFormWrite):
+    """WPML, where forms are a translatable post type: create a form's linked translation in
+    ``lang`` — the source copied, its locale set to the language's, what you send applied on
+    top — so send the translated template, mails and messages and nothing else. The answer
+    carries the new form's own shortcode, which is what a page in that language embeds. Pass
+    ``translation_id`` to link an existing form instead. Where one form serves every language
+    (the Contact Form 7 Multilingual add-on) the plugin refuses and points at ``strings``."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    lang: str = Field(max_length=10, description="Target language code.")
+    translation_id: int | None = Field(
+        None, description="Link this existing form as the translation instead of creating one."
+    )
+    title: str | None = Field(
+        None, max_length=200, description="Translated title; defaults to the source's."
+    )
+    #: Named `copy_source` because `copy` is a BaseModel method; the plugin reads `copy`.
+    copy_source: str | None = Field(
+        None, alias="copy", description="all (default) copies the source first | none."
+    )
+    overwrite: bool = Field(
+        False, description="Update an existing translation instead of refusing."
+    )
+
+
+class WordPressBridgeFormDelete(_BridgeOpen):
+    id: int
+    title: str | None = None
+    deleted: bool = True

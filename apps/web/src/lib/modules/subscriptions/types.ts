@@ -20,12 +20,25 @@ export interface SubscriptionLinkDraft {
  * Everything the agreement form's pickers draw from, gathered once by whoever mounts it: the
  * list page's layout load, or a client page's dialog the moment it is opened.
  */
+/** One price-list row as the form's product picker needs it. */
+export interface PickerProduct {
+  id: string;
+  name: string;
+  code?: string | null;
+  description?: string | null;
+  unit_price: string | number;
+  active?: boolean;
+}
+
 export interface SubscriptionFormLookups {
   companies: { id: string; name: string; status?: string | null }[];
   /** With the client each project belongs to: the links picker narrows to the agreement's. */
   projects: { id: string; name: string; status?: string | null; company_id?: string | null }[];
   types: SubscriptionType[];
   templates: SubscriptionTemplate[];
+  /** The price list (`invoicing`), for the "which product does this sell" picker. Empty where
+   *  the caller may not read it — the picker is then simply not drawn. */
+  products?: PickerProduct[];
   /** The tenant's own subscription fields. */
   definitions: CustomFieldDefinition[];
   /** The company ones, for the inline client quick-create. */

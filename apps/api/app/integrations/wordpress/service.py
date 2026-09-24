@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.activity import ActivityService
 from app.core.crypto import decrypt, encrypt
 from app.core.tenancy import RequestContext, TenantScopedRepository
+from app.core.webaddress import website_company_expr, website_label_expr
 from app.core.wordpress import (
     STAGE_AI_VISIBILITY_UNAVAILABLE,
     STAGE_CREDENTIAL_REFUSED,
@@ -63,7 +64,15 @@ from app.integrations.wordpress.schemas import (
 
 #: ``websites`` belongs to another module; referenced as a bare table rather than imported
 #: (§6), the same bridge :mod:`app.integrations.wordpress.models` uses for the horizon clause.
-_websites = table("websites", column("id"), column("org_id"), column("domain_id"))
+_websites = table(
+    "websites",
+    column("id"),
+    column("org_id"),
+    column("domain_id"),
+    column("root"),
+    column("path"),
+    column("company_override_id"),
+)
 _domains = table("domains", column("id"), column("org_id"), column("company_id"), column("name"))
 _companies = table("companies", column("id"), column("org_id"), column("name"))
 
@@ -119,14 +128,15 @@ def _classify(caps: dict[str, bool], errors: dict[str, str]) -> tuple[str, str |
     return WordPressStatus.UNREACHABLE.value, ISSUE_UNREACHABLE
 
 
-#: What a site row says about *whose* it is: ``(company_id, company_name, domain_name)``.
-Labels = dict[uuid.UUID, tuple[uuid.UUID | None, str | None, str | None]]
+#: What a site row says about *whose* it is and what it is called:
+#: ``(company_id, company_name, domain_name, website_label)``.
+Labels = dict[uuid.UUID, tuple[uuid.UUID | None, str | None, str | None, str | None]]
 
 
 def _read(site: WordPressSite, labels: Labels | None = None) -> WordPressSiteRead:
     """One row for the wire. The password becomes a *fact about* the password."""
-    company_id, company_name, domain_name = (labels or {}).get(
-        site.website_id, (None, None, None)
+    company_id, company_name, domain_name, website_label = (labels or {}).get(
+        site.website_id, (None, None, None, None)
     )
     return WordPressSiteRead(
         id=site.id,
@@ -143,6 +153,7 @@ def _read(site: WordPressSite, labels: Labels | None = None) -> WordPressSiteRea
         company_id=company_id,
         company_name=company_name,
         domain_name=domain_name,
+        website_label=website_label,
         rankmath_version=site.rankmath_version,
         rankmath_ai_visibility=supports_ai_visibility(site.rankmath_version),
         bridge_version=site.bridge_version,
@@ -336,13 +347,20 @@ class WordPressService:
         """
         if not website_ids:
             return {}
+        # Whose it is and what it is called are core's rule (app/core/webaddress.py): a
+        # site may name a client of its own, and two sites may share one domain.
+        company = website_company_expr(_websites.c.company_override_id, _domains.c.company_id)
         stmt = (
             select(
-                _websites.c.id, _domains.c.company_id, _companies.c.name, _domains.c.name
+                _websites.c.id,
+                company,
+                _companies.c.name,
+                _domains.c.name,
+                website_label_expr(_websites.c.root, _websites.c.path, _domains.c.name),
             )
             .select_from(
                 _websites.join(_domains, _domains.c.id == _websites.c.domain_id).outerjoin(
-                    _companies, _companies.c.id == _domains.c.company_id
+                    _companies, _companies.c.id == company
                 )
             )
             .where(
@@ -352,7 +370,7 @@ class WordPressService:
             )
         )
         rows = (await self.ctx.session.execute(stmt)).all()
-        return {wid: (cid, cname, dname) for wid, cid, cname, dname in rows}
+        return {wid: (cid, cname, dname, label) for wid, cid, cname, dname, label in rows}
 
     async def list(
         self,

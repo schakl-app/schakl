@@ -95,7 +95,7 @@ logger = logging.getLogger("schakl.google.gmail")
 
 #: Headers we ask for. Wider than the poller's set by one — ``Date`` — because a manual import
 #: has no ``internalDate`` fallback worth trusting when the message is old.
-_HEADERS = ("From", "To", "Cc", "Subject", "Message-ID", "Date")
+_HEADERS = ("From", "To", "Cc", "Subject", "Message-ID", "Message-Id", "Date")
 
 #: A Gmail API id: hex, and long enough not to match a stray word someone pasted.
 _HEX_ID = re.compile(r"^[0-9a-f]{8,32}$", re.IGNORECASE)

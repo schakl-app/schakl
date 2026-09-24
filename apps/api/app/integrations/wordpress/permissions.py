@@ -72,6 +72,10 @@ WORDPRESS_PERMISSIONS: list[PermissionSpec] = [
     # A form edit is live the moment it saves and decides where a client's leads land, so it
     # sits with `publish` rather than with `write`.
     PermissionSpec("wordpress.forms.write", position=70),
+    # Deleting a form through the bridge is permanent (CF7 has no trash) and empties every
+    # page that embeds it — `content.delete`'s reason, one door over: a key that may edit a
+    # form should be able to say "never remove one". Admin-only by default.
+    PermissionSpec("wordpress.forms.delete", position=75),
     # --- Abilities ------------------------------------------------------------------------ #
     # Listing what the site registers, and running the abilities that declare themselves
     # `readonly`. The annotation is the plugin author's claim; an ability that makes no claim

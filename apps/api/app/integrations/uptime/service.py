@@ -582,7 +582,12 @@ class UptimeService:
 
         now = datetime.now(UTC)
         for row in rows:
-            candidates = matching.candidates_for(matching.host_of(row.target), websites, domains)
+            candidates = matching.candidates_for(
+                matching.host_of(row.target),
+                websites,
+                domains,
+                path=matching.path_of(row.target),
+            )
             row.link_candidates = [c.as_json() for c in candidates]
             row.link_checked_at = now
             if len(candidates) == 1:

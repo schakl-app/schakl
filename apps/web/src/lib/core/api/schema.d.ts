@@ -6133,7 +6133,7 @@ export interface paths {
         put?: never;
         /**
          * Impex Import Website
-         * @description Import website rows from a spreadsheet, upserting on the first of `domain` each row fills (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
+         * @description Import website rows from a spreadsheet, upserting on the first of `address`, `domain` each row fills (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
          */
         post: operations["impex_import_website_api_v1_impex_website_import_post"];
         delete?: never;
@@ -9527,8 +9527,8 @@ export interface paths {
         /**
          * Create Task For Action Item
          * @description Make the task for one action item now, with its steps and links in one call, as the
-         *     caller (the tasks module's own rules apply). The item remembers its task, the confirm
-         *     files it on the contact moment, and a meeting already confirmed files it at once.
+         *     caller (the tasks module's own rules apply). The item remembers its task and the contact
+         *     moment lists it; the only way an action item becomes a task.
          */
         post: operations["create_task_for_action_item_api_v1_meetings__meeting_id__action_items_task_post"];
         delete?: never;
@@ -9620,26 +9620,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/meetings/{meeting_id}/confirm": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Confirm Meeting
-         * @description The minutes become a contact moment and the ticked action items become tasks.
-         */
-        post: operations["confirm_meeting_api_v1_meetings__meeting_id__confirm_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/meetings/{meeting_id}/finish": {
         parameters: {
             query?: never;
@@ -9660,6 +9640,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/meetings/{meeting_id}/interaction": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * File Meeting
+         * @description File the minutes as a contact moment on the client now. Normally that happened by
+         *     itself the moment the minutes landed; this is for a meeting where it did not (the filing
+         *     was refused, or the row predates it), and it says why when it is refused again.
+         */
+        post: operations["file_meeting_api_v1_meetings__meeting_id__interaction_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/meetings/{meeting_id}/minutes": {
         parameters: {
             query?: never;
@@ -9670,7 +9672,8 @@ export interface paths {
         get?: never;
         /**
          * Save Minutes
-         * @description The reviewer's edits to the draft, kept without confirming.
+         * @description An edit to the minutes, whole. The page autosaves through this; the contact moment on
+         *     the client is rewritten to match. A title in the draft is the meeting's title.
          */
         put: operations["save_minutes_api_v1_meetings__meeting_id__minutes_put"];
         post?: never;
@@ -9794,6 +9797,28 @@ export interface paths {
         get: operations["meeting_status_api_v1_meetings__meeting_id__status_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meetings/{meeting_id}/time": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Log Meeting Time
+         * @description Book the meeting's hours: one time entry per colleague named, for its length (or the
+         *     minutes given), filed on the contact moment. Booking a colleague asks
+         *     ``time.entry.write:any``; the ``time`` module must be writable.
+         */
+        post: operations["log_meeting_time_api_v1_meetings__meeting_id__time_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -15177,7 +15202,9 @@ export interface paths {
         };
         /**
          * List Available Domains
-         * @description The domains that do not have a website yet — the create picker's options.
+         * @description Every domain a website may be created on — the create picker's options — each with the
+         *     addresses already recorded on it (``taken``), since a domain carries one site per address
+         *     and the next dev install goes on a domain that already has one.
          *
          *     Declares the **write** permission, not the read one: this is the vocabulary of a form only a
          *     writer can submit, so a read-only member's section layout skips the call entirely rather than
@@ -15357,6 +15384,94 @@ export interface paths {
         get: operations["bridge_info_api_v1_wordpress_sites__site_id__bridge_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}/bridge/forms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bridge Forms
+         * @description Contact Form 7 forms through the plugin: id, title, the shortcode a page embeds, locale,
+         *     last change and — with WPML, where forms are translated as records — language and
+         *     translation ids. 409 on a site without Contact Form 7.
+         */
+        get: operations["bridge_forms_api_v1_wordpress_sites__site_id__bridge_forms_get"];
+        put?: never;
+        /**
+         * Bridge Create Form
+         * @description A new form, live at once (forms have no draft state), from CF7's default template in
+         *     the locale with what you send on top — a title alone makes a working form. Returns it
+         *     with its shortcode and `config_errors`.
+         */
+        post: operations["bridge_create_form_api_v1_wordpress_sites__site_id__bridge_forms_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}/bridge/forms/{wp_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bridge Form
+         * @description One form whole: the template, the fields CF7 parses off it (name, type, required,
+         *     options), both mails, the messages with `messages_help`, the additional settings, the
+         *     shortcode, `config_errors` (what CF7's validator objects to — it sends nothing while a
+         *     mail is misconfigured), and with WPML the translations or the form's `strings`.
+         */
+        get: operations["bridge_form_api_v1_wordpress_sites__site_id__bridge_forms__wp_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Bridge Delete Form
+         * @description Delete a form permanently — CF7 has no trash for forms, and pages embedding its
+         *     shortcode show nothing there afterwards.
+         */
+        delete: operations["bridge_delete_form_api_v1_wordpress_sites__site_id__bridge_forms__wp_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Bridge Update Form
+         * @description Change a form — live the moment it saves, on every page that embeds it. `mail`,
+         *     `mail_2` and `messages` merge over what the form holds; `form` and `additional_settings`
+         *     replace whole; unknown message keys and locales are refused before anything is written.
+         *     With the WPML Contact Form 7 Multilingual add-on, `strings` translates the form's texts.
+         */
+        patch: operations["bridge_update_form_api_v1_wordpress_sites__site_id__bridge_forms__wp_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}/bridge/forms/{wp_id}/translations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bridge Translate Form
+         * @description WPML, where forms are a translatable post type: create this form's linked translation
+         *     in `lang` — the source copied, its locale set to the language's, your translated
+         *     template, mails and messages on top — and get back the new form with its own shortcode
+         *     for pages in that language; or, with `translation_id`, link an existing form. Where one
+         *     form serves every language (the Contact Form 7 Multilingual add-on) the plugin answers
+         *     409 and points at `strings` on the update.
+         */
+        post: operations["bridge_translate_form_api_v1_wordpress_sites__site_id__bridge_forms__wp_id__translations_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -17121,11 +17236,16 @@ export interface components {
         };
         /**
          * AvailableDomain
-         * @description A domain with no website yet — the create picker's option, and nothing more.
+         * @description A domain a website may be created on — the create picker's option, and nothing more.
          *
          *     Deliberately not a ``DomainRead`` subset: a picker that borrows another module's read schema
          *     inherits every field somebody adds to it, and this one crosses a module boundary already
          *     (§6 — a bare-table bridge, not an import).
+         *
+         *     ``taken`` names the addresses already recorded on the domain (``breik.dev``,
+         *     ``breik.dev/briellaerd``), so the form can show the constraint working (#305) instead of
+         *     letting the save discover it: a domain with several sites is the ordinary case now, and a
+         *     picker that hid every claimed domain would hide exactly the ones a dev install goes on.
          */
         AvailableDomain: {
             /**
@@ -17140,6 +17260,8 @@ export interface components {
             id: string;
             /** Name */
             name: string;
+            /** Taken */
+            taken?: string[];
         };
         /** BacklogSourceTotal */
         BacklogSourceTotal: {
@@ -27464,32 +27586,6 @@ export interface components {
             /** Seq */
             seq: number;
         };
-        /**
-         * MeetingConfirm
-         * @description The reviewer's final word: these minutes become a contact moment and these tasks.
-         */
-        MeetingConfirm: {
-            /** Interaction Kind */
-            interaction_kind?: string | null;
-            log_time?: components["schemas"]["MeetingLogTime"] | null;
-            minutes: components["schemas"]["MinutesDraft"];
-        };
-        /** MeetingConfirmResult */
-        MeetingConfirmResult: {
-            /**
-             * Interaction Id
-             * Format: uuid
-             */
-            interaction_id: string;
-            /** Skipped */
-            skipped?: {
-                [key: string]: unknown;
-            }[];
-            /** Task Ids */
-            task_ids: string[];
-            /** Time Entries */
-            time_entries?: components["schemas"]["MeetingTimeEntry"][];
-        };
         /** MeetingCreate */
         MeetingCreate: {
             /** Company Id */
@@ -27569,8 +27665,6 @@ export interface components {
             company_id?: string | null;
             /** Company Name */
             company_name?: string | null;
-            /** Confirmed At */
-            confirmed_at?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -27676,10 +27770,10 @@ export interface components {
         };
         /**
          * MeetingLogTime
-         * @description "Ook de uren registreren" for a meeting (#175's ride-along, #314's gates): one time entry
-         *     per colleague named, for the meeting's duration, filed on the contact moment the confirm
-         *     writes. The reviewer sees every entry it will write — who, how long, the line beside it —
-         *     before pressing confirm, because hours written for a colleague are on *their* timesheet.
+         * @description "Uren registreren" for a meeting (#175's ride-along, #314's gates): one time entry per
+         *     colleague named, for the meeting's duration, filed on the contact moment. The dialog shows
+         *     every entry it will write — who, how long, the line beside it — before the press, because
+         *     hours written for a colleague are on *their* timesheet.
          */
         MeetingLogTime: {
             /** Billable */
@@ -27933,7 +28027,7 @@ export interface components {
          * MeetingStatus
          * @enum {string}
          */
-        MeetingStatus: "recording" | "queued" | "transcribing" | "summarising" | "review" | "done" | "failed";
+        MeetingStatus: "recording" | "queued" | "transcribing" | "summarising" | "ready" | "failed";
         /**
          * MeetingStatusRead
          * @description The one column the detail page polls while a worker holds the row.
@@ -28429,11 +28523,6 @@ export interface components {
             assignee_user_id?: string | null;
             /** At */
             at?: number | null;
-            /**
-             * Create Task
-             * @default true
-             */
-            create_task: boolean;
             /** Description */
             description?: string | null;
             /** Due Date */
@@ -30655,6 +30744,11 @@ export interface components {
              * @default true
              */
             active: boolean;
+            /**
+             * Agreement Count
+             * @default 0
+             */
+            agreement_count: number;
             /** Code */
             code?: string | null;
             /**
@@ -30669,6 +30763,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Last Sold On */
+            last_sold_on?: string | null;
             /** Name */
             name: string;
             /**
@@ -30683,6 +30779,11 @@ export interface components {
             position: number;
             /** Tax Rate Id */
             tax_rate_id?: string | null;
+            /**
+             * Template Count
+             * @default 0
+             */
+            template_count: number;
             /** Unit */
             unit?: string | null;
             /**
@@ -34263,6 +34364,8 @@ export interface components {
             notes_on_invoice_override?: boolean | null;
             /** Notice Period Days */
             notice_period_days?: number | null;
+            /** Product Id */
+            product_id?: string | null;
             rollover?: components["schemas"]["RolloverRule"];
             /**
              * Start Date
@@ -34280,7 +34383,7 @@ export interface components {
          * SubscriptionInterval
          * @enum {string}
          */
-        SubscriptionInterval: "monthly" | "quarterly" | "yearly";
+        SubscriptionInterval: "monthly" | "quarterly" | "yearly" | "once";
         /** SubscriptionLineOffer */
         SubscriptionLineOffer: {
             /** Description */
@@ -34450,6 +34553,8 @@ export interface components {
              * Format: uuid
              */
             org_id: string;
+            /** Product Id */
+            product_id?: string | null;
             rollover: components["schemas"]["RolloverRule"];
             /**
              * Start Date
@@ -34472,7 +34577,7 @@ export interface components {
          * SubscriptionStatus
          * @enum {string}
          */
-        SubscriptionStatus: "draft" | "active" | "paused" | "cancelled";
+        SubscriptionStatus: "draft" | "active" | "paused" | "cancelled" | "completed";
         /**
          * SubscriptionSummary
          * @description Omzet view (#30): recurring revenue at a glance.
@@ -34525,6 +34630,8 @@ export interface components {
              * @default 0
              */
             position: number;
+            /** Product Id */
+            product_id?: string | null;
             rollover?: components["schemas"]["RolloverRule"];
             /** Subscription Type Id */
             subscription_type_id?: string | null;
@@ -34582,6 +34689,8 @@ export interface components {
              * @default 0
              */
             position: number;
+            /** Product Id */
+            product_id?: string | null;
             rollover?: components["schemas"]["RolloverRule"];
             /** Subscription Type Id */
             subscription_type_id?: string | null;
@@ -34652,6 +34761,8 @@ export interface components {
              * @default 0
              */
             position: number;
+            /** Product Id */
+            product_id?: string | null;
             /**
              * Renamed Subscriptions
              * @default 0
@@ -34696,6 +34807,8 @@ export interface components {
             notice_period_days?: number | null;
             /** Position */
             position?: number | null;
+            /** Product Id */
+            product_id?: string | null;
             rollover?: components["schemas"]["RolloverRule"] | null;
             /** Subscription Type Id */
             subscription_type_id?: string | null;
@@ -34902,6 +35015,8 @@ export interface components {
             notes_on_invoice_override?: boolean | null;
             /** Notice Period Days */
             notice_period_days?: number | null;
+            /** Product Id */
+            product_id?: string | null;
             rollover?: components["schemas"]["RolloverRule"] | null;
             /** Start Date */
             start_date?: string | null;
@@ -38353,6 +38468,8 @@ export interface components {
         };
         /** WebsiteCreate */
         WebsiteCreate: {
+            /** Company Override Id */
+            company_override_id?: string | null;
             /** Custom */
             custom?: {
                 [key: string]: unknown;
@@ -38364,6 +38481,11 @@ export interface components {
             domain_id: string;
             /** Hosting Id */
             hosting_id?: string | null;
+            /**
+             * Path
+             * @default
+             */
+            path: string;
             /**
              * Root
              * @default true
@@ -38382,6 +38504,8 @@ export interface components {
             company_id?: string | null;
             /** Company Name */
             company_name?: string | null;
+            /** Company Override Id */
+            company_override_id?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -38391,6 +38515,8 @@ export interface components {
             custom?: {
                 [key: string]: unknown;
             };
+            /** Domain Company Id */
+            domain_company_id?: string | null;
             /**
              * Domain Id
              * Format: uuid
@@ -38401,6 +38527,11 @@ export interface components {
              * @default
              */
             domain_name: string;
+            /**
+             * Host
+             * @default
+             */
+            host: string;
             /** Hosting Id */
             hosting_id?: string | null;
             /** Hosting Name */
@@ -38411,10 +38542,20 @@ export interface components {
              */
             id: string;
             /**
+             * Label
+             * @default
+             */
+            label: string;
+            /**
              * Org Id
              * Format: uuid
              */
             org_id: string;
+            /**
+             * Path
+             * @default
+             */
+            path: string;
             /** Root */
             root: boolean;
             technical_owner?: components["schemas"]["PartyReadRef"] | null;
@@ -38430,6 +38571,11 @@ export interface components {
             uptime_enabled: boolean;
             /** Uptime Status */
             uptime_status?: string | null;
+            /**
+             * Url
+             * @default
+             */
+            url: string;
         };
         /**
          * WebsiteRef
@@ -38446,12 +38592,16 @@ export interface components {
         };
         /** WebsiteUpdate */
         WebsiteUpdate: {
+            /** Company Override Id */
+            company_override_id?: string | null;
             /** Custom */
             custom?: {
                 [key: string]: unknown;
             } | null;
             /** Hosting Id */
             hosting_id?: string | null;
+            /** Path */
+            path?: string | null;
             /** Root */
             root?: boolean | null;
             technical_owner?: components["schemas"]["PartyRef"] | null;
@@ -38564,6 +38714,319 @@ export interface components {
             trashed: boolean;
         } & {
             [key: string]: unknown;
+        };
+        /**
+         * WordPressBridgeForm
+         * @description One form whole. ``fields`` is CF7's own parse of the template (name, type, required,
+         *     options, values), ``config_errors`` what its configuration validator objects to by section
+         *     — CF7 sends nothing while a mail is misconfigured — and ``strings``, under the WPML
+         *     Contact Form 7 Multilingual add-on, the form's String Translation strings with their
+         *     translations per language.
+         */
+        WordPressBridgeForm: {
+            /**
+             * Additional Settings
+             * @default
+             */
+            additional_settings: string;
+            /** Config Errors */
+            config_errors?: {
+                [key: string]: unknown;
+            };
+            /** Fields */
+            fields?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Form
+             * @default
+             */
+            form: string;
+            /** Id */
+            id: number;
+            /** Lang */
+            lang?: string | null;
+            /** Locale */
+            locale?: string | null;
+            /** Mail */
+            mail?: {
+                [key: string]: unknown;
+            };
+            /** Mail 2 */
+            mail_2?: {
+                [key: string]: unknown;
+            };
+            /** Messages */
+            messages?: {
+                [key: string]: string;
+            };
+            /** Messages Help */
+            messages_help?: {
+                [key: string]: string;
+            };
+            /** Modified */
+            modified?: string | null;
+            /** Shortcode */
+            shortcode?: string | null;
+            /** Slug */
+            slug?: string | null;
+            /** Strings */
+            strings?: {
+                [key: string]: unknown;
+            } | null;
+            /** Title */
+            title: string;
+            /** Translations */
+            translations?: {
+                [key: string]: number;
+            } | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * WordPressBridgeFormCreate
+         * @description A new Contact Form 7 form through the plugin — live at once, since forms have no draft
+         *     state. Starts from CF7's default template in the locale, so a title alone makes a working
+         *     form; what is sent is applied on top.
+         */
+        WordPressBridgeFormCreate: {
+            /**
+             * Additional Settings
+             * @description CF7 additional settings, one per line (e.g. skip_mail: on).
+             */
+            additional_settings?: string | null;
+            /**
+             * Form
+             * @description The form template in CF7's tag language: [text* your-name] [email* your-email] [textarea your-message] [submit "Send"]. Replaces the template whole.
+             */
+            form?: string | null;
+            /**
+             * Lang
+             * @description WPML language (only where forms are a translatable post type).
+             */
+            lang?: string | null;
+            /**
+             * Locale
+             * @description WordPress locale (nl_NL, en_US): the language of CF7's own default texts.
+             */
+            locale?: string | null;
+            /** @description The notification mail. */
+            mail?: components["schemas"]["WordPressBridgeFormMail"] | null;
+            /** @description The second mail (autoresponder); set active: true to send it. */
+            mail_2?: components["schemas"]["WordPressBridgeFormMail"] | null;
+            /**
+             * Messages
+             * @description Response texts keyed by message name (mail_sent_ok, validation_error, invalid_required, …; the form's messages_help describes each). Merged over what the form holds.
+             */
+            messages?: {
+                [key: string]: string;
+            } | null;
+            /** Title */
+            title: string;
+            /**
+             * Translation Of
+             * @description WPML: the form this one translates.
+             */
+            translation_of?: number | null;
+        };
+        /** WordPressBridgeFormDelete */
+        WordPressBridgeFormDelete: {
+            /**
+             * Deleted
+             * @default true
+             */
+            deleted: boolean;
+            /** Id */
+            id: number;
+            /** Title */
+            title?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** WordPressBridgeFormList */
+        WordPressBridgeFormList: {
+            /** Items */
+            items?: components["schemas"]["WordPressBridgeFormRow"][];
+            /**
+             * Page
+             * @default 1
+             */
+            page: number;
+            /**
+             * Pages
+             * @default 0
+             */
+            pages: number;
+            /**
+             * Per Page
+             * @default 50
+             */
+            per_page: number;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * WordPressBridgeFormMail
+         * @description One of a form's two mails. Every key optional: the plugin merges what is sent over what
+         *     the form holds, so changing the recipient does not blank the subject. Mail tags such as
+         *     ``[your-name]`` refer to the template's fields.
+         */
+        WordPressBridgeFormMail: {
+            /** Active */
+            active?: boolean | null;
+            /** Additional Headers */
+            additional_headers?: string | null;
+            /** Attachments */
+            attachments?: string | null;
+            /** Body */
+            body?: string | null;
+            /** Exclude Blank */
+            exclude_blank?: boolean | null;
+            /** Recipient */
+            recipient?: string | null;
+            /** Sender */
+            sender?: string | null;
+            /** Subject */
+            subject?: string | null;
+            /** Use Html */
+            use_html?: boolean | null;
+        };
+        /** WordPressBridgeFormRow */
+        WordPressBridgeFormRow: {
+            /** Id */
+            id: number;
+            /** Lang */
+            lang?: string | null;
+            /** Locale */
+            locale?: string | null;
+            /** Modified */
+            modified?: string | null;
+            /** Shortcode */
+            shortcode?: string | null;
+            /** Slug */
+            slug?: string | null;
+            /** Title */
+            title: string;
+            /** Translations */
+            translations?: {
+                [key: string]: number;
+            } | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * WordPressBridgeFormTranslate
+         * @description WPML, where forms are a translatable post type: create a form's linked translation in
+         *     ``lang`` — the source copied, its locale set to the language's, what you send applied on
+         *     top — so send the translated template, mails and messages and nothing else. The answer
+         *     carries the new form's own shortcode, which is what a page in that language embeds. Pass
+         *     ``translation_id`` to link an existing form instead. Where one form serves every language
+         *     (the Contact Form 7 Multilingual add-on) the plugin refuses and points at ``strings``.
+         */
+        WordPressBridgeFormTranslate: {
+            /**
+             * Additional Settings
+             * @description CF7 additional settings, one per line (e.g. skip_mail: on).
+             */
+            additional_settings?: string | null;
+            /**
+             * Copy
+             * @description all (default) copies the source first | none.
+             */
+            copy?: string | null;
+            /**
+             * Form
+             * @description The form template in CF7's tag language: [text* your-name] [email* your-email] [textarea your-message] [submit "Send"]. Replaces the template whole.
+             */
+            form?: string | null;
+            /**
+             * Lang
+             * @description Target language code.
+             */
+            lang: string;
+            /**
+             * Locale
+             * @description WordPress locale (nl_NL, en_US): the language of CF7's own default texts.
+             */
+            locale?: string | null;
+            /** @description The notification mail. */
+            mail?: components["schemas"]["WordPressBridgeFormMail"] | null;
+            /** @description The second mail (autoresponder); set active: true to send it. */
+            mail_2?: components["schemas"]["WordPressBridgeFormMail"] | null;
+            /**
+             * Messages
+             * @description Response texts keyed by message name (mail_sent_ok, validation_error, invalid_required, …; the form's messages_help describes each). Merged over what the form holds.
+             */
+            messages?: {
+                [key: string]: string;
+            } | null;
+            /**
+             * Overwrite
+             * @description Update an existing translation instead of refusing.
+             * @default false
+             */
+            overwrite: boolean;
+            /**
+             * Title
+             * @description Translated title; defaults to the source's.
+             */
+            title?: string | null;
+            /**
+             * Translation Id
+             * @description Link this existing form as the translation instead of creating one.
+             */
+            translation_id?: number | null;
+        };
+        /**
+         * WordPressBridgeFormUpdate
+         * @description Change a form through the plugin — live the moment it saves, on every page embedding
+         *     it. ``mail``, ``mail_2`` and ``messages`` merge over what the form holds; ``form`` and
+         *     ``additional_settings`` replace whole. Under the WPML Contact Form 7 Multilingual add-on,
+         *     ``strings`` translates the form's texts.
+         */
+        WordPressBridgeFormUpdate: {
+            /**
+             * Additional Settings
+             * @description CF7 additional settings, one per line (e.g. skip_mail: on).
+             */
+            additional_settings?: string | null;
+            /**
+             * Form
+             * @description The form template in CF7's tag language: [text* your-name] [email* your-email] [textarea your-message] [submit "Send"]. Replaces the template whole.
+             */
+            form?: string | null;
+            /**
+             * Locale
+             * @description WordPress locale (nl_NL, en_US): the language of CF7's own default texts.
+             */
+            locale?: string | null;
+            /** @description The notification mail. */
+            mail?: components["schemas"]["WordPressBridgeFormMail"] | null;
+            /** @description The second mail (autoresponder); set active: true to send it. */
+            mail_2?: components["schemas"]["WordPressBridgeFormMail"] | null;
+            /**
+             * Messages
+             * @description Response texts keyed by message name (mail_sent_ok, validation_error, invalid_required, …; the form's messages_help describes each). Merged over what the form holds.
+             */
+            messages?: {
+                [key: string]: string;
+            } | null;
+            /**
+             * Strings
+             * @description WPML String Translation: {"<lang>": {"<string name or id>": "translation"}} for the strings the form read lists.
+             */
+            strings?: {
+                [key: string]: {
+                    [key: string]: string;
+                };
+            } | null;
+            /** Title */
+            title?: string | null;
         };
         /**
          * WordPressBridgeInfo
@@ -39631,6 +40094,8 @@ export interface components {
              * Format: uuid
              */
             website_id: string;
+            /** Website Label */
+            website_label?: string | null;
         };
         /**
          * WordPressSiteSummary
@@ -54898,6 +55363,10 @@ export interface operations {
         parameters: {
             query?: {
                 include_inactive?: boolean;
+                /** @description matches name, article code and description */
+                q?: string | null;
+                /** @description attach how many agreements and standard subscriptions name each product */
+                usage?: boolean;
             };
             header?: never;
             path?: never;
@@ -58981,41 +59450,6 @@ export interface operations {
             };
         };
     };
-    confirm_meeting_api_v1_meetings__meeting_id__confirm_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                meeting_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MeetingConfirm"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MeetingConfirmResult"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     finish_meeting_api_v1_meetings__meeting_id__finish_post: {
         parameters: {
             query?: never;
@@ -59030,6 +59464,37 @@ export interface operations {
                 "application/json": components["schemas"]["MeetingFinish"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    file_meeting_api_v1_meetings__meeting_id__interaction_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -59269,6 +59734,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MeetingStatusRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    log_meeting_time_api_v1_meetings__meeting_id__time_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MeetingLogTime"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingDetail"];
                 };
             };
             /** @description Validation Error */
@@ -70047,7 +70547,7 @@ export interface operations {
                 offset?: number;
                 domain_id?: string | null;
                 company_id?: string | null;
-                /** @description Matches the parent domain's name */
+                /** @description Matches the address: the domain's name or the path */
                 q?: string | null;
                 hosting_id?: string | null;
                 uptime_enabled?: boolean | null;
@@ -70549,6 +71049,215 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WordPressBridgeInfo"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_forms_api_v1_wordpress_sites__site_id__bridge_forms_get: {
+        parameters: {
+            query?: {
+                /** @description Title and template. */
+                search?: string | null;
+                /** @description WPML language, where forms are a translatable post type. */
+                lang?: string | null;
+                page?: number;
+                per_page?: number;
+            };
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressBridgeFormList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_create_form_api_v1_wordpress_sites__site_id__bridge_forms_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WordPressBridgeFormCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressBridgeForm"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_form_api_v1_wordpress_sites__site_id__bridge_forms__wp_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+                wp_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressBridgeForm"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_delete_form_api_v1_wordpress_sites__site_id__bridge_forms__wp_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+                wp_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressBridgeFormDelete"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_update_form_api_v1_wordpress_sites__site_id__bridge_forms__wp_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+                wp_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WordPressBridgeFormUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressBridgeForm"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_translate_form_api_v1_wordpress_sites__site_id__bridge_forms__wp_id__translations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+                wp_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WordPressBridgeFormTranslate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressBridgeForm"];
                 };
             };
             /** @description Validation Error */

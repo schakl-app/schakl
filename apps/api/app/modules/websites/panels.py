@@ -1,8 +1,9 @@
 """Websites panel on the company detail view (owner request, the modular hub — CLAUDE.md §6).
 
-Lists a client's websites — the ones whose parent domain belongs to the company — so the
-company page composes them via the registry. This replaces the hosting panel there: hosting
-is shared infrastructure managed under Instellingen, while the websites are the client's.
+Lists a client's websites — the ones whose resolved client is the company: their parent
+domain's, or the client a dev site names for itself on the agency's own domain — so the company
+page composes them via the registry. This replaces the hosting panel there: hosting is shared
+infrastructure managed under Instellingen, while the websites are the client's.
 """
 
 from __future__ import annotations
@@ -34,6 +35,11 @@ async def _websites_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict
                 "domain_id": str(w.domain_id),
                 "name": getattr(w, "domain_name", ""),
                 "root": w.root,
+                "path": w.path,
+                # The address as every screen prints it, resolved by the service — the card
+                # composes nothing (``app/core/webaddress.py``).
+                "label": getattr(w, "label", ""),
+                "url": getattr(w, "url", ""),
                 "hosting_name": getattr(w, "hosting_name", None),
                 "uptime_enabled": w.uptime_enabled,
             }

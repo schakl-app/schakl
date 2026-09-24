@@ -456,9 +456,6 @@ def draft_from_call(
                     at=_seconds(entry.get("at"), duration=duration),
                     quote=quote,
                     verified=quote_found(quote, haystack),
-                    # A client's promise is minuted, not put on our board; the reviewer may
-                    # still tick it (it then becomes a task assigned to that contact).
-                    create_task=assignee is not None,
                 )
             )
 

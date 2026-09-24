@@ -24,7 +24,7 @@ def sample_meeting(org_id: uuid.UUID) -> Meeting:
         title="Kick-off nieuwe website",
         kind=MeetingKind.PHYSICAL.value,
         source=MeetingSource.MICROPHONE.value,
-        status=MeetingStatus.DONE.value,
+        status=MeetingStatus.READY.value,
         status_at=now,
         occurred_at=now,
         language="nl",
@@ -116,7 +116,7 @@ def sample_meeting(org_id: uuid.UUID) -> Meeting:
                     "quote": "Dan lever ik de teksten woensdag aan",
                     "at": 13,
                     "verified": True,
-                    "create_task": True,
+                    "task_id": str(uuid.uuid4()),
                 },
                 {
                     "title": "Nieuw logo sturen",
@@ -124,7 +124,6 @@ def sample_meeting(org_id: uuid.UUID) -> Meeting:
                     "quote": "Jan stuurt het logo deze week",
                     "at": 16,
                     "verified": True,
-                    "create_task": False,
                 },
                 {
                     "title": "Hosting inrichten na DNS",
@@ -132,12 +131,10 @@ def sample_meeting(org_id: uuid.UUID) -> Meeting:
                     "quote": "De hosting regel ik zodra de DNS is overgezet",
                     "at": 21,
                     "verified": True,
-                    "create_task": False,
                 },
             ],
             "open_questions": ["Wie plant de fotografie in?"],
             "truncated": False,
             "partial_input": False,
         },
-        confirmed_at=now,
     )
