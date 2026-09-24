@@ -24,9 +24,9 @@ from app.modules.invoicing.public import (
     require_public_invoice,
 )
 from app.modules.invoicing.render import BUILTIN_DESIGNS, builtin_source, catalog_payload
-from app.modules.invoicing.sales import ProductSaleService
 from app.modules.invoicing.schemas import (
     BacklogGroupBy,
+    BacklogSource,
     BacklogSourceFilter,
     BilledPeriod,
     DocumentSend,
@@ -48,13 +48,8 @@ from app.modules.invoicing.schemas import (
     OriginalsBatchReport,
     OutstandingRead,
     PaymentWrite,
-    PeriodClaimSource,
     ProductCreate,
     ProductRead,
-    ProductSaleCreate,
-    ProductSaleList,
-    ProductSaleRead,
-    ProductSaleUpdate,
     ProductUpdate,
     PublicCheckout,
     PublicInvoiceRead,
@@ -204,13 +199,14 @@ async def list_products(
     include_inactive: bool = Query(False),
     q: str | None = Query(None, description="matches name, article code and description"),
     usage: bool = Query(
-        False, description="attach how often each product was sold, for what, and when last"
+        False,
+        description="attach how many agreements and standard subscriptions name each product",
     ),
     ctx: RequestContext = Depends(require_context),
 ) -> list[ProductRead]:
     service = ProductService(ctx)
     items = await service.list(include_inactive=include_inactive, q=q)
-    # Opt-in: the editors' pick list never needs it, and it is one grouped read the settings
+    # Opt-in: the editors' pick list never needs it, and it is two grouped reads the settings
     # screen is the only caller of (docs/PERFORMANCE.md).
     used = await service.usage(items) if usage else {}
     return [
@@ -254,111 +250,6 @@ async def delete_product(
     ctx: RequestContext = Depends(require_context),
 ) -> None:
     await ProductService(ctx).delete(product_id)
-
-
-# --- product sales: a product sold once, waiting to be invoiced ------------------ #
-@router.get(
-    "/sales",
-    response_model=ProductSaleList,
-    dependencies=[require_permission(_READ, _MODULE)],
-)
-async def list_sales(
-    limit: int = Query(50, ge=1, le=200),
-    offset: int = Query(0, ge=0),
-    company_id: uuid.UUID | None = Query(None),
-    project_id: uuid.UUID | None = Query(None),
-    product_id: uuid.UUID | None = Query(None),
-    status: str = Query("all", description="all | open | invoiced"),
-    q: str | None = Query(None, description="matches name and description"),
-    ctx: RequestContext = Depends(require_context),
-) -> ProductSaleList:
-    """One-time product sales — what a client was sold once and whether a document bills it
-    yet. ``open`` is what the backlog and the editor's picker offer; ``invoiced`` names the
-    document. ``:any``: the agency's sales register, never a client surface."""
-    return ProductSaleList.model_validate(
-        await ProductSaleService(ctx).list(
-            limit=limit,
-            offset=offset,
-            company_id=company_id,
-            project_id=project_id,
-            product_id=product_id,
-            status=status,
-            q=q,
-        )
-    )
-
-
-@router.post(
-    "/sales",
-    response_model=ProductSaleRead,
-    status_code=201,
-    dependencies=[require_permission("invoicing.invoice.write")],
-)
-async def create_sale(
-    payload: ProductSaleCreate,
-    ctx: RequestContext = Depends(require_context),
-) -> ProductSaleRead:
-    """Record a one-time sale. With ``product_id`` the blanks (name, description, unit, price,
-    tax) are copied from the price list **once** — a later re-price never rewrites it."""
-    return ProductSaleRead.model_validate(await ProductSaleService(ctx).create(payload))
-
-
-@router.get(
-    "/sales/{sale_id}",
-    response_model=ProductSaleRead,
-    dependencies=[require_permission(_READ, _MODULE)],
-)
-async def get_sale(
-    sale_id: uuid.UUID,
-    ctx: RequestContext = Depends(require_context),
-) -> ProductSaleRead:
-    return ProductSaleRead.model_validate(await ProductSaleService(ctx).get(sale_id))
-
-
-@router.patch(
-    "/sales/{sale_id}",
-    response_model=ProductSaleRead,
-    dependencies=[require_permission("invoicing.invoice.write")],
-)
-async def update_sale(
-    sale_id: uuid.UUID,
-    payload: ProductSaleUpdate,
-    ctx: RequestContext = Depends(require_context),
-) -> ProductSaleRead:
-    """Absent means leave alone. Once a document bills the sale only its project and notes
-    may change (409 ``errors.invoicing.sale_invoiced`` for the rest)."""
-    return ProductSaleRead.model_validate(
-        await ProductSaleService(ctx).update(sale_id, payload)
-    )
-
-
-@router.delete(
-    "/sales/{sale_id}",
-    status_code=204,
-    dependencies=[require_permission("invoicing.invoice.write")],
-)
-async def delete_sale(
-    sale_id: uuid.UUID,
-    ctx: RequestContext = Depends(require_context),
-) -> None:
-    """Refused (409) while a document bills it — remove the line first."""
-    await ProductSaleService(ctx).delete(sale_id)
-
-
-@router.post(
-    "/sales/{sale_id}/invoice",
-    response_model=InvoiceRead,
-    status_code=201,
-    dependencies=[require_permission("invoicing.invoice.write")],
-)
-async def invoice_sale(
-    sale_id: uuid.UUID,
-    ctx: RequestContext = Depends(require_context),
-) -> InvoiceRead:
-    """Draft one invoice billing exactly this sale, claiming it. The same create every
-    hand-built document goes through; 409 when it is already on one."""
-    invoice = await ProductSaleService(ctx).invoice(sale_id)
-    return InvoiceRead.model_validate(invoice)
 
 
 #: A rendered document is a standalone page: no scripts of its own to allow, no fetches to
@@ -605,7 +496,7 @@ async def uninvoiced(
     dependencies=[require_permission(_READ)],
 )
 async def billed_periods(
-    source: PeriodClaimSource = Query(..., description="subscription | domain"),
+    source: BacklogSource = Query(..., description="subscription | domain"),
     source_id: uuid.UUID = Query(..., description="the agreement's or domain's id"),
     ctx: RequestContext = Depends(require_context),
 ) -> list[BilledPeriod]:
@@ -630,9 +521,7 @@ async def billed_periods(
 )
 async def recurring_backlog(
     group: BacklogGroupBy = Query("company", description="company | month | source"),
-    source: BacklogSourceFilter = Query(
-        "all", description="all | subscription | domain | sale"
-    ),
+    source: BacklogSourceFilter = Query("all", description="all | subscription | domain"),
     limit: int = Query(500, ge=1, le=1000, description="cap on the item detail, not the totals"),
     ctx: RequestContext = Depends(require_context),
 ) -> RecurringBacklogReport:

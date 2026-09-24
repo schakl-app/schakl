@@ -9,8 +9,10 @@ from __future__ import annotations
 from arq import cron
 
 from app.core.customfields.scoping import register_scopes
+from app.core.events import subscribe
 from app.core.trash import register_trash_dependent
 from app.modules.subscriptions.bulk import SUBSCRIPTION_BULK
+from app.modules.subscriptions.events import on_period_claimed, on_period_released
 from app.modules.subscriptions.impex import (
     SUBSCRIPTION_IMPEX,
     SUBSCRIPTION_TEMPLATE_IMPEX,
@@ -49,3 +51,8 @@ for _dependent in SUBSCRIPTION_TRASH_DEPENDENTS:
 # A subscription custom field may be attached to a type or a standard subscription (§13):
 # the module states the dimensions, core composes the rule.
 register_scopes(ENTITY_TYPE, SUBSCRIPTION_SCOPES)
+
+# A one-time agreement is completed by the document that bills it and reopened by the one
+# that lets it go — `invoicing` owns the claim tables and says what happened (§6).
+subscribe("subscription.period_claimed", on_period_claimed)
+subscribe("subscription.period_released", on_period_released)

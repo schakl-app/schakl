@@ -1385,25 +1385,28 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   kind over the page), so the agreement's page can print what it covers without a lookup of its
   own. The per-record routes (`POST /{id}/links`, `DELETE /{id}/links/{type}/{id}`) exist because a
   host page holds one link, not the agreement's whole set.
-- **A product sold once is a subscription with no cycle, and the claim on one thing is a
-  column** (`invoicing/sales.py`, `docs/INVOICING.md`). The price list said what the agency
-  sells and the invoice line said what was billed, and nothing between them knew what a client
-  still owed for — a website build agreed in January reached the invoice in March only if
-  somebody remembered. `ProductSale` is that record, priced from the list **once** (a snapshot,
-  the tax-rate discipline: a re-priced product never rewrites a sale) and attached to a client
-  and optionally a project, and it reaches exactly the three places an agreement period does —
-  the client's `outstanding` picker, the org-wide backlog (its own `source=sale` and tile) and
-  the line that bills it (`LineWrite.sale_id`). Three rules generalise. **The claim's shape
-  follows the unit**: a period table exists because an agreement owes *several* and the pair is
-  the unit; a sale is one thing on one document, so `invoice_id` on the row is the whole claim
-  — rebuilt from the lines on every save, `FOR UPDATE` on the candidates, a 409 naming the line
-  for a sale another document holds, and a stale or foreign id billing *less* (blanked before
-  the FK can 500). **Money is frozen once paper bills it**: an invoiced sale accepts only its
-  notes and project, and the way to change its price is to take the line off the document.
-  **And a register learns from the records that point at it**: `GET /products?usage=true`
-  attaches how often, for how much and when last each product was sold, so Instellingen →
-  Facturatie is a searchable table with a *Verkocht* column rather than a list of names — and
-  says it counts recorded sales only, because a line pick copies values and leaves no trace.
+- **A product sold once is an agreement with no cycle, and a second record for it would be
+  a second copy of everything an agreement has** (`SubscriptionInterval.ONCE`,
+  `docs/INVOICING.md`). The first cut built a separate `invoicing_product_sales` row — client,
+  project, snapshot price, its own claim column, its own panels and backlog source — and it was
+  wrong in kind before it was wrong in detail: a website build wants the standard subscription it
+  is made from, the type whose task templates spawn, the project link, the notes with variables,
+  the custom fields, the auto-invoice level, and every one of those would have had to be built
+  twice. So `once` is **zero months**, and zero months means *no cycle* everywhere
+  `period_months` is read: `period_boundaries` offers the anchor alone, activation derives it as
+  the start date (or today — never in the past), the cron fires once and sets `completed`, and
+  `monthly_equivalent` is `None` so MRR never announces a sale as run-rate. Three rules
+  generalise. **A status that is a fact about the paper is set by the paper, not the form**:
+  `completed` is written by the cron that drafts and by `subscriptions/events.py` when a
+  document claims the period by hand — `invoicing` owns the claim tables, so its claim writes
+  emit `subscription.period_claimed` / `period_released` and the owner decides what they mean
+  (§6's event bus, both directions: a deleted draft reopens the agreement). **Provenance is a
+  column, never a copy source**: `product_id` on a preset and on an agreement says what
+  price-list product it sells, the pick copies name and amount and both stay the agreement's
+  own, and the price list learns where it is used (`?usage=true`). And **the fix for "was this
+  ever billed" is one seam, not one screen**: a picker whose confirm was a bare `Button` inside
+  the document form submitted the form with the stale empty `lines` field — every `Button`
+  rendered inside a form needs `type="button"` unless it is the submit.
 - **A ride-along write carries the gates of the module it writes into, not of the route it rode
   in on** (#314). Finishing a task and recording the hours it took were two unrelated acts, so
   the hours got logged later from memory or not at all; `TaskUpdate.log_time` makes them one

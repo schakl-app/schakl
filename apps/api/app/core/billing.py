@@ -204,7 +204,14 @@ def period_boundaries(
     "settled". Applied before the cap, so a settled year never costs an open one its place.
     """
     if months <= 0:
-        return [], False
+        # A one-time agreement (``interval = once``, zero months) owes exactly one period: its
+        # anchor — unless the operator says it was invoiced already, or the agreement ended
+        # before the day it would have been billed. Nothing to walk in either direction.
+        if billed_until is not None and anchor <= billed_until:
+            return [], False
+        if end_date is not None and anchor > end_date:
+            return [], False
+        return [anchor], False
     anchor = min(anchor, end_date) if end_date is not None else anchor
     out: list[date] = []
     boundary = anchor

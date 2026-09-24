@@ -17,7 +17,7 @@ import type { LayoutServerLoad } from "./$types";
  */
 export const load: LayoutServerLoad = async (event) => {
   const api = apiFor(event);
-  const [companies, projects, definitions, companyDefinitions] = await Promise.all([
+  const [companies, projects, definitions, companyDefinitions, products] = await Promise.all([
     api.GET("/api/v1/companies", {
       params: { query: { limit: 200, offset: 0, count: false, sort: "name" } },
     }),
@@ -26,6 +26,9 @@ export const load: LayoutServerLoad = async (event) => {
       params: { query: { entity_type: "subscription" } },
     }),
     api.GET("/api/v1/custom-fields/definitions", { params: { query: { entity_type: "company" } } }),
+    // The price list, for the "which product does this sell" picker. A caller without the
+    // invoicing read simply gets no picker (the API answers 403, the list stays empty).
+    api.GET("/api/v1/invoicing/products").catch(() => ({ data: undefined })),
   ]);
   return {
     companies: lookupItems(companies, "companies").map((c) => ({
@@ -42,5 +45,6 @@ export const load: LayoutServerLoad = async (event) => {
     })),
     definitions: definitions.data ?? [],
     companyDefinitions: companyDefinitions.data ?? [],
+    products: products.data ?? [],
   };
 };

@@ -14,9 +14,6 @@ export type SellerDetails = components["schemas"]["SellerDetails"];
 export type LineKind = components["schemas"]["LineKind"];
 export type BillableSubscription = components["schemas"]["BillableSubscription"];
 export type BillableDomain = components["schemas"]["BillableDomain"];
-/** A product sold once (a subscription with no cycle), still to be invoiced or on a document. */
-export type ProductSale = components["schemas"]["ProductSaleRead"];
-export type BillableSale = components["schemas"]["BillableSale"];
 export type PeriodOffer = components["schemas"]["PeriodOffer"];
 export type Outstanding = components["schemas"]["OutstandingRead"];
 /** One online-payment attempt (#267). Per *attempt*, never per invoice: a checkout expires in

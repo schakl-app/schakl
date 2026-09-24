@@ -49,12 +49,25 @@ class SubscriptionStatus(StrEnum):
     ACTIVE = "active"
     PAUSED = "paused"
     CANCELLED = "cancelled"
+    #: A one-time agreement (``interval = once``) whose one period a document now bills. Set by
+    #: the cycle cron when it drafts, and by ``events.on_period_claimed`` when a line is picked
+    #: by hand; reopened to ``active`` when that document lets the period go. Never chosen on a
+    #: form: it is a fact about the paper, not a decision.
+    COMPLETED = "completed"
 
 
 class SubscriptionInterval(StrEnum):
     MONTHLY = "monthly"
     QUARTERLY = "quarterly"
     YEARLY = "yearly"
+    #: A subscription with no cycle: the agreement owes exactly one period — its
+    #: ``next_invoice_date``, derived as the start date (never in the past) — and is
+    #: ``completed`` the moment a document bills it. Everything else an agreement has (a
+    #: standard subscription, a type and its task templates, project and website links, notes
+    #: with variables on the invoice, custom fields, the backlog and the editor's picker)
+    #: applies unchanged; that is the whole reason a one-time product is an agreement and not
+    #: a record of its own.
+    ONCE = "once"
 
 
 class SubscriptionType(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
@@ -146,6 +159,11 @@ class SubscriptionTemplate(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, 
     #: like ``billed_in_advance``, so the preset stays the one place the decision is made —
     #: and one agreement may say otherwise (``Subscription.notes_on_invoice_override``).
     notes_on_invoice: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    #: The price-list product this preset sells (``invoicing_products``) — a bare UUID, §6:
+    #: validated through the table on write, never FK-coupled to another module. What ties a
+    #: product to the agreements made from the preset, so the price list can say where it is
+    #: used; the preset's own money stays its own (a re-priced product changes nothing here).
+    product_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
@@ -265,6 +283,10 @@ class Subscription(
     rollover: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     notice_period_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: The price-list product this agreement sells, copied from its preset at create or picked
+    #: on the form (a bare UUID, §6). Provenance for the price list's "where is this used";
+    #: the agreement's own name and price are its own from the moment it exists.
+    product_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
 
 
 class SubscriptionPrice(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):

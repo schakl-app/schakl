@@ -390,10 +390,10 @@
                 <th class="hidden py-2 pr-3 text-left font-semibold sm:table-cell"
                   >{t("invoicing.line.tax")}</th
                 >
-                <!-- Recorded sales only (a line pick copies values and leaves no trace), which
-                     is why the header says "verkocht" and the hint above says how it counts. -->
+                <!-- Agreements and presets that name the product (a line pick copies values and
+                     leaves no trace) — the hint under the table says how it counts. -->
                 <th class="py-2 pr-3 text-right font-semibold"
-                  >{t("settings.invoicing.products_sold")}</th
+                  >{t("settings.invoicing.products_used")}</th
                 >
                 <th class="w-8 py-2"></th>
               </tr>
@@ -430,12 +430,28 @@
                       data.locale,
                     ) || "—"}
                   </td>
-                  <td class="py-2 pr-3 text-right tabular-nums text-text-muted">
-                    {#if product.sales_count}
-                      <span class="text-text">{product.sales_count}×</span>
-                      · {docMoney(Number(product.sales_amount), getCurrency(), data.locale)}
+                  <td class="py-2 pr-3 text-right text-xs text-text-muted">
+                    {#if product.agreement_count || product.template_count}
+                      {#if product.agreement_count}
+                        <span class="block text-text"
+                          >{product.agreement_count === 1
+                            ? t("settings.invoicing.products_used_agreements_one")
+                            : t("settings.invoicing.products_used_agreements", {
+                                count: String(product.agreement_count),
+                              })}</span
+                        >
+                      {/if}
+                      {#if product.template_count}
+                        <span class="block"
+                          >{product.template_count === 1
+                            ? t("settings.invoicing.products_used_templates_one")
+                            : t("settings.invoicing.products_used_templates", {
+                                count: String(product.template_count),
+                              })}</span
+                        >
+                      {/if}
                       {#if product.last_sold_on}
-                        <span class="block text-xs">{fmtNumericDate(product.last_sold_on)}</span>
+                        <span class="block">{fmtNumericDate(product.last_sold_on)}</span>
                       {/if}
                     {:else}
                       —
@@ -484,6 +500,7 @@
             </tbody>
           </table>
         </div>
+        <p class="mt-2 text-xs text-text-muted">{t("settings.invoicing.products_used_hint")}</p>
       {/if}
     {/if}
   </section>

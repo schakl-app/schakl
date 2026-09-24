@@ -22,6 +22,7 @@
   import FilterBar from "$lib/core/filters/FilterBar.svelte";
   import type { FilterDef } from "$lib/core/filters/types";
   import ColumnPicker from "$lib/core/ui/ColumnPicker.svelte";
+  import Combobox from "$lib/core/ui/Combobox.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import DataTable from "$lib/core/ui/DataTable.svelte";
   import Markdown from "$lib/core/ui/Markdown.svelte";
@@ -42,7 +43,7 @@
 
   type Template = (typeof data.templates)[number];
 
-  const INTERVALS = ["monthly", "quarterly", "yearly"] as const;
+  const INTERVALS = ["once", "monthly", "quarterly", "yearly"] as const;
 
   const busy = new InFlight();
   let showModal = $state(false);
@@ -130,6 +131,7 @@
     interval: "monthly",
     includedHours: "",
     notes: "",
+    productId: "",
   });
   function seedTemplatePreview() {
     tpv = {
@@ -139,7 +141,24 @@
       interval: editing?.interval ?? "monthly",
       includedHours: String(editing?.included_hours ?? ""),
       notes: editing?.notes ?? "",
+      productId: editing?.product_id ?? "",
     };
+  }
+  // The price-list product this preset sells: a pick copies the name and the amount (both stay
+  // editable) and is kept as provenance, so the price list can say where it is used.
+  const productItems = $derived(
+    data.products.map((p) => ({
+      value: p.id,
+      label: p.name,
+      hint: [p.code, money(String(p.unit_price))].filter(Boolean).join(" · "),
+    })),
+  );
+  function pickProduct(id: string) {
+    tpv.productId = id;
+    const product = data.products.find((p) => p.id === id);
+    if (!product) return;
+    tpv.name = product.name;
+    tpv.amount = String(Number(product.unit_price));
   }
   const templatePreview = $derived(
     hasNoteVariables(tpv.notes)
@@ -356,6 +375,22 @@
           </p>
         {/if}
       </div>
+      {#if data.products.length > 0 || tpv.productId}
+        <div>
+          <label for="tpl-product" class="mb-1 block text-sm text-text"
+            >{t("subscriptions.field.product")}</label
+          >
+          <Combobox
+            id="tpl-product"
+            name="product_id"
+            items={productItems}
+            value={tpv.productId}
+            placeholder={t("subscriptions.field.product_placeholder")}
+            onselect={pickProduct}
+          />
+          <p class="mt-1 text-xs text-text-muted">{t("subscriptions.field.product_hint")}</p>
+        </div>
+      {/if}
       <div class="grid gap-3 sm:grid-cols-2">
         <div>
           <label for="tpl-type" class="mb-1 block text-sm text-text"

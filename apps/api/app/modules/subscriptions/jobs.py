@@ -14,7 +14,6 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.billing import period_span
 from app.core.events import SystemContext, emit
 from app.core.jobs import run_per_org
 from app.core.models import Org
@@ -31,6 +30,7 @@ from app.modules.subscriptions.service import (
     document_notes,
     invoice_notes,
     period_months,
+    period_of,
     with_note,
 )
 
@@ -90,11 +90,16 @@ async def _advance_org(org: Org, session: AsyncSession) -> None:
         # whole answer the next morning rather than a month of surprises.
         while sub.next_invoice_date is not None and sub.next_invoice_date <= today:
             invoice_date = sub.next_invoice_date
-            period_start, period_end = period_span(invoice_date, months, advance=advance)
+            period_start, period_end = period_of(invoice_date, months, advance=advance)
             # A period the operator says was invoiced already (``billed_until``) rolls the
             # cycle forward and raises nothing — the backlog reads the same statement, so the
             # two halves of "what is still to invoice" agree (docs/INVOICING.md).
             if sub.billed_until is not None and period_end <= sub.billed_until:
+                if months == 0:
+                    # The one period a one-time agreement owes was invoiced elsewhere: done.
+                    sub.next_invoice_date = None
+                    sub.status = SubscriptionStatus.COMPLETED.value
+                    continue
                 next_date = add_months(invoice_date, months)
                 sub.next_invoice_date = (
                     None if sub.end_date is not None and next_date > sub.end_date else next_date
@@ -126,7 +131,7 @@ async def _advance_org(org: Org, session: AsyncSession) -> None:
                     "auto_invoice_mode": sub.auto_invoice_mode,
                     "amount": str(amount) if amount is not None else None,
                     "currency": sub.currency,
-                    "period_start": period_start.isoformat(),
+                    "period_start": period_start.isoformat() if period_start else None,
                     "period_end": period_end.isoformat(),
                     # The clause on its own too, for the consumer's no-lines fallback,
                     # which builds a line from ``name`` and adds the period itself.
@@ -143,12 +148,19 @@ async def _advance_org(org: Org, session: AsyncSession) -> None:
                     ],
                 },
             )
+            fired += 1
+            if months == 0:
+                # A one-time agreement fires once and is finished: no next boundary, and the
+                # status says the paper exists. `events.on_period_released` reopens it if
+                # that document is later deleted.
+                sub.next_invoice_date = None
+                sub.status = SubscriptionStatus.COMPLETED.value
+                continue
             next_date = add_months(invoice_date, months)
             # A cycle past the agreed end has nothing left to invoice.
             sub.next_invoice_date = (
                 None if sub.end_date is not None and next_date > sub.end_date else next_date
             )
-            fired += 1
     if due:
         logger.info(
             "advanced %s due subscriptions (%s periods) in org %s", len(due), fired, org.slug

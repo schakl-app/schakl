@@ -20,13 +20,7 @@
   import Modal from "$lib/core/ui/Modal.svelte";
 
   import { docMoney } from "./types";
-  import type {
-    BillableDomain,
-    BillableSale,
-    BillableSubscription,
-    LineKind,
-    UnbilledEntry,
-  } from "./types";
+  import type { BillableDomain, BillableSubscription, LineKind, UnbilledEntry } from "./types";
 
   /** One tickable thing. Whatever the section, the dialog only ever offers priced rows. */
   export interface Offer {
@@ -47,7 +41,6 @@
     hours,
     subscriptions = [],
     domains = [],
-    sales = [],
     currency,
     locale,
     loading = false,
@@ -58,7 +51,6 @@
     hours?: { entries: UnbilledEntry[]; truncated?: boolean; total_count?: number } | null;
     subscriptions?: BillableSubscription[];
     domains?: BillableDomain[];
-    sales?: BillableSale[];
     currency: string;
     locale: string;
     loading?: boolean;
@@ -138,22 +130,8 @@
     return out;
   }
 
-  /** Sales: one row each — a sale *is* the unit, so there is no period to expand. */
-  const saleOffers = $derived.by((): Offer[] =>
-    sales.map((sale) => ({
-      id: `p:${sale.id}`,
-      label: sale.description || sale.name,
-      hint: [fmtDayMonthYear(sale.sold_on), sale.project_name].filter(Boolean).join(" · "),
-      quantity: String(Number(sale.quantity)),
-      unitPrice: String(Number(sale.unit_price)),
-      amount: Number(sale.amount),
-      blocked: sale.already_billed ? t("invoicing.line.subscription_billed") : "",
-    })),
-  );
-
   const offers = $derived.by((): Offer[] => {
     if (kind === "hours") return hourOffers;
-    if (kind === "product") return saleOffers;
     // One section, one source (#302). The two used to share this dialog, which meant opening
     // "Abonnementen" on a client with forty domains buried three retainers in a list of
     // renewals — and the prefixes are what carry the kind back, so mixing them also made the
@@ -216,11 +194,6 @@
       title: "invoicing.outstanding.domains_title",
       hint: "invoicing.outstanding.domains_hint",
       empty: "invoicing.outstanding.domains_empty",
-    },
-    product: {
-      title: "invoicing.outstanding.sales_title",
-      hint: "invoicing.outstanding.sales_hint",
-      empty: "invoicing.outstanding.sales_empty",
     },
   };
   const copy = $derived(COPY[kind] ?? COPY.subscription);
