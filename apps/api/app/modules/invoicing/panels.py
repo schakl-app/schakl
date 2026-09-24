@@ -10,8 +10,10 @@ import uuid
 
 from app.core.tenancy import RequestContext
 from app.modules.invoicing.calc import outstanding_of
+from app.modules.invoicing.sales import ProductSaleService
+from app.modules.invoicing.schemas import ProductSaleList
 from app.modules.invoicing.service import InvoiceService, QuoteService, org_today
-from app.registry import SIZE_HALF, PanelSpec
+from app.registry import PROMINENCE_PRIMARY, SIZE_HALF, PanelSpec
 
 
 async def _invoicing_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
@@ -79,4 +81,32 @@ invoicing_company_panel = PanelSpec(
     requires_permission="invoicing.invoice.read",
     size=SIZE_HALF,
     empty_when=lambda data: not data.get("invoices") and not data.get("quotes"),
+)
+
+
+async def _sales_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
+    """The client's one-time sales: what is still to be invoiced first, then the rest.
+
+    Five rows and the whole set's open figure (#407's rule): the heading prints "€ 1.250
+    nog te factureren" over a list that may show fewer rows than that number covers, and
+    says so with a link to the register.
+    """
+    page = await ProductSaleService(ctx).list(limit=5, offset=0, company_id=company_id)
+    # The list route's own shape, JSON-coerced: the web panel and the list page read one
+    # vocabulary, so a field added to ``ProductSaleRead`` reaches the hub without a mapping.
+    return ProductSaleList.model_validate(page).model_dump(mode="json")
+
+
+invoicing_sales_panel = PanelSpec(
+    key="invoicing.sales",
+    entity_type="company",
+    title_key="invoicing.sales.panel_title",
+    provider=_sales_provider,
+    position=66,
+    # The register the write rides on (#310): recording a sale is `invoice.write`, and the
+    # module scope keeps a client off it — a sale is the agency's note, never theirs.
+    requires_permission="invoicing.invoice.read",
+    prominence=PROMINENCE_PRIMARY,
+    size=SIZE_HALF,
+    empty_when=lambda data: not data.get("items"),
 )

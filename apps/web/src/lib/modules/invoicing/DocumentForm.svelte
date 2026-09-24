@@ -148,6 +148,7 @@
       domain_id: line.domain_id ?? undefined,
       period_start: line.period_start ?? undefined,
       period_end: line.period_end ?? undefined,
+      sale_id: line.sale_id ?? undefined,
     })),
   );
 
@@ -434,6 +435,7 @@
       hours={outstanding?.hours ?? null}
       subscriptions={outstanding?.subscriptions ?? []}
       domains={outstanding?.domains ?? []}
+      sales={outstanding?.sales ?? []}
       defaultTaxRateId={settings?.default_tax_rate_id ?? ""}
       defaultHourlyRate={settings?.default_hourly_rate ?? ""}
       currency={effectiveCurrency}

@@ -32,7 +32,7 @@
 
   const HOUR_GROUPS = ["day", "week", "month", "year", "company", "project", "user"] as const;
   const BACKLOG_GROUPS = ["company", "month", "source"] as const;
-  const SOURCES = ["hours", "subscription", "domain"] as const;
+  const SOURCES = ["hours", "subscription", "domain", "sale"] as const;
 
   const isHours = $derived(data.source === "hours");
 
@@ -153,6 +153,11 @@
       label: t("invoicing.backlog.tile.domains"),
       amount: sourceTotal("domain"),
     },
+    {
+      source: "sale",
+      label: t("invoicing.backlog.tile.sales"),
+      amount: sourceTotal("sale"),
+    },
   ]);
   const grandTotal = $derived(tiles.reduce((sum, tile) => sum + tile.amount, 0));
 
@@ -204,7 +209,7 @@
 </div>
 <p class="mb-4 text-sm text-text-muted">{t("invoicing.uninvoiced.subtitle")}</p>
 
-<div class="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+<div class="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
   {#each tiles as tile (tile.source)}
     <button
       type="button"
@@ -355,8 +360,11 @@
 
 {#snippet periodCell(row: Row)}
   {@const item = row as Item}
+  <!-- A sale has no span: the day it was sold is the whole answer. -->
   <span class="tabular-nums text-text-muted"
-    >{fmtPeriod(item.period_start ?? item.period_end, item.period_end)}</span
+    >{item.source === "sale"
+      ? fmtNumericDate(item.period_end)
+      : fmtPeriod(item.period_start ?? item.period_end, item.period_end)}</span
   >
   {#if item.future}
     <span class="ml-1 text-xs text-text-muted">· {t("invoicing.backlog.future")}</span>
@@ -364,7 +372,9 @@
 {/snippet}
 
 {#snippet automationCell(row: Row)}
-  <span class="text-text-muted">{t(`invoicing.auto.${(row as Item).auto_mode}`)}</span>
+  {@const mode = (row as Item).auto_mode}
+  <!-- Nothing ever bills a sale on its own; a dash, never "off", which would read as a setting. -->
+  <span class="text-text-muted">{mode ? t(`invoicing.auto.${mode}`) : "—"}</span>
 {/snippet}
 
 {#snippet hoursTotal()}

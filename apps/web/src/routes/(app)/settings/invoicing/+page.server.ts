@@ -18,7 +18,11 @@ export const load: PageServerLoad = async (event) => {
     api.GET("/api/v1/invoicing/tax-rates", { params: { query: { include_inactive: true } } }),
     api.GET("/api/v1/invoicing/templates", { params: { query: { include_inactive: true } } }),
     api.GET("/api/v1/invoicing/providers"),
-    api.GET("/api/v1/invoicing/products", { params: { query: { include_inactive: true } } }),
+    // `usage`: how often each product was sold through a sale record — one grouped read,
+    // for the one screen that asks (the editors' pick lists never do).
+    api.GET("/api/v1/invoicing/products", {
+      params: { query: { include_inactive: true, usage: true } },
+    }),
     // What a template may rearrange. Keys only — this page resolves the labels, because the
     // API does not pick a locale for someone else's screen.
     api.GET("/api/v1/invoicing/template-blocks"),

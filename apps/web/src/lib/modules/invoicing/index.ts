@@ -6,13 +6,16 @@ import FileClock from "@lucide/svelte/icons/file-clock";
 import FileText from "@lucide/svelte/icons/file-text";
 
 import { t } from "$lib/core/i18n";
+import type { ApiClient } from "$lib/core/api/client";
 import { registerWebModule } from "$lib/core/registry";
+import type { EntityPanelContext, EntityPanelSpec } from "$lib/core/registry";
 
 import InvoicingOutstandingWidget from "./InvoicingOutstandingWidget.svelte";
 import InvoicesPortalWidget from "./InvoicesPortalWidget.svelte";
 import BilledPeriodsPanel from "./BilledPeriodsPanel.svelte";
 import InvoicingPanel from "./InvoicingPanel.svelte";
 import QuotesOpenWidget from "./QuotesOpenWidget.svelte";
+import SalesPanel from "./SalesPanel.svelte";
 
 registerWebModule({
   name: "invoicing",
@@ -107,22 +110,45 @@ registerWebModule({
   // by those pages (§6): the claim tables are this module's, and a tenant without invoicing
   // never renders the block. A register, not a working surface: consulted when a client asks
   // "was last year billed?", never news.
-  entityPanels: (["domain", "subscription"] as const).map((entityType) => ({
-    key: "invoicing.billed_periods",
-    module: "invoicing",
-    entityType,
-    titleKey: "invoicing.billed_periods.title",
-    position: 60,
-    prominence: "register" as const,
-    requiresPermission: "invoicing.invoice.read",
-    load: async (api, { entityId }) => {
-      const { data } = await api.GET("/api/v1/invoicing/billed-periods", {
-        params: { query: { source: entityType, source_id: entityId } },
-      });
-      return { items: data ?? [] };
+  entityPanels: [
+    ...(["domain", "subscription"] as const).map<EntityPanelSpec>((entityType) => ({
+      key: "invoicing.billed_periods",
+      module: "invoicing",
+      entityType,
+      titleKey: "invoicing.billed_periods.title",
+      position: 60,
+      prominence: "register" as const,
+      requiresPermission: "invoicing.invoice.read",
+      load: async (api: ApiClient, { entityId }: EntityPanelContext) => {
+        const { data } = await api.GET("/api/v1/invoicing/billed-periods", {
+          params: { query: { source: entityType, source_id: entityId } },
+        });
+        return { items: data ?? [] };
+      },
+      component: BilledPeriodsPanel,
+    })),
+    {
+      // What was sold once *for this project* — a subscription with no cycle, one row per
+      // sale, with "Factureren" on the open ones (docs/INVOICING.md, "One-time sales").
+      // Staff only: a sale is the agency's note of what it is about to charge, and the
+      // module scope on the read keeps a client's `:own` key off the route as well.
+      key: "invoicing.sales",
+      module: "invoicing",
+      entityType: "project",
+      titleKey: "invoicing.sales.panel_title",
+      position: 25,
+      audience: "staff" as const,
+      requiresPermission: "invoicing.invoice.read",
+      requiresScope: "any" as const,
+      load: async (api, { entityId, companyId }) => {
+        const { data } = await api.GET("/api/v1/invoicing/sales", {
+          params: { query: { project_id: entityId, limit: 5 } },
+        });
+        return { ...(data ?? { items: [], total: 0 }), companyId: companyId ?? "" };
+      },
+      component: SalesPanel,
     },
-    component: BilledPeriodsPanel,
-  })),
+  ],
   companyPanels: [
     {
       key: "invoicing.company",
@@ -131,6 +157,14 @@ registerWebModule({
       position: 65,
       // Nothing here yet folds into the hub's one ＋ strip (#364).
       emptyHref: (id: string) => `/invoices?company=${id}`,
+    },
+    {
+      // The client's one-time sales, from the API panel of the same key. No `emptyHref`: the
+      // ＋ that records a sale lives *in* the panel, so the chip unfolds the card in place.
+      key: "invoicing.sales",
+      module: "invoicing",
+      component: SalesPanel,
+      position: 66,
     },
   ],
 });

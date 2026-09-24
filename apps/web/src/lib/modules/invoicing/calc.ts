@@ -29,6 +29,8 @@ export interface EditableLine {
   domain_id?: string;
   period_start?: string;
   period_end?: string;
+  /** The one-time sale a product line bills — the same round trip, no period. */
+  sale_id?: string;
   /** Client-only: a stable key for the `{#each}`. Keying by array index breaks reordering and
    *  makes every row below a deletion re-render with the wrong state. Never sent. */
   key?: string;

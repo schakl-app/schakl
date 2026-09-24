@@ -207,6 +207,52 @@ invoice that owes nothing.
   several. Credit notes and quote conversions copy the kind and deliberately **not** the
   provenance: a correction claims nothing.
 
+## One-time sales: a product sold once (`sales.py`, `invoicing_product_sales`)
+
+A subscription with no cycle. The price list (`Product`) said what the agency sells and the
+invoice line said what was billed, and nothing between them knew *what a client still owes
+for*: a website build agreed in January reached the invoice in March only if somebody
+remembered. A recurring agreement gets that memory from the subscriptions module and its
+cycle; a one-off sale is the same promise made once, so `ProductSale` lives beside the price
+list it was priced from and reaches the same three places an agreement period does — the
+client's `outstanding` picker (`sales`, the Diensten section's *Verkopen kiezen*), the
+org-wide backlog (`source=sale`, its own tile on *Nog te factureren*) and the line that bills
+it (`LineWrite.sale_id`, a `product` line). It is recorded from the record it belongs to —
+the client hub's *Eenmalige verkopen* panel or the project page's, through `SaleDialog` —
+and `POST /sales/{id}/invoice` drafts one document with one line through the ordinary
+create, so the claim is made by the same reconcile a hand-built invoice goes through.
+
+- **Everything on the row is a snapshot.** `product_id` says what preset the sale was priced
+  from (`SET NULL` on delete); name, description, unit, price and rate are copied at the
+  moment of sale, because the price list is re-priced every year and a sale agreed in January
+  bills January's price in March — the tax-rate discipline every line already follows. A sale
+  with no product is legal: "a thing we sold" is not always a thing on the list. `project_id`
+  is a bare UUID (§6), validated against the projects table and refused for another client's
+  project.
+- **The claim is a column, not a period table.** A period is claimed in
+  `invoice_subscription_periods` because an agreement owes *several* and the pair is the unit;
+  a sale is one thing and can be on one invoice, so `invoice_id` on the row is the whole
+  claim. `_reconcile_sales` is `_reconcile_time_entries`' shape: rebuilt from the lines on
+  every save (dropping the line releases), candidates read `FOR UPDATE` so two replicas
+  drafting from the same backlog serialise, a sale another document holds is a 409 naming
+  the line (`errors.invoicing.sale_already_billed`), and a foreign, stale or other client's
+  id bills **less** — `_snapshot_lines` blanks an unknown `sale_id` before the FK can 500 on
+  it. Delete, cancel and a full credit release through `_release_sales`, beside the period
+  releases. No legacy guard: no line carried a `sale_id` before the column existed.
+- **Money is frozen once a document bills it.** `PATCH /sales/{id}` accepts only `notes` and
+  `project_id` on an invoiced sale (409 `errors.invoicing.sale_invoiced` for the rest) and the
+  delete is refused outright: the line has snapshotted the price and the paper may be on the
+  client's desk, so the way to change either is to take the line off the document first.
+- **The price list learns it was sold.** `GET /products?usage=true` attaches `sales_count`,
+  `sales_amount` and `last_sold_on` from one grouped read; Instellingen → Facturatie draws
+  the list as a table with a search, the deactivated rows folded away, and a *Verkocht*
+  column — recorded sales only, because a line pick copies values and leaves no trace.
+- **Never a client surface.** Reads ride `invoice.read:any` (the module scope) and
+  `ProductSale.__portal_horizon_clause__` is `false()`; a client's relationship is with the
+  document that eventually bills the sale, never with the agency's note that it is coming.
+  An uninvoiced sale goes with its client into the trash (`invoicing.sales_open`, non-blocking);
+  an invoiced one is protected by the document's own rule.
+
 ## Automatic invoicing is a level, not a switch (`AutoInvoiceMode`)
 
 `app/core/billing.py` — core vocabulary, because `subscriptions` and `domains` each store an

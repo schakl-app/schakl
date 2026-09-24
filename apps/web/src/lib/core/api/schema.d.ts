@@ -7922,6 +7922,80 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoicing/sales": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Sales
+         * @description One-time product sales — what a client was sold once and whether a document bills it
+         *     yet. ``open`` is what the backlog and the editor's picker offer; ``invoiced`` names the
+         *     document. ``:any``: the agency's sales register, never a client surface.
+         */
+        get: operations["list_sales_api_v1_invoicing_sales_get"];
+        put?: never;
+        /**
+         * Create Sale
+         * @description Record a one-time sale. With ``product_id`` the blanks (name, description, unit, price,
+         *     tax) are copied from the price list **once** — a later re-price never rewrites it.
+         */
+        post: operations["create_sale_api_v1_invoicing_sales_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/sales/{sale_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Sale */
+        get: operations["get_sale_api_v1_invoicing_sales__sale_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Sale
+         * @description Refused (409) while a document bills it — remove the line first.
+         */
+        delete: operations["delete_sale_api_v1_invoicing_sales__sale_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Sale
+         * @description Absent means leave alone. Once a document bills the sale only its project and notes
+         *     may change (409 ``errors.invoicing.sale_invoiced`` for the rest).
+         */
+        patch: operations["update_sale_api_v1_invoicing_sales__sale_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/invoicing/sales/{sale_id}/invoice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Invoice Sale
+         * @description Draft one invoice billing exactly this sale, claiming it. The same create every
+         *     hand-built document goes through; 409 when it is already on one.
+         */
+        post: operations["invoice_sale_api_v1_invoicing_sales__sale_id__invoice_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invoicing/settings": {
         parameters: {
             query?: never;
@@ -17193,6 +17267,48 @@ export interface components {
              * @default false
              */
             truncated: boolean;
+        };
+        /**
+         * BillableSale
+         * @description A one-time product sale still to be invoiced — the picker's fourth bucket, and the
+         *     only one whose row *is* the unit: a sale has no periods, so it is one tick.
+         */
+        BillableSale: {
+            /**
+             * Already Billed
+             * @default false
+             */
+            already_billed: boolean;
+            /** Amount */
+            amount: string;
+            /** Currency */
+            currency: string;
+            /** Description */
+            description?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Project Id */
+            project_id?: string | null;
+            /** Project Name */
+            project_name?: string | null;
+            /** Quantity */
+            quantity: string;
+            /**
+             * Sold On
+             * Format: date
+             */
+            sold_on: string;
+            /** Tax Rate Id */
+            tax_rate_id?: string | null;
+            /** Unit */
+            unit?: string | null;
+            /** Unit Price */
+            unit_price: string;
         };
         /**
          * BillableSubscription
@@ -26993,6 +27109,8 @@ export interface components {
             position: number;
             /** Quantity */
             quantity: string;
+            /** Sale Id */
+            sale_id?: string | null;
             /** Subscription Id */
             subscription_id?: string | null;
             tax_category: components["schemas"]["TaxCategory"];
@@ -27026,6 +27144,8 @@ export interface components {
              * @default 1
              */
             quantity: number | string;
+            /** Sale Id */
+            sale_id?: string | null;
             /** Subscription Id */
             subscription_id?: string | null;
             /** Tax Rate Id */
@@ -29550,14 +29670,16 @@ export interface components {
          * OutstandingRead
          * @description Everything a client still has to be invoiced for, in one round trip.
          *
-         *     Three buckets because the editor has three sections, and one call because the picker
-         *     opens on all three at once: three browser fetches for one dialog is the shape
+         *     Four buckets because the editor has four sections, and one call because the picker
+         *     opens on all of them at once: four browser fetches for one dialog is the shape
          *     ``docs/PERFORMANCE.md`` exists to prevent.
          */
         OutstandingRead: {
             /** Domains */
             domains?: components["schemas"]["BillableDomain"][];
             hours: components["schemas"]["UnbilledRead"];
+            /** Sales */
+            sales?: components["schemas"]["BillableSale"][];
             /** Subscriptions */
             subscriptions?: components["schemas"]["BillableSubscription"][];
         };
@@ -30669,6 +30791,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Last Sold On */
+            last_sold_on?: string | null;
             /** Name */
             name: string;
             /**
@@ -30681,6 +30805,16 @@ export interface components {
              * @default 0
              */
             position: number;
+            /**
+             * Sales Amount
+             * @default 0
+             */
+            sales_amount: string;
+            /**
+             * Sales Count
+             * @default 0
+             */
+            sales_count: number;
             /** Tax Rate Id */
             tax_rate_id?: string | null;
             /** Unit */
@@ -30695,6 +30829,158 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** ProductSaleCreate */
+        ProductSaleCreate: {
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Product Id */
+            product_id?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /**
+             * Quantity
+             * @default 1
+             */
+            quantity: number | string;
+            /** Sold On */
+            sold_on?: string | null;
+            /** Tax Rate Id */
+            tax_rate_id?: string | null;
+            /** Unit */
+            unit?: string | null;
+            /** Unit Price */
+            unit_price?: number | string | null;
+        };
+        /** ProductSaleList */
+        ProductSaleList: {
+            /** Items */
+            items: components["schemas"]["ProductSaleRead"][];
+            /**
+             * Open Amount
+             * @default 0
+             */
+            open_amount: string;
+            /**
+             * Open Count
+             * @default 0
+             */
+            open_count: number;
+            /** Total */
+            total: number;
+        };
+        /** ProductSaleRead */
+        ProductSaleRead: {
+            /**
+             * Amount
+             * @default 0
+             */
+            amount: string;
+            /**
+             * Company Id
+             * Format: uuid
+             */
+            company_id: string;
+            /**
+             * Company Name
+             * @default
+             */
+            company_name: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Currency */
+            currency: string;
+            /** Description */
+            description: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Invoice Id */
+            invoice_id: string | null;
+            /** Invoice Number */
+            invoice_number?: string | null;
+            /** Invoice Status */
+            invoice_status?: string | null;
+            /** Invoiced At */
+            invoiced_at: string | null;
+            /** Name */
+            name: string;
+            /** Notes */
+            notes: string | null;
+            /**
+             * Org Id
+             * Format: uuid
+             */
+            org_id: string;
+            /** Product Id */
+            product_id: string | null;
+            /** Project Id */
+            project_id: string | null;
+            /** Project Name */
+            project_name?: string | null;
+            /** Quantity */
+            quantity: string;
+            /**
+             * Sold On
+             * Format: date
+             */
+            sold_on: string;
+            /**
+             * Status
+             * @default open
+             * @enum {string}
+             */
+            status: "open" | "invoiced";
+            /** Tax Rate Id */
+            tax_rate_id: string | null;
+            /** Unit */
+            unit: string | null;
+            /** Unit Price */
+            unit_price: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ProductSaleUpdate
+         * @description Absent means leave alone; an explicit ``null`` clears (``project_id`` only — a sale
+         *     keeps its client, and its price fields are refused once a document bills it).
+         */
+        ProductSaleUpdate: {
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Quantity */
+            quantity?: number | string | null;
+            /** Sold On */
+            sold_on?: string | null;
+            /** Tax Rate Id */
+            tax_rate_id?: string | null;
+            /** Unit */
+            unit?: string | null;
+            /** Unit Price */
+            unit_price?: number | string | null;
         };
         /** ProductUpdate */
         ProductUpdate: {
@@ -31733,7 +32019,7 @@ export interface components {
         RecurringBacklogItem: {
             /** Amount */
             amount: string;
-            auto_mode: components["schemas"]["AutoInvoiceMode"];
+            auto_mode?: components["schemas"]["AutoInvoiceMode"] | null;
             /** Company Id */
             company_id: string | null;
             /**
@@ -31768,7 +32054,7 @@ export interface components {
              * Source
              * @enum {string}
              */
-            source: "subscription" | "domain";
+            source: "subscription" | "domain" | "sale";
             /**
              * Source Id
              * Format: uuid
@@ -31795,7 +32081,7 @@ export interface components {
              * Source
              * @enum {string}
              */
-            source: "all" | "subscription" | "domain";
+            source: "all" | "subscription" | "domain" | "sale";
             /** Total Amount */
             total_amount: string;
             /** Total Count */
@@ -54898,6 +55184,10 @@ export interface operations {
         parameters: {
             query?: {
                 include_inactive?: boolean;
+                /** @description matches name, article code and description */
+                q?: string | null;
+                /** @description attach how often each product was sold, for what, and when last */
+                usage?: boolean;
             };
             header?: never;
             path?: never;
@@ -55602,8 +55892,8 @@ export interface operations {
             query?: {
                 /** @description company | month | source */
                 group?: "company" | "month" | "source";
-                /** @description all | subscription | domain */
-                source?: "all" | "subscription" | "domain";
+                /** @description all | subscription | domain | sale */
+                source?: "all" | "subscription" | "domain" | "sale";
                 /** @description cap on the item detail, not the totals */
                 limit?: number;
             };
@@ -55620,6 +55910,204 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RecurringBacklogReport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_sales_api_v1_invoicing_sales_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                company_id?: string | null;
+                project_id?: string | null;
+                product_id?: string | null;
+                /** @description all | open | invoiced */
+                status?: string;
+                /** @description matches name and description */
+                q?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductSaleList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_sale_api_v1_invoicing_sales_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProductSaleCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductSaleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_sale_api_v1_invoicing_sales__sale_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sale_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductSaleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_sale_api_v1_invoicing_sales__sale_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sale_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_sale_api_v1_invoicing_sales__sale_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sale_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProductSaleUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductSaleRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    invoice_sale_api_v1_invoicing_sales__sale_id__invoice_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sale_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoiceRead"];
                 };
             };
             /** @description Validation Error */

@@ -84,6 +84,7 @@ from app.modules.invoicing.models import (
     LineKind,
     PaymentIntentStatus,
     Product,
+    ProductSale,
     Quote,
     QuoteLine,
     QuoteStatus,
@@ -109,7 +110,6 @@ from app.modules.invoicing.render import (
 from app.modules.invoicing.render.qr import pair_was_replaced, qr_svg, readable_pair
 from app.modules.invoicing.sample import sample_document
 from app.modules.invoicing.schemas import (
-    BacklogSource,
     DocumentSend,
     InvoiceCreate,
     InvoiceCredit,
@@ -120,6 +120,7 @@ from app.modules.invoicing.schemas import (
     InvoicingSettingsWrite,
     LineWrite,
     PaymentWrite,
+    PeriodClaimSource,
     ProductCreate,
     ProductUpdate,
     QuoteCreate,
@@ -586,12 +587,49 @@ class ProductService:
         self.ctx = ctx
         self.repo = ctx.repo(Product)
 
-    async def list(self, *, include_inactive: bool = False) -> Sequence[Product]:
+    async def list(
+        self, *, include_inactive: bool = False, q: str | None = None
+    ) -> Sequence[Product]:
         stmt = self.repo.scoped_select()
         if not include_inactive:
             stmt = stmt.where(Product.active.is_(True))
+        if q:
+            needle = f"%{q.strip()}%"
+            stmt = stmt.where(
+                Product.name.ilike(needle)
+                | Product.code.ilike(needle)
+                | Product.description.ilike(needle)
+            )
         stmt = stmt.order_by(Product.position, func.lower(Product.name))
         return list((await self.ctx.session.execute(stmt)).scalars().all())
+
+    async def usage(self, products: Sequence[Product]) -> dict[uuid.UUID, dict[str, Any]]:
+        """How often each product was **sold** (through a sale record), what for, and when
+        last — one grouped read for the whole list (docs/PERFORMANCE.md). A line pick copies
+        values and leaves no trace, so this is recorded sales only; the screen says so."""
+        if not products:
+            return {}
+        rows = await self.ctx.session.execute(
+            self.ctx.repo(ProductSale)
+            .scoped_select()
+            .with_only_columns(
+                ProductSale.product_id,
+                func.count(ProductSale.id),
+                func.coalesce(func.sum(ProductSale.quantity * ProductSale.unit_price), 0),
+                func.max(ProductSale.sold_on),
+            )
+            .where(ProductSale.product_id.in_([p.id for p in products]))
+            .group_by(ProductSale.product_id)
+            .order_by(None)
+        )
+        return {
+            row[0]: {
+                "sales_count": int(row[1] or 0),
+                "sales_amount": round_cents(Decimal(str(row[2] or 0))),
+                "last_sold_on": row[3],
+            }
+            for row in rows
+        }
 
     async def create(self, data: ProductCreate) -> Product:
         self.ctx.require("invoicing.settings.manage")
@@ -1155,6 +1193,19 @@ async def _snapshot_lines(
             )
         ).scalars()
         rates = {rate.id: rate for rate in found}
+    # ``sale_id`` is a real FK (this module's own row), so a stale or foreign id would 500 at
+    # flush instead of being skipped the way ``_reconcile_sales`` skips it. Resolve the set
+    # once and let an unknown one land as a plain product line — bill less, never guess.
+    sale_ids = {line.sale_id for line in lines if provenance and line.sale_id is not None}
+    known_sales: set[uuid.UUID] = set()
+    if sale_ids:
+        known_sales = set(
+            await ctx.session.scalars(
+                select(ProductSale.id).where(
+                    ProductSale.org_id == ctx.org.id, ProductSale.id.in_(sale_ids)
+                )
+            )
+        )
 
     rows: list[dict[str, Any]] = []
     for index, line in enumerate(lines):
@@ -1191,6 +1242,7 @@ async def _snapshot_lines(
                 "domain_id": line.domain_id,
                 "period_start": line.period_start,
                 "period_end": line.period_end,
+                "sale_id": line.sale_id if line.sale_id in known_sales else None,
             }
         rows.append(row)
     return rows
@@ -1974,6 +2026,7 @@ class InvoiceService(_DocumentService):
         # carry none and link separately.
         await self._reconcile_time_entries(invoice, data.lines)
         await self._claim_periods(invoice, data.lines)
+        await self._reconcile_sales(invoice, data.lines)
         await self._attach([invoice], payments=True)
         return invoice
 
@@ -2042,6 +2095,7 @@ class InvoiceService(_DocumentService):
             # what they bill — an edited draft stamped entries nobody could ever un-stamp.
             await self._reconcile_time_entries(invoice, data.lines)
             await self._claim_periods(invoice, data.lines)
+            await self._reconcile_sales(invoice, data.lines)
 
         await ActivityService(self.ctx).record_update(
             self.entity_type, invoice.id, before, snapshot(invoice, self.audited_fields)
@@ -2094,6 +2148,7 @@ class InvoiceService(_DocumentService):
             )
         await self._release_time_entries(invoice.id)
         await self._release_subscription_periods(invoice.id)
+        await self._release_sales(invoice.id)
         await self._revert_quote(invoice)
         await self.repo.delete(invoice)
 
@@ -2239,6 +2294,7 @@ class InvoiceService(_DocumentService):
         # A cancelled invoice bills nothing, so its periods go back to the cycle cron —
         # otherwise cancelling would silently retire an agreement's month for good.
         await self._release_subscription_periods(invoice.id)
+        await self._release_sales(invoice.id)
         invoice = await self.repo.update(
             invoice, status=InvoiceStatus.CANCELLED.value, cancelled_at=datetime.now(UTC)
         )
@@ -2938,6 +2994,7 @@ class InvoiceService(_DocumentService):
             return
         await self._release_time_entries(source.id)
         await self._release_subscription_periods(source.id)
+        await self._release_sales(source.id)
         await ActivityService(self.ctx).record(
             self.entity_type, source.id, "work_released"
         )
@@ -3535,6 +3592,7 @@ class InvoiceService(_DocumentService):
         # document a client could be shown their own copy of.
         self.ctx.require("invoicing.invoice.read", "any")
         from app.modules.domains.service import DomainService
+        from app.modules.invoicing.sales import ProductSaleService
         from app.modules.subscriptions.service import SubscriptionService
 
         org_default = (await self.settings.row()).auto_invoice_mode
@@ -3563,7 +3621,27 @@ class InvoiceService(_DocumentService):
             ),
             source="domain",
             org_default=org_default,
-        )
+        ) + [
+            # A sale is one row with no period: what the claim tables key a period on is
+            # its own id, and the day it was sold stands where the period would end, so
+            # the month grouping and the oldest-first sort treat it like everything else.
+            {
+                "id": f"sale:{sale['id']}:{sale['sold_on']}",
+                "source": "sale",
+                "source_id": sale["id"],
+                "name": sale["name"],
+                "company_id": sale["company_id"],
+                "company_name": sale["company_name"],
+                "currency": sale["currency"],
+                "period_start": None,
+                "period_end": sale["sold_on"],
+                "amount": Decimal(str(sale["amount"])),
+                "future": False,
+                "no_price": False,
+                "auto_mode": None,
+            }
+            for sale in await ProductSaleService(self.ctx).open_sales()
+        ]
         totals_by_source = {
             kind: {
                 "count": sum(1 for i in every if i["source"] == kind),
@@ -3571,7 +3649,7 @@ class InvoiceService(_DocumentService):
                     sum((i["amount"] for i in every if i["source"] == kind), Decimal(0))
                 ),
             }
-            for kind in ("subscription", "domain")
+            for kind in ("subscription", "domain", "sale")
         }
 
         items = every if source == "all" else [i for i in every if i["source"] == source]
@@ -3659,6 +3737,7 @@ class InvoiceService(_DocumentService):
         """
         self.ctx.require("invoicing.invoice.write")
         from app.modules.domains.service import DomainService
+        from app.modules.invoicing.sales import ProductSaleService
         from app.modules.subscriptions.service import SubscriptionService
 
         await _company_row(self.ctx, company_id)
@@ -3666,6 +3745,9 @@ class InvoiceService(_DocumentService):
         renewals = await DomainService(self.ctx).open_renewals(company_id)
         return {
             "hours": await self.unbilled(company_id),
+            # This module's own rows, so no claims pass: an open sale is unclaimed by
+            # definition, and a claimed one is on a document rather than on offer.
+            "sales": await ProductSaleService(self.ctx).open_sales(company_id),
             "subscriptions": await self._with_claims(
                 agreements,
                 spec=_CLAIM_SOURCES[0],
@@ -3855,8 +3937,73 @@ class InvoiceService(_DocumentService):
             ):
                 await claims.delete(row)
 
+    async def _reconcile_sales(self, invoice: Invoice, lines: Sequence[LineWrite]) -> None:
+        """Make the invoice bill exactly the one-time sales its **lines** now say it bills.
+
+        The sale's claim is its own ``invoice_id`` (one thing, one document — a period table
+        would be a table of one row per row), so the reconcile is ``_reconcile_time_entries``'
+        shape: sales this document holds that no line names any more are released, and
+        sales the lines name are claimed. No legacy guard, because no line ever carried a
+        ``sale_id`` before the column existed — a product line without one is a plain line.
+
+        Every id is re-validated against this org, this invoice's client and *unclaimed*:
+        a stale form, a foreign id or a double-submit can only ever bill **less**. A sale
+        another document already holds is refused with the line named, the same 409 a
+        claimed period gets — the alternative is two invoices for one delivery.
+        """
+        wanted = list(dict.fromkeys(line.sale_id for line in lines if line.sale_id))
+        sales = self.ctx.repo(ProductSale)
+        held = list(
+            await self.ctx.session.scalars(
+                sales.scoped_select().where(ProductSale.invoice_id == invoice.id)
+            )
+        )
+        stale = [row for row in held if row.id not in set(wanted)]
+        for row in stale:
+            await sales.update(row, invoice_id=None, invoiced_at=None)
+        fresh = [sid for sid in wanted if sid not in {row.id for row in held}]
+        if not fresh:
+            return
+        await self.ctx.session.flush()
+        # ``FOR UPDATE`` on the candidates: two replicas drafting from the same backlog at
+        # once serialise here instead of both reading "unclaimed" (docs/PAYMENTS.md's rule).
+        candidates = {
+            row.id: row
+            for row in await self.ctx.session.scalars(
+                sales.scoped_select()
+                .where(ProductSale.id.in_(fresh), ProductSale.company_id == invoice.company_id)
+                .with_for_update()
+            )
+        }
+        for sale_id in fresh:
+            row = candidates.get(sale_id)
+            if row is None:
+                continue  # foreign, another client's, or gone — bill less, never guess
+            if row.invoice_id is not None and row.invoice_id != invoice.id:
+                raise AppError(
+                    "conflict",
+                    "errors.invoicing.sale_already_billed",
+                    status_code=409,
+                    fields={"lines": "errors.invoicing.sale_already_billed"},
+                )
+            await sales.update(row, invoice_id=invoice.id, invoiced_at=datetime.now(UTC))
+            await ActivityService(self.ctx).record(
+                "product_sale", row.id, "invoiced", {"invoice_id": str(invoice.id)}
+            )
+
+    async def _release_sales(self, invoice_id: uuid.UUID) -> None:
+        """Give this invoice's one-time sales back to the backlog (delete/cancel/credit)."""
+        sales = self.ctx.repo(ProductSale)
+        for row in await self.ctx.session.scalars(
+            sales.scoped_select().where(ProductSale.invoice_id == invoice_id)
+        ):
+            await sales.update(row, invoice_id=None, invoiced_at=None)
+            await ActivityService(self.ctx).record(
+                "product_sale", row.id, "released", {"invoice_id": str(invoice_id)}
+            )
+
     async def billed_periods(
-        self, *, source: BacklogSource, source_id: uuid.UUID
+        self, *, source: PeriodClaimSource, source_id: uuid.UUID
     ) -> list[dict[str, Any]]:
         """Every period of one agreement or domain that a document holds, newest first.
 

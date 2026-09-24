@@ -12,7 +12,12 @@ import type { RequestHandler } from "./$types";
  *  all three sections, because the dialog opens on all three (docs/PERFORMANCE.md). */
 export const GET: RequestHandler = async (event) => {
   const company_id = event.url.searchParams.get("company_id") ?? "";
-  const empty = { hours: { entries: [], total_minutes: 0, hourly_rate: null }, subscriptions: [], domains: [] };
+  const empty = {
+    hours: { entries: [], total_minutes: 0, hourly_rate: null },
+    subscriptions: [],
+    domains: [],
+    sales: [],
+  };
   if (!company_id) return json(empty);
   const { data, error } = await apiFor(event).GET("/api/v1/invoicing/outstanding", {
     params: { query: { company_id } },

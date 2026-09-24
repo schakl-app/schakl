@@ -5,6 +5,7 @@
   import Upload from "@lucide/svelte/icons/upload";
 
   import { enhance } from "$app/forms";
+  import { fmtNumericDate } from "$lib/core/format";
   import ImportWizard from "$lib/core/impex/ImportWizard.svelte";
   import CountryInput from "$lib/core/ui/CountryInput.svelte";
   import FormCheckbox from "$lib/core/ui/FormCheckbox.svelte";
@@ -57,6 +58,21 @@
     editingProduct = product;
     productOpen = true;
   }
+  // The price list is a register: a search over name, code and description, and the
+  // deactivated rows folded away by default — a product retired last year is still the row a
+  // sale from then points at, so it is never deleted to tidy the list, only hidden from it.
+  let productQuery = $state("");
+  let showInactiveProducts = $state(false);
+  const inactiveProductCount = $derived(data.products.filter((p) => !p.active).length);
+  const visibleProducts = $derived.by(() => {
+    const needle = productQuery.trim().toLowerCase();
+    return data.products.filter(
+      (p) =>
+        (showInactiveProducts || p.active) &&
+        (!needle ||
+          [p.name, p.code, p.description].some((v) => (v ?? "").toLowerCase().includes(needle))),
+    );
+  });
 
   // --- bringing the back catalogue in (docs/INVOICING.md) ---------------------- #
   // The same wizard and zip dialog the Facturen list offers, hosted here beside the
@@ -341,61 +357,134 @@
     {#if data.products.length === 0}
       <p class="py-2 text-sm text-text-muted">{t("settings.invoicing.products_empty")}</p>
     {:else}
-      <ul class="divide-y divide-border">
-        {#each data.products as product (product.id)}
-          <li class="flex items-center justify-between gap-3 py-2 text-sm">
-            <div class="min-w-0">
-              <span
-                class="font-medium {product.active ? 'text-text' : 'text-text-muted line-through'}"
-                >{product.name}</span
-              >
-              <span class="ml-2 text-xs text-text-muted">
-                {docMoney(Number(product.unit_price), getCurrency(), data.locale)}
-                {#if product.unit}/ {product.unit}{/if}
-                <!-- The article code, where there is one: it is what a push matches on, so
-                     "which of these will reach the bookkeeping?" is answerable from the list
-                     rather than by opening every row (#377).
-                     TODO(schema): cast until `code` is in the generated client. -->
-                {#if product.code}
-                  · {product.code}
-                {/if}
-              </span>
-            </div>
-            <ActionsMenu
-              compact
-              items={[
-                { label: t("common.edit"), icon: Pencil, onclick: () => openProduct(product) },
-                {
-                  label: product.active ? t("common.deactivate") : t("common.activate"),
-                  onclick: () => {
-                    const formEl = document.getElementById(`toggle-product-${product.id}`);
-                    (formEl as HTMLFormElement | null)?.requestSubmit();
-                  },
-                },
-                {
-                  label: t("common.delete"),
-                  icon: Trash2,
-                  danger: true,
-                  onclick: () => {
-                    deleteProductId = product.id;
-                    confirmDeleteProduct = true;
-                  },
-                },
-              ]}
+      <div class="mb-3 flex flex-wrap items-center gap-3">
+        <input
+          type="search"
+          class="w-56 rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-sm text-text outline-none focus:border-brand"
+          placeholder={t("common.search")}
+          aria-label={t("common.search")}
+          bind:value={productQuery}
+        />
+        {#if inactiveProductCount > 0}
+          <label class="inline-flex items-center gap-2 text-sm text-text-muted">
+            <input
+              type="checkbox"
+              class="rounded border-border"
+              bind:checked={showInactiveProducts}
             />
-            <form
-              id="toggle-product-{product.id}"
-              method="POST"
-              action="?/toggleProduct"
-              use:enhance
-              class="hidden"
-            >
-              <input type="hidden" name="id" value={product.id} />
-              <input type="hidden" name="active" value={product.active ? "0" : "1"} />
-            </form>
-          </li>
-        {/each}
-      </ul>
+            {t("settings.invoicing.products_show_inactive", {
+              count: String(inactiveProductCount),
+            })}
+          </label>
+        {/if}
+      </div>
+      {#if visibleProducts.length === 0}
+        <p class="py-2 text-sm text-text-muted">{t("settings.invoicing.products_no_match")}</p>
+      {:else}
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="text-xs uppercase tracking-wide text-text-muted">
+              <tr class="border-b border-border">
+                <th class="py-2 pr-3 text-left font-semibold">{t("common.name_field")}</th>
+                <th class="py-2 pr-3 text-right font-semibold">{t("invoicing.line.unit_price")}</th>
+                <th class="hidden py-2 pr-3 text-left font-semibold sm:table-cell"
+                  >{t("invoicing.line.tax")}</th
+                >
+                <!-- Recorded sales only (a line pick copies values and leaves no trace), which
+                     is why the header says "verkocht" and the hint above says how it counts. -->
+                <th class="py-2 pr-3 text-right font-semibold"
+                  >{t("settings.invoicing.products_sold")}</th
+                >
+                <th class="w-8 py-2"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each visibleProducts as product (product.id)}
+                <tr class="border-b border-border last:border-0">
+                  <td class="min-w-0 py-2 pr-3">
+                    <span
+                      class="font-medium {product.active
+                        ? 'text-text'
+                        : 'text-text-muted line-through'}">{product.name}</span
+                    >
+                    {#if !product.active}
+                      <span class="ml-1 rounded-md bg-surface px-1.5 py-0.5 text-xs text-text-muted"
+                        >{t("settings.invoicing.product_inactive")}</span
+                      >
+                    {/if}
+                    <span class="block truncate text-xs text-text-muted">
+                      <!-- The article code, where there is one: it is what a push matches on, so
+                           "which of these will reach the bookkeeping?" is answerable from the
+                           list rather than by opening every row (#377). -->
+                      {[product.code, product.description].filter(Boolean).join(" · ")}
+                    </span>
+                  </td>
+                  <td class="py-2 pr-3 text-right tabular-nums text-text">
+                    {docMoney(Number(product.unit_price), getCurrency(), data.locale)}
+                    {#if product.unit}<span class="text-xs text-text-muted">/ {product.unit}</span
+                      >{/if}
+                  </td>
+                  <td class="hidden py-2 pr-3 text-text-muted sm:table-cell">
+                    {taxRateLabel(
+                      data.taxRates.find((r) => r.id === product.tax_rate_id),
+                      data.locale,
+                    ) || "—"}
+                  </td>
+                  <td class="py-2 pr-3 text-right tabular-nums text-text-muted">
+                    {#if product.sales_count}
+                      <span class="text-text">{product.sales_count}×</span>
+                      · {docMoney(Number(product.sales_amount), getCurrency(), data.locale)}
+                      {#if product.last_sold_on}
+                        <span class="block text-xs">{fmtNumericDate(product.last_sold_on)}</span>
+                      {/if}
+                    {:else}
+                      —
+                    {/if}
+                  </td>
+                  <td class="py-2 text-right">
+                    <ActionsMenu
+                      compact
+                      items={[
+                        {
+                          label: t("common.edit"),
+                          icon: Pencil,
+                          onclick: () => openProduct(product),
+                        },
+                        {
+                          label: product.active ? t("common.deactivate") : t("common.activate"),
+                          onclick: () => {
+                            const formEl = document.getElementById(`toggle-product-${product.id}`);
+                            (formEl as HTMLFormElement | null)?.requestSubmit();
+                          },
+                        },
+                        {
+                          label: t("common.delete"),
+                          icon: Trash2,
+                          danger: true,
+                          onclick: () => {
+                            deleteProductId = product.id;
+                            confirmDeleteProduct = true;
+                          },
+                        },
+                      ]}
+                    />
+                    <form
+                      id="toggle-product-{product.id}"
+                      method="POST"
+                      action="?/toggleProduct"
+                      use:enhance
+                      class="hidden"
+                    >
+                      <input type="hidden" name="id" value={product.id} />
+                      <input type="hidden" name="active" value={product.active ? "0" : "1"} />
+                    </form>
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      {/if}
     {/if}
   </section>
 

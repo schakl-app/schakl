@@ -217,6 +217,109 @@ class ProductRead(ProductBase):
     org_id: uuid.UUID
     created_at: datetime
     updated_at: datetime
+    #: How the price list is *used* (``?usage=true``): how many times this product was sold
+    #: through a sale record, what those sales come to, and the day of the last one. Zero and
+    #: ``None`` without the flag — a line pick copies values and leaves no trace, so this counts
+    #: recorded sales only, and the settings screen says so.
+    sales_count: int = 0
+    sales_amount: Decimal = Decimal(0)
+    last_sold_on: date | None = None
+
+
+# --------------------------------------------------------------------------- #
+# Product sales: a product sold once (a subscription with no cycle)
+# --------------------------------------------------------------------------- #
+#: ``open`` = not on a document yet, ``invoiced`` = claimed by one. Derived from ``invoice_id``;
+#: never stored, so the two can never disagree.
+SaleStatus = Literal["open", "invoiced"]
+SaleStatusFilter = Literal["all", "open", "invoiced"]
+
+
+class ProductSaleBase(BaseModel):
+    #: The client. Required at create, immovable afterwards (a sale is a client's).
+    company_id: uuid.UUID
+    project_id: uuid.UUID | None = None
+    #: The price-list entry it was priced from. Optional: a thing sold once need not be on the
+    #: list. When given, the blanks below are filled from it at create time.
+    product_id: uuid.UUID | None = None
+    name: str | None = Field(default=None, max_length=255)
+    description: str | None = Field(default=None, max_length=2000)
+    quantity: Decimal = Field(default=Decimal(1), gt=0)
+    unit: str | None = Field(default=None, max_length=20)
+    unit_price: Decimal | None = Field(default=None, ge=0)
+    tax_rate_id: uuid.UUID | None = None
+    sold_on: date | None = None
+    notes: str | None = Field(default=None, max_length=4000)
+
+    _blanks = field_validator(
+        "name", "description", "unit", "notes", mode="before"
+    )(_blank_to_none)
+
+
+class ProductSaleCreate(ProductSaleBase):
+    @model_validator(mode="after")
+    def _named_or_priced(self) -> ProductSaleCreate:
+        # Without a product there is nothing to copy from, so the name has to be typed.
+        if self.product_id is None and not self.name:
+            raise ValueError("errors.invoicing.sale_name_required")
+        return self
+
+
+class ProductSaleUpdate(BaseModel):
+    """Absent means leave alone; an explicit ``null`` clears (``project_id`` only — a sale
+    keeps its client, and its price fields are refused once a document bills it)."""
+
+    project_id: uuid.UUID | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = Field(default=None, max_length=2000)
+    quantity: Decimal | None = Field(default=None, gt=0)
+    unit: str | None = Field(default=None, max_length=20)
+    unit_price: Decimal | None = Field(default=None, ge=0)
+    tax_rate_id: uuid.UUID | None = None
+    sold_on: date | None = None
+    notes: str | None = Field(default=None, max_length=4000)
+
+    _blanks = field_validator("description", "unit", "notes", mode="before")(_blank_to_none)
+
+
+class ProductSaleRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    org_id: uuid.UUID
+    company_id: uuid.UUID
+    company_name: str = ""
+    project_id: uuid.UUID | None
+    project_name: str | None = None
+    product_id: uuid.UUID | None
+    name: str
+    description: str | None
+    quantity: Decimal
+    unit: str | None
+    unit_price: Decimal
+    tax_rate_id: uuid.UUID | None
+    currency: str
+    sold_on: date
+    notes: str | None
+    #: quantity × unit_price, rounded once — the figure every list and tile prints.
+    amount: Decimal = Decimal(0)
+    status: SaleStatus = "open"
+    invoice_id: uuid.UUID | None
+    #: ``None`` while the document is a draft — it has no number yet.
+    invoice_number: str | None = None
+    invoice_status: str | None = None
+    invoiced_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProductSaleList(BaseModel):
+    items: list[ProductSaleRead]
+    total: int
+    #: The sum still to be invoiced over the **whole** filtered set, not the page — the number a
+    #: panel prints beside its heading, and one that a capped list may not misstate.
+    open_amount: Decimal = Decimal(0)
+    open_count: int = 0
 
 
 # --------------------------------------------------------------------------- #
@@ -483,6 +586,10 @@ class LineWrite(BaseModel):
     domain_id: uuid.UUID | None = None
     period_start: date | None = None
     period_end: date | None = None
+    #: The one-time product sale this line bills. No period: a sale is one thing and the
+    #: claim is the sale's own ``invoice_id``, set from this on every save and released when
+    #: the line goes — the same round trip the period claims make.
+    sale_id: uuid.UUID | None = None
 
     _blank_unit = field_validator("unit", mode="before")(_blank_to_none)
 
@@ -492,9 +599,12 @@ class LineWrite(BaseModel):
         # *every* period. Refuse both rather than store a half-claim.
         if self.time_entry_id is not None and self.time_entry_id not in self.time_entry_ids:
             self.time_entry_ids = [*self.time_entry_ids, self.time_entry_id]
-        if self.subscription_id is not None and self.domain_id is not None:
-            # One line, one agreement: a claim that is both would retire two periods on a
-            # single description and no reader could tell which.
+        claims = sum(
+            1 for value in (self.subscription_id, self.domain_id, self.sale_id) if value
+        )
+        if claims > 1:
+            # One line, one claim: a line that is both would retire two things on a single
+            # description and no reader could tell which.
             raise ValueError("errors.invoicing.one_claim_per_line")
         source = self.subscription_id or self.domain_id
         if source is not None and self.period_end is None:
@@ -528,6 +638,7 @@ class LineRead(BaseModel):
     domain_id: uuid.UUID | None = None
     period_start: date | None = None
     period_end: date | None = None
+    sale_id: uuid.UUID | None = None
 
 
 class TaxGroupRead(BaseModel):
@@ -1105,17 +1216,38 @@ class BilledPeriod(BaseModel):
     issue_date: date | None
 
 
+class BillableSale(BaseModel):
+    """A one-time product sale still to be invoiced — the picker's fourth bucket, and the
+    only one whose row *is* the unit: a sale has no periods, so it is one tick."""
+
+    id: uuid.UUID
+    name: str
+    description: str | None = None
+    project_id: uuid.UUID | None = None
+    project_name: str | None = None
+    currency: str
+    quantity: Decimal
+    unit: str | None = None
+    unit_price: Decimal
+    tax_rate_id: uuid.UUID | None = None
+    amount: Decimal
+    sold_on: date
+    #: Listed and disabled rather than hidden, for the same reason a claimed period is.
+    already_billed: bool = False
+
+
 class OutstandingRead(BaseModel):
     """Everything a client still has to be invoiced for, in one round trip.
 
-    Three buckets because the editor has three sections, and one call because the picker
-    opens on all three at once: three browser fetches for one dialog is the shape
+    Four buckets because the editor has four sections, and one call because the picker
+    opens on all of them at once: four browser fetches for one dialog is the shape
     ``docs/PERFORMANCE.md`` exists to prevent.
     """
 
     hours: UnbilledRead
     subscriptions: list[BillableSubscription] = Field(default_factory=list)
     domains: list[BillableDomain] = Field(default_factory=list)
+    sales: list[BillableSale] = Field(default_factory=list)
 
 
 #: The uninvoiced report's closed grouping vocabulary (#277) — what the data model has:
@@ -1171,11 +1303,16 @@ class UninvoicedReport(BaseModel):
     truncated: bool
 
 
-#: What a recurring backlog row is owed for (#302). Named for the line kind it will become,
-#: because that is what the reader is choosing between on the page and on the document.
-BacklogSource = Literal["subscription", "domain"]
+#: What a backlog row is owed for (#302). Named for the line kind it will become, because
+#: that is what the reader is choosing between on the page and on the document — ``sale`` is
+#: the one that lands as a ``product`` line, the kind whose name on paper ("Diensten") is not
+#: the name of the record behind it.
+BacklogSource = Literal["subscription", "domain", "sale"]
+#: The two sources whose claims are **periods** — what ``/billed-periods`` can be asked about.
+#: A sale has no period and no history of its own beyond the one document it is on.
+PeriodClaimSource = Literal["subscription", "domain"]
 #: ``all`` is not a source — it is the absence of a filter, and it is the default.
-BacklogSourceFilter = Literal["all", "subscription", "domain"]
+BacklogSourceFilter = Literal["all", "subscription", "domain", "sale"]
 #: What the data model actually has to bucket by: whose it is, when it falls due, what kind
 #: it is. Deliberately not the hours report's day/week/year — a period is not an event.
 BacklogGroupBy = Literal["company", "month", "source"]
@@ -1209,7 +1346,8 @@ class RecurringBacklogItem(BaseModel):
     #: The level this agreement's cron runs at, already resolved against the org default —
     #: what it will do at its **next** boundary, never a claim about this row. Every period
     #: here has been passed by the cycle already, so none of them will bill themselves.
-    auto_mode: AutoInvoiceMode
+    #: ``None`` for a sale: nothing ever bills one on its own.
+    auto_mode: AutoInvoiceMode | None = None
 
 
 class RecurringBacklogGroup(BaseModel):

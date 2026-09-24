@@ -20,7 +20,7 @@ from app.modules.invoicing.events import (
 )
 from app.modules.invoicing.impex import INVOICE_IMPEX
 from app.modules.invoicing.jobs import invoicing_daily, invoicing_payments_reconcile
-from app.modules.invoicing.panels import invoicing_company_panel
+from app.modules.invoicing.panels import invoicing_company_panel, invoicing_sales_panel
 from app.modules.invoicing.permissions import INVOICING_PERMISSIONS
 from app.modules.invoicing.router import router
 from app.modules.invoicing.summary import invoicing_company_summary
@@ -34,7 +34,7 @@ module = ModuleDescriptor(
     # Licensed like subscriptions (#137): the billing suite is premium; past expiry+grace it
     # goes read-only (mutations 402) — reads, prints and exports stay.
     sku="invoicing",
-    panels=[invoicing_company_panel],
+    panels=[invoicing_company_panel, invoicing_sales_panel],
     # The client's vital-signs strip (#364) — the panels seam one level up.
     summaries=[invoicing_company_summary],
     permissions=INVOICING_PERMISSIONS,

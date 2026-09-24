@@ -11,6 +11,7 @@ import { driveActions } from "$lib/integrations/google/drive-actions.server";
 import { oneDriveActions } from "$lib/integrations/microsoft/onedrive-actions.server";
 import { fileActions } from "$lib/core/files/actions.server";
 import { gtmActions } from "$lib/integrations/google_tag_manager/actions.server";
+import { saleActions } from "$lib/modules/invoicing/sales.server";
 import { marketingActions } from "$lib/modules/marketing/actions.server";
 import { subscriptionActions } from "$lib/modules/subscriptions/actions.server";
 import { timeEntryActions } from "$lib/modules/time/actions.server";
@@ -383,4 +384,6 @@ export const actions: Actions = {
   ...timeEntryActions,
   // Abonnementen panel contract (lib/modules/subscriptions): record an agreement from here.
   ...subscriptionActions,
+  // Verkopen panel contract (lib/modules/invoicing): a product sold once to this client.
+  ...saleActions,
 };

@@ -320,6 +320,97 @@ class Product(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
+class ProductSale(
+    UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, AuditableMixin, Base
+):
+    """A product sold **once** to a client — a subscription with no cycle.
+
+    An agency's one-off sales (a website build, a licence, a batch of photos, an SSL
+    certificate) had no record between the moment they were agreed and the moment somebody
+    remembered to put them on an invoice: the price list knew what a product costs, the
+    invoice line knew what was billed, and nothing in between knew *what this client still
+    owes for*. A recurring agreement gets that from the subscriptions module and its cycle;
+    a one-time sale is the same promise made once, so it lives beside the price list it was
+    priced from and reaches the same three places an agreement period does — the client's
+    ``outstanding`` picker, the org-wide backlog, and the invoice line that finally bills it.
+
+    **Everything is a snapshot.** ``product_id`` says what preset the sale was priced from and
+    is ``SET NULL`` on delete; the name, description, unit, price and rate are copied at the
+    moment of sale, because a price list is re-priced every year and a sale agreed in January
+    must still bill January's price in March (the tax-rate discipline every line already
+    follows). A sale with no product at all is legal: "a thing we sold" is not always a thing
+    on the price list.
+
+    **The claim is a column, not a period table.** A subscription period is claimed in
+    ``invoice_subscription_periods`` because an agreement owes *several* and the pair is the
+    unit; a sale is one thing and can be on one invoice, so ``invoice_id`` on the row is the
+    whole claim — single-valued by construction, released when the document is deleted,
+    cancelled or fully credited, and rebuilt from the lines on every save exactly as the
+    period claims are.
+
+    ``project_id`` is a bare UUID (§6): the projects module's row, validated through its
+    table on write and never FK-coupled to it. ``company_id`` cascades: a sale nobody
+    invoiced is a note about a client, and goes when the client is purged (docs/TRASH.md).
+    """
+
+    __tablename__ = "invoicing_product_sales"
+    __entity_type__ = "product_sale"  # auditable (§16)
+    __activity_read_permission__ = "invoicing.invoice.read"
+
+    __table_args__ = (
+        Index("ix_invoicing_product_sales_company", "org_id", "company_id"),
+        Index("ix_invoicing_product_sales_project", "org_id", "project_id"),
+        Index("ix_invoicing_product_sales_invoice", "org_id", "invoice_id"),
+    )
+
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    product_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("invoicing_products.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    #: What was sold — the product's name at the time, or a free name for a sale that was
+    #: never on the price list.
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    #: The line description the invoice will carry; empty = the name.
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, default=1)
+    unit: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    unit_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=0)
+    tax_rate_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("invoicing_tax_rates.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="EUR")
+    #: The day it was sold — what the backlog sorts on and what the invoice line's
+    #: ``period_end`` would be if a sale had a period, which it does not.
+    sold_on: Mapped[date] = mapped_column(Date, nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: The claim. ``NULL`` = still to be invoiced; set = on that document. ``SET NULL`` on the
+    #: document's delete is the backstop under ``_release_sales``, never the mechanism.
+    invoice_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("invoices.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    invoiced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    @classmethod
+    def __portal_horizon_clause__(cls, scope: frozenset[uuid.UUID] | None):  # noqa: ANN206
+        """A client never reads a sale: it is the agency's note of what it is about to charge,
+        and the document that eventually bills it is what the client has a relationship with
+        (``Invoice.__portal_horizon_clause__``'s draft rule, applied to the whole table)."""
+        from sqlalchemy import false
+
+        return false()
+
+
 class DocumentTemplate(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Base):
     """A named document design (issue #207) — org-wide, like every template (UX §5).
 
@@ -716,6 +807,13 @@ class InvoiceLine(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, _LineColu
     domain_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
     period_start: Mapped[date | None] = mapped_column(Date, nullable=True)
     period_end: Mapped[date | None] = mapped_column(Date, nullable=True)
+    #: The one-time product sale this line bills. This module's own row, so a real FK: a sale
+    #: deleted from under a draft leaves an ordinary product line rather than a dangling id.
+    sale_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("invoicing_product_sales.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
 
 class QuoteLine(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, _LineColumns, Base):

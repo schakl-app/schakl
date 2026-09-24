@@ -439,7 +439,10 @@ _MEMBER_REQUEST_BUDGET = 8
 # 55 → 57 (v0.50.0's meetings module): the meetings panel is the shape #407 asked for — one page
 # of five and its count, the same two statements the meetings list's own budget test pins
 # (``test_the_list_is_two_statements_however_many_rows``). Flat in the client's size.
-_PANELS_BUDGET = 57
+# 57 → 59 (one-time sales): the client's Eenmalige verkopen panel is a page of five and one
+# aggregate statement carrying its total, its open count and its open amount together — never a
+# count and a sum apart, and never per row. Flat in the client's size.
+_PANELS_BUDGET = 59
 
 #: The vital-signs strip (#364): one aggregate per contributing module, plus the request's own
 #: context and the org timezone each of them resolves. Measured, not guessed — see the test.

@@ -16,6 +16,7 @@ import { taskCreateBody } from "$lib/modules/tasks/create";
 import { driveActions } from "$lib/integrations/google/drive-actions.server";
 import { oneDriveActions } from "$lib/integrations/microsoft/onedrive-actions.server";
 import { fileActions } from "$lib/core/files/actions.server";
+import { saleActions } from "$lib/modules/invoicing/sales.server";
 
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -49,7 +50,14 @@ export const load: PageServerLoad = async (event) => {
   if (!project) throw error(404, { code: "not_found", message: "errors.not_found" });
 
   const periodStart = project.hours?.period_start ?? null;
-  const context = { entityId: project_id, periodStart };
+  // The client and the name ride along so a panel that records something *for* this project
+  // (a one-time sale) opens its dialog with both already filled in (#247's rule).
+  const context = {
+    entityId: project_id,
+    periodStart,
+    companyId: project.company_id ?? null,
+    label: project.name,
+  };
 
   // Panels contributed by the enabled modules (CLAUDE.md §6). A tenant without `time` gets no
   // Uren panel and pays for no call — the loaders below simply don't exist.
@@ -259,4 +267,6 @@ export const actions: Actions = {
   ...driveActions,
   // OneDrive panel contract (lib/integrations/microsoft).
   ...oneDriveActions,
+  // Verkopen panel contract (lib/modules/invoicing): a product sold once for this project.
+  ...saleActions,
 };

@@ -18,7 +18,7 @@ const BACKLOG_GROUPS = ["company", "month", "source"] as const;
 /** Hours, agreements, renewals — the three things an agency still has to invoice, and the
  *  three bands a document already prints them in. `hours` is not a backlog `source`: it is
  *  answered by a different endpoint over a different predicate. */
-const SOURCES = ["hours", "subscription", "domain"] as const;
+const SOURCES = ["hours", "subscription", "domain", "sale"] as const;
 
 type HourGroup = (typeof HOUR_GROUPS)[number];
 type BacklogGroup = (typeof BACKLOG_GROUPS)[number];

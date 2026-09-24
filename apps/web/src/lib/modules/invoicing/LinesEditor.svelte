@@ -36,6 +36,7 @@
   import { LINE_KINDS, docMoney, lineKindLabel, periodText, taxRateLabel, unitFor } from "./types";
   import type {
     BillableDomain,
+    BillableSale,
     BillableSubscription,
     LineKind,
     TaxRate,
@@ -58,6 +59,7 @@
     hours = null,
     subscriptions = [],
     domains = [],
+    sales = [],
     outstandingLoading = false,
     defaultTaxRateId = "",
     defaultHourlyRate = "",
@@ -76,6 +78,8 @@
     hours?: { entries: UnbilledEntry[]; truncated?: boolean; total_count?: number } | null;
     subscriptions?: BillableSubscription[];
     domains?: BillableDomain[];
+    /** The client's one-time sales not on a document yet — the Diensten section's picker. */
+    sales?: BillableSale[];
     outstandingLoading?: boolean;
     defaultTaxRateId?: string;
     /** The org's default hourly rate, so a hand-typed hours line starts priced. */
@@ -132,6 +136,7 @@
                 period_end: line.period_end,
               }
             : {}),
+          ...(line.sale_id ? { sale_id: line.sale_id } : {}),
         })),
     ),
   );
@@ -217,6 +222,23 @@
         });
         continue;
       }
+      if (prefix === "p") {
+        // A sale is one thing, so one tick is one line — priced as it was sold, carrying
+        // the sale so the save claims it and a later edit can give it back.
+        const sale = sales.find((s) => s.id === rest[0]);
+        if (!sale) continue;
+        added.push({
+          key: lineKey(),
+          description: sale.description || sale.name,
+          line_kind: "product",
+          quantity: String(Number(sale.quantity)),
+          unit: sale.unit ?? "",
+          unit_price: String(Number(sale.unit_price)),
+          tax_rate_id: sale.tax_rate_id || defaultTaxRateId,
+          sale_id: sale.id,
+        });
+        continue;
+      }
       const [sourceId, periodEnd] = rest;
       const isAgreement = prefix === "s";
       const source = isAgreement
@@ -274,11 +296,13 @@
   }
   const subscriptionCount = $derived(openPeriods(subscriptions));
   const domainCount = $derived(openPeriods(domains));
+  const saleCount = $derived(sales.filter((s) => !s.already_billed).length);
 
   const PICK_COUNT: Record<string, () => number> = {
     hours: () => hoursCount,
     subscription: () => subscriptionCount,
     domain: () => domainCount,
+    product: () => saleCount,
   };
 
   /** Each picked section names what *it* offers: "Uren kiezen", "Periodes kiezen",
@@ -287,6 +311,7 @@
   function pickLabel(kind: LineKind): string {
     if (kind === "hours") return t("invoicing.outstanding.pick_hours");
     if (kind === "domain") return t("invoicing.outstanding.pick_domains");
+    if (kind === "product") return t("invoicing.outstanding.pick_sales");
     return t("invoicing.outstanding.pick_subscriptions");
   }
 
@@ -405,7 +430,7 @@
       {/if}
 
       <div class="mt-2 flex flex-wrap items-center gap-3">
-        {#if section.kind !== "product" && pickable}
+        {#if pickable && (section.kind !== "product" || section.count > 0)}
           <button type="button" class={addClass} onclick={() => openPicker(section.kind)}>
             <Plus size={14} />
             {pickLabel(section.kind)}
@@ -470,6 +495,7 @@
     {hours}
     {subscriptions}
     {domains}
+    {sales}
     {currency}
     {locale}
     loading={outstandingLoading}
