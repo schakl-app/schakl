@@ -466,7 +466,7 @@ async def test_the_bridge_tools_ride_the_wordpress_section(client_for, wp) -> No
     bridge = {
         name for name, path in tool_paths.items() if "/wordpress/sites/{site_id}/bridge" in path
     }
-    assert len(bridge) == 22, sorted(bridge)
+    assert len(bridge) == 28, sorted(bridge)
     assert bridge <= wordpress.tools
     assert {
         "bridge_info",
@@ -474,4 +474,176 @@ async def test_the_bridge_tools_ride_the_wordpress_section(client_for, wp) -> No
         "bridge_update_record",
         "bridge_upload_media",
         "bridge_translate",
+        "bridge_forms",
+        "bridge_update_form",
+        "bridge_translate_form",
     } <= wordpress.tools
+
+
+# ---------------------------------------------------------------- Contact Form 7
+
+
+async def test_forms_read_write_and_delete_through_the_plugin(client_for, wp) -> None:
+    """The plugin's forms.* (bridge 1.2.0): a member reads, `forms.write` writes — live, so it
+    sits with publish — and deleting has its own key. Mail and messages merge; the plugin's
+    refusals (an unknown message key, no Contact Form 7) carry through with their details."""
+    t = await make_tenant("wp-bridge-forms")
+    owner_h = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, site = await _site(c, owner_h)
+        member_h = await _member(t, "wp-bridge-forms", role="member")
+
+        rows = (await c.get(_url(site, "/forms"), headers=member_h)).json()
+        assert rows["total"] == 1
+        assert rows["items"][0]["shortcode"].startswith('[contact-form-7 id="a1b2c3d"')
+        form = (await c.get(_url(site, "/forms/6584"), headers=member_h)).json()
+        assert [f["name"] for f in form["fields"]] == ["your-name", "your-email"]
+        assert form["mail"]["recipient"] == "info@klant.nl"
+        assert form["messages_help"]["mail_sent_ok"] == "Sent"
+        assert form["config_errors"] == {}
+        assert form["strings"] is None  # no WPML on this site
+
+        # A member holds `forms.read` only.
+        res = await c.post(_url(site, "/forms"), json={"title": "Offerte"}, headers=member_h)
+        assert res.status_code == 403
+        res = await c.patch(_url(site, "/forms/6584"), json={"title": "x"}, headers=member_h)
+        assert res.status_code == 403
+
+        # A title alone makes a form, live, with its shortcode.
+        res = await c.post(_url(site, "/forms"), json={"title": "Offerte"}, headers=owner_h)
+        assert res.status_code == 201, res.text
+        made = res.json()
+        assert made["created"] is True and made["shortcode"].startswith("[contact-form-7 ")
+        assert made["mail"]["active"] is True
+
+        # One mail key changes and the rest survives; the trail names what was touched.
+        res = await c.patch(
+            _url(site, f"/forms/{made['id']}"),
+            json={"mail": {"recipient": "sales@klant.nl"}, "messages": {"mail_sent_ok": "Dank."}},
+            headers=owner_h,
+        )
+        assert res.status_code == 200, res.text
+        assert res.json()["mail"]["recipient"] == "sales@klant.nl"
+        assert res.json()["mail"]["subject"] == "[_site_title]"
+        assert res.json()["messages"] == {"mail_sent_ok": "Dank."}
+        sent = next(
+            b for m, p, b in wp.bridge_calls if m == "PATCH" and p == f"/forms/{made['id']}"
+        )
+        assert sent == {
+            "mail": {"recipient": "sales@klant.nl"},
+            "messages": {"mail_sent_ok": "Dank."},
+        }
+
+        # The plugin's refusal of an unknown message key is our 422 with its details.
+        res = await c.patch(
+            _url(site, "/forms/6584"), json={"messages": {"nope": "x"}}, headers=owner_h
+        )
+        assert res.status_code == 422
+        assert res.json()["error"]["message"] == "errors.wordpress_bridge_rejected"
+        assert res.json()["error"]["details"]["unknown"] == ["nope"]
+        # Nothing to change is our 422, before the site is asked.
+        res = await c.patch(_url(site, "/forms/6584"), json={}, headers=owner_h)
+        assert res.status_code == 422
+        assert res.json()["error"]["message"] == "errors.nothing_to_update"
+
+        # Deleting is its own key: the owner holds it, a member does not.
+        res = await c.delete(_url(site, f"/forms/{made['id']}"), headers=member_h)
+        assert res.status_code == 403
+        res = await c.delete(_url(site, f"/forms/{made['id']}"), headers=owner_h)
+        assert res.status_code == 200 and res.json()["deleted"] is True
+        res = await c.get(_url(site, f"/forms/{made['id']}"), headers=owner_h)
+        assert res.status_code == 404
+
+        trail = (
+            await c.get(
+                "/api/v1/activity",
+                params={"entity_type": "wordpress_site", "entity_id": site["id"]},
+                headers=owner_h,
+            )
+        ).json()
+        by_action = {row["action"]: row for row in trail}
+        assert by_action["form_created"]["payload"]["via"] == "schakl-wordpress-mcp-bridge"
+        assert by_action["form_updated"]["payload"]["fields"] == ["mail", "messages"]
+        assert by_action["content_deleted"]["payload"]["type"] == "wpcf7_contact_form"
+
+        # No Contact Form 7: the plugin's 409 `unavailable`, named.
+        wp.has_forms = False
+        res = await c.get(_url(site, "/forms"), headers=member_h)
+        assert res.status_code == 409
+        assert res.json()["error"]["message"] == "errors.wordpress_bridge_unavailable"
+        assert res.json()["error"]["details"]["missing"] == "Contact Form 7"
+
+
+async def test_forms_translate_both_ways_wpml_knows_them(client_for, wp) -> None:
+    """WPML two ways: strings on one form (the Contact Form 7 Multilingual add-on) travel on
+    the update; a linked form per language is `translate`, refused with a pointer where the
+    site does not translate forms as records."""
+    t = await make_tenant("wp-bridge-forms-wpml")
+    owner_h = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, site = await _site(c, owner_h)
+
+        # Without WPML, strings are the plugin's 409.
+        res = await c.patch(
+            _url(site, "/forms/6584"), json={"strings": {"en": {"Form": "x"}}}, headers=owner_h
+        )
+        assert res.status_code == 409
+        assert res.json()["error"]["details"]["missing"] == "WPML"
+
+        wp.multilingual = True
+        form = (await c.get(_url(site, "/forms/6584"), headers=owner_h)).json()
+        assert form["strings"]["items"][0]["name"] == "Form"
+        res = await c.patch(
+            _url(site, "/forms/6584"),
+            json={"strings": {"en": {"Form": "[text* your-name]"}}},
+            headers=owner_h,
+        )
+        assert res.status_code == 200, res.text
+        assert res.json()["translated"][0]["lang"] == "en"
+        strings = res.json()["strings"]["items"]
+        assert strings[0]["translations"]["en"]["value"] == "[text* your-name]"
+        # One form serves every language here: translate refuses and says so.
+        res = await c.post(
+            _url(site, "/forms/6584/translations"), json={"lang": "en"}, headers=owner_h
+        )
+        assert res.status_code == 409
+        assert res.json()["error"]["details"]["missing"] == "Form translation"
+
+        # Where forms are a translatable post type, a linked copy is made in the language.
+        wp.forms_translatable = True
+        res = await c.post(
+            _url(site, "/forms/6584/translations"),
+            json={"lang": "en", "title": "Contact form", "messages": {"mail_sent_ok": "Thanks."}},
+            headers=owner_h,
+        )
+        assert res.status_code == 201, res.text
+        made = res.json()
+        assert made["lang"] == "en" and made["created"] is True
+        assert made["messages"]["mail_sent_ok"] == "Thanks."
+        assert made["messages"]["validation_error"] == "Controleer."  # copied from the source
+        assert made["source"] == {"id": 6584, "lang": "nl"}
+        assert made["shortcode"] != form["shortcode"]
+        # `copy` reaches the plugin under its own name, not the model's.
+        sent = next(
+            b for m, p, b in wp.bridge_calls if m == "POST" and p == "/forms/6584/translate"
+        )
+        assert "copy_source" not in sent
+        group = (await c.get(_url(site, "/forms/6584"), headers=owner_h)).json()["translations"]
+        assert group == {"nl": 6584, "en": made["id"]}
+        # A second one is the plugin's 409 with the existing id.
+        res = await c.post(
+            _url(site, "/forms/6584/translations"), json={"lang": "en"}, headers=owner_h
+        )
+        assert res.status_code == 409
+        assert res.json()["error"]["details"]["id"] == made["id"]
+
+        trail = (
+            await c.get(
+                "/api/v1/activity",
+                params={"entity_type": "wordpress_site", "entity_id": site["id"]},
+                headers=owner_h,
+            )
+        ).json()
+        translated = next(row for row in trail if row["action"] == "translation_created")
+        assert translated["payload"]["translation"] == made["id"]
+        assert translated["payload"]["lang"] == "en"

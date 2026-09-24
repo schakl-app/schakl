@@ -7150,6 +7150,7 @@
   "permissions.wordpress.content.publish": "Edit live pages and publish on connected WordPress sites",
   "permissions.wordpress.forms.read": "Read Contact Form 7 forms on connected WordPress sites",
   "permissions.wordpress.forms.write": "Edit Contact Form 7 forms on connected WordPress sites",
+  "permissions.wordpress.forms.delete": "Delete Contact Form 7 forms on connected WordPress sites",
   "permissions.wordpress.ability.read": "List and run read-only WordPress abilities",
   "permissions.wordpress.ability.run": "Run any WordPress ability, writes included",
   "errors.wordpress_unreachable": "The WordPress site did not answer.",

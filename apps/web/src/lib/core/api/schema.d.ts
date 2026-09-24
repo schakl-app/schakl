@@ -15390,6 +15390,94 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/wordpress/sites/{site_id}/bridge/forms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bridge Forms
+         * @description Contact Form 7 forms through the plugin: id, title, the shortcode a page embeds, locale,
+         *     last change and — with WPML, where forms are translated as records — language and
+         *     translation ids. 409 on a site without Contact Form 7.
+         */
+        get: operations["bridge_forms_api_v1_wordpress_sites__site_id__bridge_forms_get"];
+        put?: never;
+        /**
+         * Bridge Create Form
+         * @description A new form, live at once (forms have no draft state), from CF7's default template in
+         *     the locale with what you send on top — a title alone makes a working form. Returns it
+         *     with its shortcode and `config_errors`.
+         */
+        post: operations["bridge_create_form_api_v1_wordpress_sites__site_id__bridge_forms_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}/bridge/forms/{wp_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bridge Form
+         * @description One form whole: the template, the fields CF7 parses off it (name, type, required,
+         *     options), both mails, the messages with `messages_help`, the additional settings, the
+         *     shortcode, `config_errors` (what CF7's validator objects to — it sends nothing while a
+         *     mail is misconfigured), and with WPML the translations or the form's `strings`.
+         */
+        get: operations["bridge_form_api_v1_wordpress_sites__site_id__bridge_forms__wp_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Bridge Delete Form
+         * @description Delete a form permanently — CF7 has no trash for forms, and pages embedding its
+         *     shortcode show nothing there afterwards.
+         */
+        delete: operations["bridge_delete_form_api_v1_wordpress_sites__site_id__bridge_forms__wp_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Bridge Update Form
+         * @description Change a form — live the moment it saves, on every page that embeds it. `mail`,
+         *     `mail_2` and `messages` merge over what the form holds; `form` and `additional_settings`
+         *     replace whole; unknown message keys and locales are refused before anything is written.
+         *     With the WPML Contact Form 7 Multilingual add-on, `strings` translates the form's texts.
+         */
+        patch: operations["bridge_update_form_api_v1_wordpress_sites__site_id__bridge_forms__wp_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}/bridge/forms/{wp_id}/translations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bridge Translate Form
+         * @description WPML, where forms are a translatable post type: create this form's linked translation
+         *     in `lang` — the source copied, its locale set to the language's, your translated
+         *     template, mails and messages on top — and get back the new form with its own shortcode
+         *     for pages in that language; or, with `translation_id`, link an existing form. Where one
+         *     form serves every language (the Contact Form 7 Multilingual add-on) the plugin answers
+         *     409 and points at `strings` on the update.
+         */
+        post: operations["bridge_translate_form_api_v1_wordpress_sites__site_id__bridge_forms__wp_id__translations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/wordpress/sites/{site_id}/bridge/languages": {
         parameters: {
             query?: never;
@@ -38626,6 +38714,319 @@ export interface components {
             trashed: boolean;
         } & {
             [key: string]: unknown;
+        };
+        /**
+         * WordPressBridgeForm
+         * @description One form whole. ``fields`` is CF7's own parse of the template (name, type, required,
+         *     options, values), ``config_errors`` what its configuration validator objects to by section
+         *     — CF7 sends nothing while a mail is misconfigured — and ``strings``, under the WPML
+         *     Contact Form 7 Multilingual add-on, the form's String Translation strings with their
+         *     translations per language.
+         */
+        WordPressBridgeForm: {
+            /**
+             * Additional Settings
+             * @default
+             */
+            additional_settings: string;
+            /** Config Errors */
+            config_errors?: {
+                [key: string]: unknown;
+            };
+            /** Fields */
+            fields?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Form
+             * @default
+             */
+            form: string;
+            /** Id */
+            id: number;
+            /** Lang */
+            lang?: string | null;
+            /** Locale */
+            locale?: string | null;
+            /** Mail */
+            mail?: {
+                [key: string]: unknown;
+            };
+            /** Mail 2 */
+            mail_2?: {
+                [key: string]: unknown;
+            };
+            /** Messages */
+            messages?: {
+                [key: string]: string;
+            };
+            /** Messages Help */
+            messages_help?: {
+                [key: string]: string;
+            };
+            /** Modified */
+            modified?: string | null;
+            /** Shortcode */
+            shortcode?: string | null;
+            /** Slug */
+            slug?: string | null;
+            /** Strings */
+            strings?: {
+                [key: string]: unknown;
+            } | null;
+            /** Title */
+            title: string;
+            /** Translations */
+            translations?: {
+                [key: string]: number;
+            } | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * WordPressBridgeFormCreate
+         * @description A new Contact Form 7 form through the plugin — live at once, since forms have no draft
+         *     state. Starts from CF7's default template in the locale, so a title alone makes a working
+         *     form; what is sent is applied on top.
+         */
+        WordPressBridgeFormCreate: {
+            /**
+             * Additional Settings
+             * @description CF7 additional settings, one per line (e.g. skip_mail: on).
+             */
+            additional_settings?: string | null;
+            /**
+             * Form
+             * @description The form template in CF7's tag language: [text* your-name] [email* your-email] [textarea your-message] [submit "Send"]. Replaces the template whole.
+             */
+            form?: string | null;
+            /**
+             * Lang
+             * @description WPML language (only where forms are a translatable post type).
+             */
+            lang?: string | null;
+            /**
+             * Locale
+             * @description WordPress locale (nl_NL, en_US): the language of CF7's own default texts.
+             */
+            locale?: string | null;
+            /** @description The notification mail. */
+            mail?: components["schemas"]["WordPressBridgeFormMail"] | null;
+            /** @description The second mail (autoresponder); set active: true to send it. */
+            mail_2?: components["schemas"]["WordPressBridgeFormMail"] | null;
+            /**
+             * Messages
+             * @description Response texts keyed by message name (mail_sent_ok, validation_error, invalid_required, …; the form's messages_help describes each). Merged over what the form holds.
+             */
+            messages?: {
+                [key: string]: string;
+            } | null;
+            /** Title */
+            title: string;
+            /**
+             * Translation Of
+             * @description WPML: the form this one translates.
+             */
+            translation_of?: number | null;
+        };
+        /** WordPressBridgeFormDelete */
+        WordPressBridgeFormDelete: {
+            /**
+             * Deleted
+             * @default true
+             */
+            deleted: boolean;
+            /** Id */
+            id: number;
+            /** Title */
+            title?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** WordPressBridgeFormList */
+        WordPressBridgeFormList: {
+            /** Items */
+            items?: components["schemas"]["WordPressBridgeFormRow"][];
+            /**
+             * Page
+             * @default 1
+             */
+            page: number;
+            /**
+             * Pages
+             * @default 0
+             */
+            pages: number;
+            /**
+             * Per Page
+             * @default 50
+             */
+            per_page: number;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * WordPressBridgeFormMail
+         * @description One of a form's two mails. Every key optional: the plugin merges what is sent over what
+         *     the form holds, so changing the recipient does not blank the subject. Mail tags such as
+         *     ``[your-name]`` refer to the template's fields.
+         */
+        WordPressBridgeFormMail: {
+            /** Active */
+            active?: boolean | null;
+            /** Additional Headers */
+            additional_headers?: string | null;
+            /** Attachments */
+            attachments?: string | null;
+            /** Body */
+            body?: string | null;
+            /** Exclude Blank */
+            exclude_blank?: boolean | null;
+            /** Recipient */
+            recipient?: string | null;
+            /** Sender */
+            sender?: string | null;
+            /** Subject */
+            subject?: string | null;
+            /** Use Html */
+            use_html?: boolean | null;
+        };
+        /** WordPressBridgeFormRow */
+        WordPressBridgeFormRow: {
+            /** Id */
+            id: number;
+            /** Lang */
+            lang?: string | null;
+            /** Locale */
+            locale?: string | null;
+            /** Modified */
+            modified?: string | null;
+            /** Shortcode */
+            shortcode?: string | null;
+            /** Slug */
+            slug?: string | null;
+            /** Title */
+            title: string;
+            /** Translations */
+            translations?: {
+                [key: string]: number;
+            } | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * WordPressBridgeFormTranslate
+         * @description WPML, where forms are a translatable post type: create a form's linked translation in
+         *     ``lang`` — the source copied, its locale set to the language's, what you send applied on
+         *     top — so send the translated template, mails and messages and nothing else. The answer
+         *     carries the new form's own shortcode, which is what a page in that language embeds. Pass
+         *     ``translation_id`` to link an existing form instead. Where one form serves every language
+         *     (the Contact Form 7 Multilingual add-on) the plugin refuses and points at ``strings``.
+         */
+        WordPressBridgeFormTranslate: {
+            /**
+             * Additional Settings
+             * @description CF7 additional settings, one per line (e.g. skip_mail: on).
+             */
+            additional_settings?: string | null;
+            /**
+             * Copy
+             * @description all (default) copies the source first | none.
+             */
+            copy?: string | null;
+            /**
+             * Form
+             * @description The form template in CF7's tag language: [text* your-name] [email* your-email] [textarea your-message] [submit "Send"]. Replaces the template whole.
+             */
+            form?: string | null;
+            /**
+             * Lang
+             * @description Target language code.
+             */
+            lang: string;
+            /**
+             * Locale
+             * @description WordPress locale (nl_NL, en_US): the language of CF7's own default texts.
+             */
+            locale?: string | null;
+            /** @description The notification mail. */
+            mail?: components["schemas"]["WordPressBridgeFormMail"] | null;
+            /** @description The second mail (autoresponder); set active: true to send it. */
+            mail_2?: components["schemas"]["WordPressBridgeFormMail"] | null;
+            /**
+             * Messages
+             * @description Response texts keyed by message name (mail_sent_ok, validation_error, invalid_required, …; the form's messages_help describes each). Merged over what the form holds.
+             */
+            messages?: {
+                [key: string]: string;
+            } | null;
+            /**
+             * Overwrite
+             * @description Update an existing translation instead of refusing.
+             * @default false
+             */
+            overwrite: boolean;
+            /**
+             * Title
+             * @description Translated title; defaults to the source's.
+             */
+            title?: string | null;
+            /**
+             * Translation Id
+             * @description Link this existing form as the translation instead of creating one.
+             */
+            translation_id?: number | null;
+        };
+        /**
+         * WordPressBridgeFormUpdate
+         * @description Change a form through the plugin — live the moment it saves, on every page embedding
+         *     it. ``mail``, ``mail_2`` and ``messages`` merge over what the form holds; ``form`` and
+         *     ``additional_settings`` replace whole. Under the WPML Contact Form 7 Multilingual add-on,
+         *     ``strings`` translates the form's texts.
+         */
+        WordPressBridgeFormUpdate: {
+            /**
+             * Additional Settings
+             * @description CF7 additional settings, one per line (e.g. skip_mail: on).
+             */
+            additional_settings?: string | null;
+            /**
+             * Form
+             * @description The form template in CF7's tag language: [text* your-name] [email* your-email] [textarea your-message] [submit "Send"]. Replaces the template whole.
+             */
+            form?: string | null;
+            /**
+             * Locale
+             * @description WordPress locale (nl_NL, en_US): the language of CF7's own default texts.
+             */
+            locale?: string | null;
+            /** @description The notification mail. */
+            mail?: components["schemas"]["WordPressBridgeFormMail"] | null;
+            /** @description The second mail (autoresponder); set active: true to send it. */
+            mail_2?: components["schemas"]["WordPressBridgeFormMail"] | null;
+            /**
+             * Messages
+             * @description Response texts keyed by message name (mail_sent_ok, validation_error, invalid_required, …; the form's messages_help describes each). Merged over what the form holds.
+             */
+            messages?: {
+                [key: string]: string;
+            } | null;
+            /**
+             * Strings
+             * @description WPML String Translation: {"<lang>": {"<string name or id>": "translation"}} for the strings the form read lists.
+             */
+            strings?: {
+                [key: string]: {
+                    [key: string]: string;
+                };
+            } | null;
+            /** Title */
+            title?: string | null;
         };
         /**
          * WordPressBridgeInfo
@@ -70648,6 +71049,215 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WordPressBridgeInfo"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_forms_api_v1_wordpress_sites__site_id__bridge_forms_get: {
+        parameters: {
+            query?: {
+                /** @description Title and template. */
+                search?: string | null;
+                /** @description WPML language, where forms are a translatable post type. */
+                lang?: string | null;
+                page?: number;
+                per_page?: number;
+            };
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressBridgeFormList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_create_form_api_v1_wordpress_sites__site_id__bridge_forms_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WordPressBridgeFormCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressBridgeForm"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_form_api_v1_wordpress_sites__site_id__bridge_forms__wp_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+                wp_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressBridgeForm"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_delete_form_api_v1_wordpress_sites__site_id__bridge_forms__wp_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+                wp_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressBridgeFormDelete"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_update_form_api_v1_wordpress_sites__site_id__bridge_forms__wp_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+                wp_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WordPressBridgeFormUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressBridgeForm"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_translate_form_api_v1_wordpress_sites__site_id__bridge_forms__wp_id__translations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+                wp_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WordPressBridgeFormTranslate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressBridgeForm"];
                 };
             };
             /** @description Validation Error */

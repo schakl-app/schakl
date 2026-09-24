@@ -208,6 +208,31 @@ class FakeWordPress:
             7: {"id": 7, "domain": "theme", "name": "Lees meer", "value": "Lees meer",
                 "lang": "nl", "translations": {}},
         }
+        #: Contact Form 7 forms the plugin serves (`forms.*`, bridge 1.2.0), keyed by id, in
+        #: the plugin's own record shape. Off `has_forms`, every forms route is the plugin's
+        #: 409 `unavailable`. `forms_translatable` is WPML listing the post type as translatable.
+        self.bridge_forms: dict[int, dict] = {
+            6584: {
+                "id": 6584, "title": "Contactformulier", "slug": "contactformulier",
+                "hash": "a1b2c3d", "locale": "nl_NL",
+                "form": "[text* your-name] [email* your-email] [submit \"Verstuur\"]",
+                "mail": {"active": True, "subject": "Nieuw bericht", "sender": "site@klant.nl",
+                         "recipient": "info@klant.nl", "body": "[your-name]",
+                         "additional_headers": "", "attachments": "", "use_html": False,
+                         "exclude_blank": False},
+                "mail_2": {"active": False, "subject": "", "sender": "", "recipient": "",
+                           "body": "", "additional_headers": "", "attachments": "",
+                           "use_html": False, "exclude_blank": False},
+                "messages": {"mail_sent_ok": "Bedankt.", "validation_error": "Controleer."},
+                "additional_settings": "", "lang": "nl",
+            }
+        }
+        self.forms_translatable = False
+        #: Strings the WPML Contact Form 7 Multilingual add-on would register for form 6584.
+        self.bridge_form_strings: dict[int, dict] = {
+            301: {"id": 301, "package": 12, "name": "Form", "title": "Form", "lang": "nl",
+                  "value": "[text* your-name]", "translations": {}},
+        }
         #: Every bridge call, `(method, subpath, body)`, so a test can assert what was sent.
         self.bridge_calls: list[tuple[str, str, object]] = []
         #: Abilities beyond Rank Math's: one read-only, one write. `acf/field-groups` is what
@@ -630,6 +655,9 @@ class FakeWordPress:
                 return _json({**menu, "items": self.bridge_menu_items, "removed": item_id})
             return _json({**menu, "items": self.bridge_menu_items})
 
+        if parts and parts[0] == "forms":
+            return self._bridge_forms_route(request, parts, body, q)
+
         if parts and parts[0] == "wpml":
             if not self.multilingual:
                 return self._bridge_error(
@@ -698,6 +726,151 @@ class FakeWordPress:
                 out["created"] = True
                 return _json(out)
 
+        return _wp_error("rest_no_route", "No route was found matching the URL.", 404)
+
+    def _bridge_form(self, row: dict) -> dict:
+        out = {k: v for k, v in row.items() if k not in ("lang",)}
+        out["shortcode"] = f'[contact-form-7 id="{row["hash"]}" title="{row["title"]}"]'
+        out["fields"] = [
+            {"name": "your-name", "type": "text", "required": True, "options": [], "values": []},
+            {"name": "your-email", "type": "email", "required": True, "options": [], "values": []},
+        ]
+        out["messages_help"] = {"mail_sent_ok": "Sent", "validation_error": "Errors"}
+        out["config_errors"] = {}
+        if self.forms_translatable:
+            out["lang"] = row.get("lang", "nl")
+            out["translations"] = {
+                r.get("lang", "nl"): r["id"] for r in self.bridge_forms.values()
+                if r.get("trid", r["id"]) == row.get("trid", row["id"])
+            }
+        if self.multilingual:
+            items = []
+            if row["id"] == 6584:
+                items = [dict(s) for s in self.bridge_form_strings.values()]
+            packages = [{"id": 12, "kind": "Contact Form 7", "title": row["title"]}]
+            out["strings"] = {"packages": packages if items else [], "items": items}
+        return out
+
+    def _bridge_forms_route(  # noqa: C901
+        self, request: httpx.Request, parts: list[str], body: dict, q
+    ) -> httpx.Response:
+        if not self.has_forms:
+            return self._bridge_error(
+                "unavailable", "Contact Form 7 is not available on this site: it is not active.",
+                409, {"missing": "Contact Form 7"})
+        known = {"mail_sent_ok", "validation_error", "invalid_required"}
+        if len(parts) == 1 and request.method == "GET":
+            rows = sorted(self.bridge_forms.values(), key=lambda r: r["title"])
+            if q.get("search"):
+                rows = [r for r in rows if q["search"].lower() in r["title"].lower()]
+            return _json({"items": [{k: v for k, v in self._bridge_form(r).items()
+                                     if k in ("id", "title", "slug", "hash", "shortcode", "locale",
+                                              "lang", "translations")} for r in rows],
+                          "total": len(rows), "page": 1, "per_page": 50, "pages": 1})
+        if len(parts) == 1 and request.method == "POST":
+            if not str(body.get("title") or "").strip():
+                return self._bridge_error("invalid_input", "A title is required.", 400,
+                                          {"field": "title"})
+            if body.get("lang") and not self.forms_translatable:
+                return self._bridge_error("invalid_input", "lang applies only where …", 400,
+                                          {"field": "lang"})
+            wp_id = max(list(self.bridge_forms) + [6600]) + 1
+            row = {"id": wp_id, "title": body["title"], "slug": body["title"].lower(),
+                   "hash": f"h{wp_id}", "locale": body.get("locale") or "nl_NL",
+                   "form": body.get("form") or "[text* your-name] [submit]",
+                   "mail": {"active": True, "subject": "[_site_title]", "sender": "wp@klant.nl",
+                            "recipient": "[_site_admin_email]", "body": "[your-name]",
+                            "additional_headers": "", "attachments": "", "use_html": False,
+                            "exclude_blank": False, **(body.get("mail") or {})},
+                   "mail_2": {"active": False, **(body.get("mail_2") or {})},
+                   "messages": {"mail_sent_ok": "Thank you.", **(body.get("messages") or {})},
+                   "additional_settings": body.get("additional_settings") or "",
+                   "lang": body.get("lang") or "nl"}
+            self.bridge_forms[wp_id] = row
+            return _json({**self._bridge_form(row), "created": True})
+        wp_id = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+        row = self.bridge_forms.get(wp_id)
+        if row is None:
+            return self._bridge_error("not_found", f"Form {wp_id} was not found.", 404,
+                                      {"id": wp_id})
+        if len(parts) == 2 and request.method == "GET":
+            return _json(self._bridge_form(row))
+        if len(parts) == 2 and request.method == "PATCH":
+            touched = [k for k in ("title", "locale", "form", "mail", "mail_2", "messages",
+                                   "additional_settings") if body.get(k) is not None]
+            if not touched and not body.get("strings"):
+                return self._bridge_error("invalid_input", "Nothing to update.", 400)
+            if body.get("messages"):
+                unknown = sorted(set(body["messages"]) - known)
+                if unknown:
+                    return self._bridge_error(
+                        "invalid_input", f"Unknown message key(s): {unknown}.", 400,
+                        {"field": "messages", "unknown": unknown, "known": sorted(known)})
+            for key in ("mail", "mail_2", "messages"):
+                if body.get(key) is not None:
+                    row[key] = {**row[key], **body[key]}
+            for key in ("title", "locale", "form", "additional_settings"):
+                if body.get(key) is not None:
+                    row[key] = body[key]
+            translated = []
+            if body.get("strings"):
+                if not self.multilingual:
+                    return self._bridge_error(
+                        "unavailable", "WPML is not available on this site: WPML is not active.",
+                        409, {"missing": "WPML"})
+                for lang, values in body["strings"].items():
+                    for ref, value in values.items():
+                        item = next((s for s in self.bridge_form_strings.values()
+                                     if s["name"] == ref or str(s["id"]) == str(ref)), None)
+                        if item is None:
+                            return self._bridge_error("not_found", f'String "{ref}" was not found.',
+                                                      404, {"known": ["Form"]})
+                        item["translations"][lang] = {"value": value, "complete": True}
+                        translated.append({"id": item["id"], "lang": lang, "value": value,
+                                           "updated": True, "name": item["name"]})
+                touched.append("strings")
+            out = {**self._bridge_form(row), "touched": touched}
+            if translated:
+                out["translated"] = translated
+            return _json(out)
+        if len(parts) == 2 and request.method == "DELETE":
+            del self.bridge_forms[wp_id]
+            return _json({"id": wp_id, "title": row["title"], "deleted": True})
+        if len(parts) == 3 and parts[2] == "translate" and request.method == "POST":
+            if not self.multilingual:
+                return self._bridge_error(
+                    "unavailable", "WPML is not available on this site: WPML is not active.",
+                    409, {"missing": "WPML"})
+            if not self.forms_translatable:
+                return self._bridge_error(
+                    "unavailable",
+                    "Form translation is not available on this site: one form serves all.",
+                    409, {"missing": "Form translation"})
+            lang = body.get("lang")
+            if lang not in ("nl", "en"):
+                return self._bridge_error("invalid_input", f'Unknown language "{lang}".', 400,
+                                          {"languages": ["nl", "en"]})
+            group = {r.get("lang", "nl"): r["id"] for r in self.bridge_forms.values()
+                     if r.get("trid", r["id"]) == row.get("trid", wp_id)}
+            if lang in group and not body.get("overwrite"):
+                return self._bridge_error("translation_exists", "A translation exists already.",
+                                          409, {"id": group[lang], "lang": lang})
+            new_id = max(list(self.bridge_forms) + [6600]) + 1
+            copy = dict(row) if body.get("copy") != "none" else {
+                "form": "", "mail": {}, "mail_2": {}, "messages": {}, "additional_settings": ""}
+            made = {**copy, "id": new_id, "title": body.get("title") or row["title"],
+                    "slug": f"form-{new_id}", "hash": f"h{new_id}",
+                    "locale": body.get("locale") or "en_US", "lang": lang,
+                    "trid": row.get("trid", wp_id)}
+            for key in ("form", "additional_settings"):
+                if body.get(key) is not None:
+                    made[key] = body[key]
+            for key in ("mail", "mail_2", "messages"):
+                if body.get(key) is not None:
+                    made[key] = {**made.get(key, {}), **body[key]}
+            self.bridge_forms[new_id] = made
+            return _json({**self._bridge_form(made), "created": True,
+                          "source": {"id": wp_id, "lang": row.get("lang", "nl")}})
         return _wp_error("rest_no_route", "No route was found matching the URL.", 404)
 
     # --- surfaces ------------------------------------------------------------------------ #

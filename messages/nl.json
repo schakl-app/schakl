@@ -7150,6 +7150,7 @@
   "permissions.wordpress.content.publish": "Live pagina's bewerken en publiceren op gekoppelde WordPress-sites",
   "permissions.wordpress.forms.read": "Contact Form 7-formulieren lezen op gekoppelde WordPress-sites",
   "permissions.wordpress.forms.write": "Contact Form 7-formulieren bewerken op gekoppelde WordPress-sites",
+  "permissions.wordpress.forms.delete": "Contact Form 7-formulieren verwijderen op gekoppelde WordPress-sites",
   "permissions.wordpress.ability.read": "Alleen-lezen WordPress-abilities tonen en uitvoeren",
   "permissions.wordpress.ability.run": "Elke WordPress-ability uitvoeren, ook schrijvende",
   "errors.wordpress_unreachable": "De WordPress-site gaf geen antwoord.",
