@@ -1,12 +1,18 @@
-"""Meetings: recorded, folded, transcribed, minuted, confirmed.
+"""Meetings: recorded, folded, transcribed, minuted, filed.
 
 The request half. What runs in the worker (folding the chunks, the provider calls, the draft)
-lives in ``jobs.py`` and ``pipeline.py``; this file owns the rows, the reviewer's edits and
-the one write that turns a draft into records — ``confirm``, which lands the minutes as a
-contact moment and the ticked action items as tasks, **through those modules' own services, as
-the reviewer**: an interaction gets the interactions module's validation, kinds, activity line
-and events, a task gets the task module's roster rules and its 422s, and neither module learns
-that meetings exist.
+lives in ``jobs.py`` and ``pipeline.py``; this file owns the rows, every edit to the minutes and
+the roster, and the writes that put a meeting onto other modules' tables — the **contact moment**
+the minutes are filed as (``sync_interaction``, written when the draft lands and rewritten on
+every edit), the **task** made of one action item (``create_task_for_item``) and the **hours**
+booked for the people at the table (``log_time``) — each **through that module's own service,
+as the person acting**: an interaction gets the interactions module's validation, kinds,
+activity line and events, a task gets the task module's roster rules and its 422s, and neither
+module learns that meetings exist.
+
+There is no confirm step. The minutes are the record from the moment they exist and stay
+editable for as long as the meeting does; what used to happen on confirm happens on its own
+(the contact moment) or on its own button (a task, the hours).
 """
 
 from __future__ import annotations
@@ -46,8 +52,6 @@ from app.modules.meetings.models import (
 from app.modules.meetings.pipeline import CONTENT_TYPES, MAX_RECORDING_BYTES
 from app.modules.meetings.schemas import (
     MeetingChunk,
-    MeetingConfirm,
-    MeetingConfirmResult,
     MeetingCreate,
     MeetingDetail,
     MeetingFinish,
@@ -215,7 +219,6 @@ class MeetingService:
             interaction_id=row.interaction_id,
             task_ids=[uuid.UUID(str(t)) for t in (row.task_ids or [])],
             time_entries=await self._time_entries(row, participants),
-            confirmed_at=row.confirmed_at,
             can_write=self.ctx.can("meetings.meeting.write"),
             can_delete=self.ctx.can("meetings.meeting.delete"),
             can_create_task=self.ctx.can("tasks.task.create") and not self.ctx.is_portal,
@@ -227,8 +230,9 @@ class MeetingService:
     async def _time_entries(
         self, row: Meeting, participants: list[MeetingParticipant]
     ) -> list[MeetingTimeEntry]:
-        """The hours a confirm booked, read back through the time module's published surface
-        and named through the roster (a booked colleague is a participant by construction)."""
+        """The hours booked for this meeting, read back through the time module's published
+        surface and named through the roster (a booked colleague is a participant by
+        construction)."""
         ids = [uuid.UUID(str(t)) for t in (row.time_entry_ids or [])]
         if not ids:
             return []
@@ -455,6 +459,9 @@ class MeetingService:
         await ActivityService(self.ctx).record_update(
             ENTITY_TYPE, row.id, before, {f: getattr(row, f) for f in _TRACKED}
         )
+        # The moment follows the filing: a meeting moved to another client moves its timeline
+        # entry with it, and a retitled one is retitled there too.
+        await self.sync_interaction(row)
         return await self._detail(row)
 
     async def add_chunk(self, meeting_id: uuid.UUID, data: MeetingChunk) -> int:
@@ -562,7 +569,7 @@ class MeetingService:
         """Run the pipeline again over what is stored — after a provider outage, a budget
         top-up, or a change of speech provider."""
         row = await self._writable(meeting_id)
-        if row.status not in (MeetingStatus.FAILED.value, MeetingStatus.REVIEW.value):
+        if row.status not in (MeetingStatus.FAILED.value, MeetingStatus.READY.value):
             raise AppError("conflict", "meetings.error.not_retryable", status_code=409)
         if row.audio_file_id is None and row.chunks_received == 0:
             raise AppError("validation", "meetings.error.no_audio", status_code=422)
@@ -596,6 +603,8 @@ class MeetingService:
         row = await self._writable(meeting_id)
         cleaned = await self._clean_participants(participants)
         row = await self.repo.update(row, participants=[p.model_dump(mode="json") for p in cleaned])
+        # The client's contacts on the roster are the contact moment's roster too.
+        await self.sync_interaction(row)
         return await self._detail(row)
 
     async def redraft(self, meeting_id: uuid.UUID) -> MeetingDetail:
@@ -603,7 +612,7 @@ class MeetingService:
         named, which is what lets the draft say *who* took each item on. No new transcription,
         so no new audio cost; the words are the words."""
         row = await self._writable(meeting_id)
-        if row.status not in (MeetingStatus.FAILED.value, MeetingStatus.REVIEW.value):
+        if row.status not in (MeetingStatus.FAILED.value, MeetingStatus.READY.value):
             raise AppError("conflict", "meetings.error.not_retryable", status_code=409)
         if not (row.transcript_text or "").strip():
             raise AppError("validation", "meetings.error.no_transcript", status_code=422)
@@ -615,139 +624,153 @@ class MeetingService:
         return await self._detail(row)
 
     async def save_minutes(self, meeting_id: uuid.UUID, draft: MinutesDraft) -> MeetingDetail:
-        """The reviewer's edits, kept as the draft — nothing else moves."""
+        """An edit to the minutes — the page autosaves, so this is called often and must stay
+        cheap and quiet. A title typed into the minutes is the meeting's title (and clears the
+        ✦ schakl put on a generated one); the contact moment is rewritten to match, so the
+        timeline never shows words the page no longer does. A task an item already became is
+        kept on it whatever the caller sent: the link is a fact, not a field."""
         row = await self._writable(meeting_id)
-        if row.status not in (MeetingStatus.REVIEW.value, MeetingStatus.FAILED.value):
+        if row.status not in (MeetingStatus.READY.value, MeetingStatus.FAILED.value):
             raise AppError("conflict", "meetings.error.not_reviewable", status_code=409)
-        row = await self.repo.update(row, minutes=draft.model_dump(mode="json"))
+        if row.minutes:
+            # Matched on the words, never on the position: a caller that drops the link and
+            # reorders the list would otherwise hand one item another item's task.
+            stored = _tasks_by_title(row.minutes)
+            for item in draft.action_items:
+                if item.task_id is None:
+                    item.task_id = stored.get(item.title.strip().casefold())
+        values: dict[str, Any] = {"minutes": draft.model_dump(mode="json")}
+        title = (draft.title or "").strip()[:255]
+        if title and title != row.title:
+            values["title"] = title
+            values["title_auto"] = False
+        before = {f: getattr(row, f) for f in _TRACKED}
+        row = await self.repo.update(row, **values)
+        await ActivityService(self.ctx).record_update(
+            ENTITY_TYPE, row.id, before, {f: getattr(row, f) for f in _TRACKED}
+        )
+        await self.sync_interaction(row)
         return await self._detail(row)
 
-    async def confirm(self, meeting_id: uuid.UUID, data: MeetingConfirm) -> MeetingConfirmResult:
-        """The draft becomes records: one contact moment, and a task per ticked action item.
+    # --- the contact moment ------------------------------------------------------------- #
+    async def sync_interaction(self, row: Meeting, *, strict: bool = False) -> uuid.UUID | None:
+        """The minutes as a contact moment on the client, made or brought up to date.
 
-        Each write goes through the owning module's own service as the reviewer, so it meets
-        every rule a hand-made one meets and the trail names the person. A task that is refused
-        (no client on the meeting, a roster rule) is *reported* on the result rather than
-        failing the confirm — the minutes are the record, the tasks are a convenience (§18).
+        Called by the worker the moment a draft lands (as the recorder, ``jobs._file``), and by
+        every edit after that — the minutes, the title, the filing, the roster, a task made of
+        an item — so the timeline and the meeting say the same words. The interactions module
+        does the writing through its own service: its kinds, its roster rules, its trail. A
+        refusal there (the kind deactivated, a permission the caller lacks, the module off) is
+        **logged and swallowed** unless ``strict``: the meeting is the record, the moment is a
+        mirror of it, and an autosave that failed because the timeline refused would lose the
+        edit to save the mirror. The page then shows the moment as not filed and offers the
+        strict form (``file_interaction``), whose refusal is the sentence the person needs.
         """
-        from app.modules.interactions.schemas import InteractionCreate
+        if not row.minutes:
+            return row.interaction_id
+        try:
+            draft = MinutesDraft.model_validate(row.minutes)
+        except ValueError:
+            return row.interaction_id
+        from app.modules.interactions.schemas import InteractionCreate, InteractionUpdate
         from app.modules.interactions.service import InteractionService
-        from app.modules.tasks.schemas import TaskCreate
-        from app.modules.tasks.service import TaskService
 
-        row = await self._writable(meeting_id)
-        if row.status != MeetingStatus.REVIEW.value:
-            raise AppError("conflict", "meetings.error.not_reviewable", status_code=409)
-        draft = data.minutes
         title = (draft.title or "").strip() or row.title
-        # Every gate the hours need is asked *before* the contact moment is written, so a
-        # refusal (a licence, a colleague the caller may not book) leaves nothing half-done.
-        log_time = await self._log_time_plan(row, data.log_time)
         locale = await org_locale(self.ctx)
         participants = participants_of(row)
         names = await self._owner_names(draft, participants)
         body = render_minutes(draft, locale=locale, participants=participants, names=names)
-        kind = data.interaction_kind or INTERACTION_KINDS.get(row.kind, "physical_meeting")
+        kind = INTERACTION_KINDS.get(row.kind, "physical_meeting")
         # The client's people in the room are the contact moment's roster (#300): a contact's
         # page then lists this meeting under their name, which is the whole point of naming them.
         contact_ids = list(
             dict.fromkeys(p.contact_id for p in participants if p.contact_id is not None)
         )
-        interaction = await InteractionService(self.ctx).create(
-            InteractionCreate(
-                kind=kind,
-                occurred_at=row.occurred_at,
-                subject=title[:500],
-                body_text=body,
-                company_id=row.company_id,
-                project_id=row.project_id,
-                contact_ids=contact_ids or None,
-            )
-        )
-        interaction_id = uuid.UUID(str(interaction["id"]))
-
-        tasks = TaskService(self.ctx)
-        # The tasks made from the review desk already (``create_task_for_item``) are filed on
-        # the contact moment beside the ones the confirm makes now, and made no second time.
-        task_ids: list[uuid.UUID] = [i.task_id for i in draft.action_items if i.task_id]
-        skipped: list[dict[str, Any]] = []
-        # No SAVEPOINT around the create, on purpose. Assigning a task to a contact queues the
-        # contact's mail inside ``release_db`` (tasks #454), whose commit is the outermost one
-        # in SQLAlchemy 2 — inside ``begin_nested`` it committed the transaction, dropped the
-        # RLS GUC, and the very next read here answered 404 (docs: §18's per-row savepoint and
-        # §11's ``release_db`` cannot both hold; ``release_db`` wins). Every refusal the tasks
-        # module speaks in ``AppError`` is raised before it writes, so catching it without a
-        # savepoint still leaves the session usable; a task that lands is committed there and
-        # then, which is the per-row durability the savepoint was for.
-        company_id, project_id = row.company_id, row.project_id
-        for item in draft.action_items:
-            if not item.create_task or item.task_id is not None:
-                continue
-            try:
-                # A contact who took it on gets the task *as the client's* (#273): the
-                # "waiting on the client" shape, with no colleague riding along on it.
-                task = await tasks.create(
-                    TaskCreate(
-                        title=item.title,
-                        description=_task_notes(item, title, locale),
-                        company_id=company_id,
-                        project_id=project_id,
-                        assignee_user_id=(None if item.owner_contact_id else item.assignee_user_id),
-                        assignee_contact_id=item.owner_contact_id,
-                        due_date=item.due_date or (await _org_today(self.ctx)),
+        task_ids = [uuid.UUID(str(t)) for t in (row.task_ids or [])]
+        try:
+            if row.interaction_id is None:
+                created = await InteractionService(self.ctx).create(
+                    InteractionCreate(
+                        kind=kind,
+                        occurred_at=row.occurred_at,
+                        subject=title[:500],
+                        body_text=body,
+                        company_id=row.company_id,
+                        project_id=row.project_id,
+                        contact_ids=contact_ids or None,
+                        task_ids=task_ids or None,
                     )
                 )
-                task_ids.append(task.id)
-                # The item remembers its task, so the record's page can link it and never
-                # offers to make it a second time.
-                item.task_id = task.id
-            except AppError as exc:
-                skipped.append(
-                    {"title": item.title, "message": exc.message_key, "fields": exc.fields}
+                interaction_id = uuid.UUID(str(created["id"]))
+                await self.repo.update(row, interaction_id=interaction_id)
+                await ActivityService(self.ctx).record(
+                    ENTITY_TYPE, row.id, "meeting.filed", {"interaction_id": str(interaction_id)}
                 )
-        if task_ids:
-            # File the moment onto the tasks it produced, the roster shape (#300).
-            from app.modules.interactions.schemas import InteractionUpdate
-
-            await InteractionService(self.ctx).update(
-                interaction_id, InteractionUpdate(task_ids=task_ids)
+            else:
+                await InteractionService(self.ctx).update(
+                    row.interaction_id,
+                    InteractionUpdate(
+                        kind=kind,
+                        occurred_at=row.occurred_at,
+                        subject=title[:500],
+                        body_text=body,
+                        company_id=row.company_id,
+                        project_id=row.project_id,
+                        contact_ids=contact_ids,
+                        task_ids=task_ids,
+                    ),
+                )
+        except AppError as exc:
+            if strict:
+                raise
+            logger.warning(
+                "meetings: %s could not be filed as a contact moment: %s", row.id, exc.message_key
             )
-        entry_ids = await self._log_time(row, interaction_id, log_time, draft, title)
+            return None
+        return row.interaction_id
+
+    async def file_interaction(self, meeting_id: uuid.UUID) -> MeetingDetail:
+        """The page's button for a meeting the automatic filing skipped — a row on ``review``
+        from before the confirm step was removed, or one whose filing was refused. Raises what
+        the interactions module refuses on, so the person reads the reason."""
+        row = await self._writable(meeting_id)
+        if not row.minutes:
+            raise AppError("validation", "meetings.error.no_minutes", status_code=422)
+        await self.sync_interaction(row, strict=True)
+        return await self._detail(row)
+
+    # --- the hours ----------------------------------------------------------------------- #
+    async def log_time(self, meeting_id: uuid.UUID, data: MeetingLogTime) -> MeetingDetail:
+        """One time entry per colleague named, for the meeting's length, filed on the contact
+        moment — the "Uren registreren" button. Every gate is asked before anything is written
+        (``_log_time_plan``), and a meeting not yet filed is filed first so the entries have a
+        moment to hang on; where that filing is refused the hours still land, unfiled."""
+        row = await self._writable(meeting_id)
+        if row.status in WORKER_STATUSES or row.status in (
+            MeetingStatus.RECORDING.value,
+            MeetingStatus.QUEUED.value,
+        ):
+            raise AppError("conflict", "meetings.error.busy", status_code=409)
+        plan = await self._log_time_plan(row, data)
+        interaction_id = await self.sync_interaction(row)
+        draft = MinutesDraft.model_validate(row.minutes) if row.minutes else MinutesDraft()
+        entry_ids = await self._log_time(row, interaction_id, plan, draft, row.title)
         row = await self.repo.update(
             row,
-            title=title,
-            title_auto=False if (draft.title or "").strip() else row.title_auto,
-            minutes=draft.model_dump(mode="json"),
-            status=MeetingStatus.DONE.value,
-            status_at=_now(),
-            interaction_id=interaction_id,
-            task_ids=[str(t) for t in task_ids],
-            time_entry_ids=[str(t) for t in entry_ids] or None,
-            confirmed_at=_now(),
+            time_entry_ids=[str(t) for t in (row.time_entry_ids or [])]
+            + [str(t) for t in entry_ids],
         )
         await ActivityService(self.ctx).record(
-            ENTITY_TYPE,
-            row.id,
-            "meeting.confirmed",
-            {
-                "interaction_id": str(interaction_id),
-                "tasks": len(task_ids),
-                "time_entries": len(entry_ids),
-            },
+            ENTITY_TYPE, row.id, "meeting.hours_logged", {"time_entries": len(entry_ids)}
         )
-        return MeetingConfirmResult(
-            interaction_id=interaction_id,
-            task_ids=task_ids,
-            skipped=skipped,
-            time_entries=await self._time_entries(row, participants),
-        )
+        return await self._detail(row)
 
     async def _log_time_plan(
         self, row: Meeting, log_time: MeetingLogTime | None
     ) -> tuple[list[uuid.UUID], int, MeetingLogTime] | None:
         """Everything the hours need, checked before anything is written (#314's three gates,
         and a fourth): ``time.entry.write`` — at ``:any`` for anyone but the caller, since the
-        entry lands on *their* timesheet; the ``time`` sku still writable, because the confirm
+        entry lands on *their* timesheet; the ``time`` sku still writable, because this route
         rides ``meetings``' licence gate and a ride-along must never be the one way an
         uncovered module can still be written to (§18); every id one of the org's staff; and a
         duration, the recording's own where none was typed — a meeting with neither is a
@@ -789,14 +812,14 @@ class MeetingService:
     async def _log_time(
         self,
         row: Meeting,
-        interaction_id: uuid.UUID,
+        interaction_id: uuid.UUID | None,
         plan: tuple[list[uuid.UUID], int, MeetingLogTime] | None,
         draft: MinutesDraft,
         title: str,
     ) -> list[uuid.UUID]:
         """One entry per colleague named, for the meeting's length, filed on the contact moment
-        — through the time module's published surface (§6), typed after the moment's kind
-        exactly as a hand-logged call is (#182)."""
+        where there is one — through the time module's published surface (§6), typed after the
+        moment's kind exactly as a hand-logged call is (#182)."""
         if plan is None:
             return []
         user_ids, minutes, log_time = plan
@@ -874,14 +897,13 @@ class MeetingService:
         self, meeting_id: uuid.UUID, data: MeetingTaskCreate
     ) -> MeetingTaskCreated:
         """The reviewed draft becomes a task — the meeting's client's, through the tasks
-        module's own service as the reviewer — and the action item remembers it, so the confirm
-        files it on the contact moment rather than making it twice. On a meeting already
-        confirmed, the task is filed on the contact moment here and now."""
+        module's own service as the reviewer — the action item remembers it, and the contact
+        moment lists it. Once per item: the link is what stops a second press."""
         from app.modules.tasks.schemas import TaskCreate, TaskCreateChecklist
         from app.modules.tasks.service import TaskService
 
         row = await self._writable(meeting_id)
-        if row.status not in (MeetingStatus.REVIEW.value, MeetingStatus.DONE.value):
+        if row.status not in (MeetingStatus.READY.value, MeetingStatus.FAILED.value):
             raise AppError("conflict", "meetings.error.not_reviewable", status_code=409)
         draft, item = await self._item_at(row, data.index)
         if item.task_id is not None:
@@ -918,23 +940,17 @@ class MeetingService:
             )
         )
         item.task_id = task.id
-        item.create_task = False
         item.title = data.title
         item.due_date = data.due_date
         task_ids = [uuid.UUID(str(t)) for t in (row.task_ids or [])] + [task.id]
-        if row.interaction_id is not None:
-            from app.modules.interactions.schemas import InteractionUpdate
-            from app.modules.interactions.service import InteractionService
-
-            await InteractionService(self.ctx).update(
-                row.interaction_id, InteractionUpdate(task_ids=task_ids)
-            )
         row = await self.repo.update(
             row, minutes=draft.model_dump(mode="json"), task_ids=[str(t) for t in task_ids]
         )
         await ActivityService(self.ctx).record(
             ENTITY_TYPE, row.id, "meeting.task_created", {"task_id": str(task.id)}
         )
+        # Filed on the contact moment (its task roster, #300) — made first where none exists.
+        await self.sync_interaction(row)
         return MeetingTaskCreated(task_id=task.id, meeting=await self._detail(row))
 
     async def _owner_names(
@@ -1048,6 +1064,18 @@ def _clock(seconds: float | None) -> str:
     hours, rest = divmod(whole, 3600)
     minutes, secs = divmod(rest, 60)
     return f"{hours}:{minutes:02d}:{secs:02d}" if hours else f"{minutes}:{secs:02d}"
+
+
+def _tasks_by_title(minutes: dict[str, Any]) -> dict[str, uuid.UUID]:
+    """``action item title → task id`` as stored, for the links a saved draft must keep."""
+    out: dict[str, uuid.UUID] = {}
+    for raw in minutes.get("action_items") or []:
+        if isinstance(raw, dict) and raw.get("task_id") and raw.get("title"):
+            try:
+                out[str(raw["title"]).strip().casefold()] = uuid.UUID(str(raw["task_id"]))
+            except ValueError:
+                continue
+    return out
 
 
 def participants_of(row: Meeting) -> list[MeetingParticipant]:

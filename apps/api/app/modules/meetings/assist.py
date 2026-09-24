@@ -72,7 +72,6 @@ _ITEM_FIELDS = {
         ),
     },
     "due_date": {"type": ["string", "null"], "description": "YYYY-MM-DD, or '' to clear."},
-    "create_task": {"type": ["boolean", "null"]},
 }
 
 SUBMIT_CHANGES = ToolDef(
@@ -259,9 +258,9 @@ def _system(*, today: date, now: Any, locale: str, minutes_editable: bool) -> st
             "transcript supports it; otherwise leave quote null. An action item's owner is "
             "'u:<id>' (staff), 'c:<id>' (a contact from the roster) or 'n:<name>'."
             if minutes_editable
-            else "The minutes are NOT editable in this meeting's state (they are confirmed or "
-            "not yet written): leave every minutes field null and every minutes list empty, "
-            "and say so in summary_for_colleague if the instruction asked for a minutes change."
+            else "The minutes are NOT editable in this meeting's state (not yet written): "
+            "leave every minutes field null and every minutes list empty, and say so in "
+            "summary_for_colleague if the instruction asked for a minutes change."
         ),
         "A due date only when the instruction gives or implies one, resolved against the "
         "calendar above.",
@@ -308,7 +307,7 @@ def meeting_document(
         if minutes is None
         else {
             "editable": detail.status.value
-            in (MeetingStatus.REVIEW.value, MeetingStatus.FAILED.value),
+            in (MeetingStatus.READY.value, MeetingStatus.FAILED.value),
             "title": minutes.title,
             "summary": minutes.summary,
             "topics": [
@@ -334,7 +333,7 @@ def meeting_document(
                         else ""
                     ),
                     "due_date": a.due_date.isoformat() if a.due_date else None,
-                    "create_task": a.create_task,
+                    "task_id": str(a.task_id) if a.task_id else None,
                     "quote": a.quote,
                 }
                 for i, a in enumerate(minutes.action_items)
@@ -635,9 +634,6 @@ def revision_from_call(  # noqa: C901, PLR0912, PLR0915 — one pass over one an
                     if getattr(item, key) != value:
                         setattr(item, key, value)
                         touched = True
-                # A colleague's item is ours to do; anybody else's is minuted unless ticked.
-                if entry.get("create_task") is None:
-                    item.create_task = item.assignee_user_id is not None
             due = entry.get("due_date")
             if due == "" and item.due_date is not None:
                 item.due_date = None
@@ -647,10 +643,6 @@ def revision_from_call(  # noqa: C901, PLR0912, PLR0915 — one pass over one an
                 if parsed_due is not None and parsed_due != item.due_date:
                     item.due_date = parsed_due
                     touched = True
-            create = entry.get("create_task")
-            if isinstance(create, bool) and create != item.create_task:
-                item.create_task = create
-                touched = True
         gone = set(
             _index_list(submitted.get("remove_action_item_indexes"), len(draft.action_items))
         )
@@ -670,7 +662,6 @@ def revision_from_call(  # noqa: C901, PLR0912, PLR0915 — one pass over one an
             }
             quote = _text(entry.get("quote"), 500)
             at = entry.get("at")
-            create = entry.get("create_task")
             draft.action_items.append(
                 MinutesActionItem(
                     title=title,
@@ -681,9 +672,6 @@ def revision_from_call(  # noqa: C901, PLR0912, PLR0915 — one pass over one an
                     if isinstance(at, int | float) and not isinstance(at, bool) and at >= 0
                     else None,
                     verified=quote_found(quote, haystack) if quote else True,
-                    create_task=create
-                    if isinstance(create, bool)
-                    else owner["assignee_user_id"] is not None,
                     **owner,
                 )
             )
@@ -743,11 +731,7 @@ async def revise_meeting(
     service = MeetingService(ctx)
     detail = await service.get(meeting_id)
     minutes_editable = (
-        detail.status.value
-        in (
-            MeetingStatus.REVIEW.value,
-            MeetingStatus.FAILED.value,
-        )
+        detail.status.value in (MeetingStatus.READY.value, MeetingStatus.FAILED.value)
         and detail.minutes is not None
     )
 

@@ -11,7 +11,7 @@ check alone leaves a control drawn that can only refuse (#253).
   transcripts, so "what did we agree with Nova about the homepage" resolves to a meeting.
 * ``meetings.transcript`` — the words whole, every speaker label resolved to a person, with the
   clock beside each line: what an agent reads before it answers anything about a meeting.
-* ``meetings.minutes`` — the minutes as confirmed (or as drafted, marked so): summary, topics,
+* ``meetings.minutes`` — the minutes as they stand (edited in place, never frozen): summary, topics,
   decisions and action items with who owns each, and where in the recording it rests.
 """
 
@@ -135,7 +135,7 @@ async def _minutes(ctx: RequestContext, args: dict[str, Any]) -> ToolResult:
                                 "at": i.at,
                                 "quote": i.quote,
                                 "verified": i.verified,
-                                "becomes_task": i.create_task,
+                                "task_id": str(i.task_id) if i.task_id else None,
                             }
                             for i in items
                         ],
@@ -159,7 +159,6 @@ async def _minutes(ctx: RequestContext, args: dict[str, Any]) -> ToolResult:
             "minutes": None
             if minutes is None
             else {
-                "confirmed": detail.status.value == "done",
                 "title": minutes.title or detail.title,
                 "summary": minutes.summary,
                 "topics": [{"heading": t.heading, "text": t.text} for t in minutes.topics],
@@ -182,7 +181,7 @@ MEETING_MCP_TOOLS: list[AIToolSpec] = [
         name="meetings.find",
         description=(
             "Find recorded meetings: by a search over their titles and transcripts, by client "
-            "(company_id) and/or by status (review, done, failed). Newest first, at most 10. "
+            "(company_id) and/or by status (ready, failed). Newest first, at most 10. "
             "Use it to resolve 'the meeting with Nova last week' to a meeting id."
         ),
         input_schema={
@@ -195,7 +194,7 @@ MEETING_MCP_TOOLS: list[AIToolSpec] = [
                 "company_id": {"type": "string", "description": "Narrow to one client's meetings."},
                 "status": {
                     "type": "string",
-                    "description": "Comma-separated statuses: review, done, failed, queued.",
+                    "description": "Comma-separated statuses: ready, failed, queued.",
                 },
             },
         },
@@ -225,7 +224,7 @@ MEETING_MCP_TOOLS: list[AIToolSpec] = [
             "The minutes of one meeting: summary, topics, decisions, action items grouped by "
             "side (agency / client / others) and owner, open questions — each decision and "
             "action item with the transcript words it rests on and whether that quote was "
-            "verified. Says whether the minutes are confirmed or still a draft."
+            "verified, and the task an action item became where one was made."
         ),
         input_schema={
             "type": "object",

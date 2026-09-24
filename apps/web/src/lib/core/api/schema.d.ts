@@ -9527,8 +9527,8 @@ export interface paths {
         /**
          * Create Task For Action Item
          * @description Make the task for one action item now, with its steps and links in one call, as the
-         *     caller (the tasks module's own rules apply). The item remembers its task, the confirm
-         *     files it on the contact moment, and a meeting already confirmed files it at once.
+         *     caller (the tasks module's own rules apply). The item remembers its task and the contact
+         *     moment lists it; the only way an action item becomes a task.
          */
         post: operations["create_task_for_action_item_api_v1_meetings__meeting_id__action_items_task_post"];
         delete?: never;
@@ -9620,26 +9620,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/meetings/{meeting_id}/confirm": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Confirm Meeting
-         * @description The minutes become a contact moment and the ticked action items become tasks.
-         */
-        post: operations["confirm_meeting_api_v1_meetings__meeting_id__confirm_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/meetings/{meeting_id}/finish": {
         parameters: {
             query?: never;
@@ -9660,6 +9640,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/meetings/{meeting_id}/interaction": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * File Meeting
+         * @description File the minutes as a contact moment on the client now. Normally that happened by
+         *     itself the moment the minutes landed; this is for a meeting where it did not (the filing
+         *     was refused, or the row predates it), and it says why when it is refused again.
+         */
+        post: operations["file_meeting_api_v1_meetings__meeting_id__interaction_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/meetings/{meeting_id}/minutes": {
         parameters: {
             query?: never;
@@ -9670,7 +9672,8 @@ export interface paths {
         get?: never;
         /**
          * Save Minutes
-         * @description The reviewer's edits to the draft, kept without confirming.
+         * @description An edit to the minutes, whole. The page autosaves through this; the contact moment on
+         *     the client is rewritten to match. A title in the draft is the meeting's title.
          */
         put: operations["save_minutes_api_v1_meetings__meeting_id__minutes_put"];
         post?: never;
@@ -9794,6 +9797,28 @@ export interface paths {
         get: operations["meeting_status_api_v1_meetings__meeting_id__status_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meetings/{meeting_id}/time": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Log Meeting Time
+         * @description Book the meeting's hours: one time entry per colleague named, for its length (or the
+         *     minutes given), filed on the contact moment. Booking a colleague asks
+         *     ``time.entry.write:any``; the ``time`` module must be writable.
+         */
+        post: operations["log_meeting_time_api_v1_meetings__meeting_id__time_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -27464,32 +27489,6 @@ export interface components {
             /** Seq */
             seq: number;
         };
-        /**
-         * MeetingConfirm
-         * @description The reviewer's final word: these minutes become a contact moment and these tasks.
-         */
-        MeetingConfirm: {
-            /** Interaction Kind */
-            interaction_kind?: string | null;
-            log_time?: components["schemas"]["MeetingLogTime"] | null;
-            minutes: components["schemas"]["MinutesDraft"];
-        };
-        /** MeetingConfirmResult */
-        MeetingConfirmResult: {
-            /**
-             * Interaction Id
-             * Format: uuid
-             */
-            interaction_id: string;
-            /** Skipped */
-            skipped?: {
-                [key: string]: unknown;
-            }[];
-            /** Task Ids */
-            task_ids: string[];
-            /** Time Entries */
-            time_entries?: components["schemas"]["MeetingTimeEntry"][];
-        };
         /** MeetingCreate */
         MeetingCreate: {
             /** Company Id */
@@ -27569,8 +27568,6 @@ export interface components {
             company_id?: string | null;
             /** Company Name */
             company_name?: string | null;
-            /** Confirmed At */
-            confirmed_at?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -27676,10 +27673,10 @@ export interface components {
         };
         /**
          * MeetingLogTime
-         * @description "Ook de uren registreren" for a meeting (#175's ride-along, #314's gates): one time entry
-         *     per colleague named, for the meeting's duration, filed on the contact moment the confirm
-         *     writes. The reviewer sees every entry it will write — who, how long, the line beside it —
-         *     before pressing confirm, because hours written for a colleague are on *their* timesheet.
+         * @description "Uren registreren" for a meeting (#175's ride-along, #314's gates): one time entry per
+         *     colleague named, for the meeting's duration, filed on the contact moment. The dialog shows
+         *     every entry it will write — who, how long, the line beside it — before the press, because
+         *     hours written for a colleague are on *their* timesheet.
          */
         MeetingLogTime: {
             /** Billable */
@@ -27933,7 +27930,7 @@ export interface components {
          * MeetingStatus
          * @enum {string}
          */
-        MeetingStatus: "recording" | "queued" | "transcribing" | "summarising" | "review" | "done" | "failed";
+        MeetingStatus: "recording" | "queued" | "transcribing" | "summarising" | "ready" | "failed";
         /**
          * MeetingStatusRead
          * @description The one column the detail page polls while a worker holds the row.
@@ -28429,11 +28426,6 @@ export interface components {
             assignee_user_id?: string | null;
             /** At */
             at?: number | null;
-            /**
-             * Create Task
-             * @default true
-             */
-            create_task: boolean;
             /** Description */
             description?: string | null;
             /** Due Date */
@@ -59011,41 +59003,6 @@ export interface operations {
             };
         };
     };
-    confirm_meeting_api_v1_meetings__meeting_id__confirm_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                meeting_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MeetingConfirm"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MeetingConfirmResult"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     finish_meeting_api_v1_meetings__meeting_id__finish_post: {
         parameters: {
             query?: never;
@@ -59060,6 +59017,37 @@ export interface operations {
                 "application/json": components["schemas"]["MeetingFinish"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    file_meeting_api_v1_meetings__meeting_id__interaction_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -59299,6 +59287,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MeetingStatusRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    log_meeting_time_api_v1_meetings__meeting_id__time_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                meeting_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MeetingLogTime"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingDetail"];
                 };
             };
             /** @description Validation Error */

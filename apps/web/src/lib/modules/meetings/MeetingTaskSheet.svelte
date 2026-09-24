@@ -8,8 +8,8 @@
    * model reads the words around the item, so the steps the meeting enumerated and the deadline
    * that was spoken land in the form), marks every field it filled with a ✦, lets the reviewer
    * correct all of it, and only *Aanmaken* writes anything — one call, steps and links included
-   * (`?/createItemTask`). The item then carries its task, the confirm files it on the contact
-   * moment rather than making it twice, and on a confirmed meeting it is filed at once.
+   * (`?/createItemTask`). The item then carries its task and the contact moment lists it —
+   * the only way an action item becomes a task.
    *
    * Two rules from the surfaces this borrows from. **A draft that fails still opens the form**,
    * filled from the minutes themselves — losing the click to a provider hiccup is the worse

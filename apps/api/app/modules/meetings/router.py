@@ -18,13 +18,12 @@ from app.errors import AppError
 from app.modules.meetings.models import DOCUMENT_SECTIONS
 from app.modules.meetings.schemas import (
     MeetingChunk,
-    MeetingConfirm,
-    MeetingConfirmResult,
     MeetingCreate,
     MeetingDesignSource,
     MeetingDetail,
     MeetingFinish,
     MeetingList,
+    MeetingLogTime,
     MeetingParticipants,
     MeetingPolicy,
     MeetingReviseRequest,
@@ -263,20 +262,37 @@ async def redraft_meeting(
 async def save_minutes(
     meeting_id: uuid.UUID, payload: MinutesDraft, ctx: RequestContext = Depends(require_context)
 ) -> MeetingDetail:
-    """The reviewer's edits to the draft, kept without confirming."""
+    """An edit to the minutes, whole. The page autosaves through this; the contact moment on
+    the client is rewritten to match. A title in the draft is the meeting's title."""
     return await MeetingService(ctx).save_minutes(meeting_id, payload)
 
 
 @router.post(
-    "/{meeting_id}/confirm",
-    response_model=MeetingConfirmResult,
+    "/{meeting_id}/interaction",
+    response_model=MeetingDetail,
     dependencies=[require_permission("meetings.meeting.write")],
 )
-async def confirm_meeting(
-    meeting_id: uuid.UUID, payload: MeetingConfirm, ctx: RequestContext = Depends(require_context)
-) -> MeetingConfirmResult:
-    """The minutes become a contact moment and the ticked action items become tasks."""
-    return await MeetingService(ctx).confirm(meeting_id, payload)
+async def file_meeting(
+    meeting_id: uuid.UUID, ctx: RequestContext = Depends(require_context)
+) -> MeetingDetail:
+    """File the minutes as a contact moment on the client now. Normally that happened by
+    itself the moment the minutes landed; this is for a meeting where it did not (the filing
+    was refused, or the row predates it), and it says why when it is refused again."""
+    return await MeetingService(ctx).file_interaction(meeting_id)
+
+
+@router.post(
+    "/{meeting_id}/time",
+    response_model=MeetingDetail,
+    dependencies=[require_permission("meetings.meeting.write")],
+)
+async def log_meeting_time(
+    meeting_id: uuid.UUID, payload: MeetingLogTime, ctx: RequestContext = Depends(require_context)
+) -> MeetingDetail:
+    """Book the meeting's hours: one time entry per colleague named, for its length (or the
+    minutes given), filed on the contact moment. Booking a colleague asks
+    ``time.entry.write:any``; the ``time`` module must be writable."""
+    return await MeetingService(ctx).log_time(meeting_id, payload)
 
 
 @router.post(
@@ -307,8 +323,8 @@ async def create_task_for_action_item(
     ctx: RequestContext = Depends(require_context),
 ) -> MeetingTaskCreated:
     """Make the task for one action item now, with its steps and links in one call, as the
-    caller (the tasks module's own rules apply). The item remembers its task, the confirm
-    files it on the contact moment, and a meeting already confirmed files it at once."""
+    caller (the tasks module's own rules apply). The item remembers its task and the contact
+    moment lists it; the only way an action item becomes a task."""
     return await MeetingService(ctx).create_task_for_item(meeting_id, payload)
 
 

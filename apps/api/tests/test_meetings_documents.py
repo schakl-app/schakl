@@ -40,7 +40,7 @@ from tests.test_notifications_fanout import _member
 
 
 async def _minuted(client_for, tmp_path, monkeypatch, slug: str):  # noqa: ANN001, ANN202
-    """A tenant with one meeting through the whole pipeline, on ``review``."""
+    """A tenant with one meeting through the whole pipeline, on ``ready``."""
     monkeypatch.setattr(settings, "storage_path", str(tmp_path))
     monkeypatch.setattr("app.modules.meetings.pipeline.provider_transcribe", _fake_transcribe())
     t = await make_tenant(slug)
@@ -441,7 +441,7 @@ def _detail(**overrides) -> MeetingDetail:  # noqa: ANN003
         "title": "Kick-off",
         "kind": "physical",
         "source": "microphone",
-        "status": "review",
+        "status": "ready",
         "occurred_at": datetime(2026, 9, 22, 14, 0, tzinfo=UTC),
         "created_at": datetime(2026, 9, 22, 14, 0, tzinfo=UTC),
         "participants": [
@@ -454,8 +454,8 @@ def _detail(**overrides) -> MeetingDetail:  # noqa: ANN003
             "topics": [{"heading": "Planning", "text": "Vrijdag."}],
             "decisions": [{"text": "Live op vrijdag", "quote": None, "verified": True}],
             "action_items": [
-                {"title": "Teksten", "assignee_user_id": str(staff), "create_task": True},
-                {"title": "Logo", "owner_label": "Jan (klant)", "create_task": False},
+                {"title": "Teksten", "assignee_user_id": str(staff)},
+                {"title": "Logo", "owner_label": "Jan (klant)"},
             ],
             "open_questions": ["Wie doet de foto's?"],
         },
@@ -530,12 +530,12 @@ def test_a_revision_is_grounded_field_by_field() -> None:
     assert revision.summary.startswith("Klant gezet")
 
 
-def test_a_confirmed_meeting_keeps_its_minutes_whatever_the_answer_says() -> None:
+def test_minutes_not_yet_written_are_left_alone_whatever_the_answer_says() -> None:
     from datetime import date
 
     from app.core.ai.candidates import ParseCandidates
 
-    detail = _detail(status="done")
+    detail = _detail(status="summarising")
     revision = revision_from_call(
         {"summary": "Herschreven", "add_open_questions": ["Nog iets?"], "title": "Nieuw"},
         detail=detail,
@@ -643,7 +643,7 @@ async def test_the_tools_answer_the_words_and_the_minutes(
 
         minutes = next(s for s in MEETING_MCP_TOOLS if s.name == "meetings.minutes")
         drafted = await run_tool(ctx, minutes, {"meeting_id": meeting_id})
-        assert drafted.data["minutes"]["confirmed"] is False
+        assert "confirmed" not in drafted.data["minutes"]
         sides = {block["side"] for block in drafted.data["minutes"]["action_items"]}
         assert sides == {"agency", "other"}
         assert drafted.sources[0].label == "Kick-off homepage"

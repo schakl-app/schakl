@@ -2256,6 +2256,23 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   record time, the minutes' subject when the words are in; a typed title is never touched). And
   **a browser's streamed WebM is remuxed at fold** (`-c copy`), because a header that says
   *unknown duration* is a player that cannot be scrubbed.
+- **The minutes are the record from the moment they exist, and a record is never frozen** (the
+  owner's reversal of the confirm step above, `docs/MEETINGS.md`). "Nothing the model wrote is
+  a record until a person confirms it" was right about the model and wrong about the button: a
+  confirmed meeting could not be corrected, a contact moment sat unwritten until somebody
+  pressed a step nobody asked for, and tasks were made by checkbox in bulk. Four things replace
+  it. **One state after the worker** — `review` and `done` collapsed into `ready`
+  (`b7d4f2c9a1e6`), editable for ever, saved by itself from the page. **The contact moment is
+  automatic and follows every edit**: the worker files the draft as the recorder
+  (`member_context`, the intake's shape) the moment it lands, and `sync_interaction` rewrites
+  it on every save of the minutes, the title, the filing and the roster — a refusal there is
+  logged and swallowed, because the meeting is the record and the moment its mirror, and the
+  page's own button is the strict form that carries the reason. **A task is made one item at a
+  time** (the e-mail approve's sheet), never by a checkbox; a save that drops the link gets it
+  back matched on the item's words, never its position. And **the hours have their own button**
+  (`POST …/time`, #314's gates). The rule to carry: a stage that exists only to gate a write the
+  system could make itself, and that freezes what it gates, is a stage — the write goes in as
+  soon as it is true, and stays editable.
 - **A redeploy must be a non-event for a tab in the middle of a recording, and a piece that
   does not land is retried by the browser, never by the person** (`meetings/upload.ts`,
   `docs/MEETINGS.md`). The API rolls start-first (§11), which keeps the healthcheck green and says
