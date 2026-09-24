@@ -141,6 +141,12 @@ _DIRECTIVE_BY_WORD: dict[str, str] = {
 }
 _DIRECTIVE_RE = re.compile(r"^\s*(?:[-*•]\s*)?\**([a-zA-Z ]{2,14})\**\s*[:=]\s*(.+?)\s*$")
 
+#: Apple Mail's forward marker, in the languages the connected mailboxes answer in.
+_APPLE_FORWARD_RE = re.compile(
+    r"^\s*(begin forwarded message|begin doorgestuurd bericht|"
+    r"anfang der weitergeleiteten nachricht)",
+    re.I,
+)
 #: Where the colleague stops and somebody else's mail begins. Gmail, Outlook and Apple Mail
 #: each mark a forward and a reply differently, and the HTML→markdown conversion keeps the
 #: words but not the wrapper — so the split is on the words.
@@ -153,7 +159,7 @@ _FORWARD_MARKERS = (
     # "On Tue, 1 Sep 2026 at 10:00, Klant <k@client.nl> wrote:" and Gmail's Dutch
     # "Op di 1 sep 2026 om 10:00 schreef Klant <k@client.nl>:" — the verb sits at either end.
     re.compile(r"^\s*(on|op)\s.+\b(wrote|schreef)\b.*:\s*$", re.I),
-    re.compile(r"^\s*begin forwarded message", re.I),
+    _APPLE_FORWARD_RE,
     re.compile(r"^\s*>"),
 )
 
@@ -207,7 +213,7 @@ _SIGNOFF_RE = re.compile(
 #: connected mailboxes answer in.
 _FORWARD_HEADER_RE = re.compile(
     r"^\s*(?P<key>from|van|de|date|datum|sent|verzonden|gesendet|subject|onderwerp|betreff|"
-    r"to|aan|an|cc|kopie)\s*:\s*(?P<value>.*?)\s*$",
+    r"to|aan|an|cc|kopie|reply-to|antwoord aan|antwort an)\s*:\s*(?P<value>.*?)\s*$",
     re.I,
 )
 _FORWARD_HEADER_KEYS = {
@@ -216,6 +222,9 @@ _FORWARD_HEADER_KEYS = {
     "subject": "subject", "onderwerp": "subject", "betreff": "subject",
     "to": "to", "aan": "to", "an": "to",
     "cc": "cc", "kopie": "cc",
+    # Apple Mail writes the original's Reply-To into the block: part of the headers, so it
+    # must not end them and land as the first line of the forwarded body.
+    "reply-to": "reply_to", "antwoord aan": "reply_to", "antwort an": "reply_to",
 }  # fmt: skip
 _QUOTE_HEADER_RE = re.compile(r"^\s*>?\s*(on|op)\s.+\b(wrote|schreef)\b.*:\s*$", re.I)
 _MD_LINK_RE = re.compile(r"\[([^\]]*)\]\([^)]*\)")
@@ -287,7 +296,7 @@ class ForwardedMail:
 def _is_forward_marker(line: str) -> bool:
     plain = _plain(line)
     return any(marker.match(plain) for marker in _FORWARD_MARKERS[:2]) or bool(
-        re.match(r"^\s*begin forwarded message", plain, re.I)
+        _APPLE_FORWARD_RE.match(plain)
     )
 
 
@@ -496,9 +505,7 @@ def parse_intake(subject: str | None, body: str | None) -> IntakeDraft:
         due_hint=directives.get("due") or due_phrase(own_clean),
         project_hint=directives.get("project"),
         label_hints=[
-            part.strip()
-            for part in re.split(r"[,;]", directives.get("labels", ""))
-            if part.strip()
+            part.strip() for part in re.split(r"[,;]", directives.get("labels", "")) if part.strip()
         ],
         priority=_PRIORITY_WORDS.get((directives.get("priority") or "").strip().lower()),
         own_text=own_clean,
@@ -1251,14 +1258,18 @@ async def _with_skipped_note(
 def _description(
     draft: IntakeDraft, plan: IntakePlan | None, *, forwarded: str | None = None
 ) -> str | None:
-    """The task's notes: the model's short summary first, then what the colleague wrote
-    (signature already cut). What they forwarded is a contact moment on the task, not notes —
-    it is appended here only when it could not be filed (``forwarded``). Everything through
-    the untrusted strip: our own mention markup must not survive a forward (#327)."""
+    """The task's notes: the model's summary — written *from* the colleague's instruction and
+    the forwarded mail, never a copy of either — or, with no model to write one, what the
+    colleague typed (signature already cut). Not both: a summary over the words it summarises
+    is the mail pasted into the task twice, and the owner's ask was a description generated
+    from the mail rather than the mail. What they forwarded is a contact moment on the task,
+    not notes — it is appended here only when it could not be filed (``forwarded``).
+    Everything through the untrusted strip: our own mention markup must not survive a forward
+    (#327)."""
     parts: list[str] = []
     if plan and plan.summary:
         parts.append(plan.summary)
-    if draft.own_text:
+    elif draft.own_text:
         parts.append(draft.own_text)
     if forwarded:
         parts.append(forwarded)

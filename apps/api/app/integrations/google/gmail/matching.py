@@ -48,11 +48,13 @@ __all__ = [
 ]
 
 
-def headers_map(message: dict[str, Any]) -> dict[str, str]:
-    return {
-        header.get("name", ""): header.get("value", "")
+def headers_map(message: dict[str, Any]) -> core.HeaderMap:
+    """The message's headers by name, case-insensitively — a header name is RFC 5322's to
+    spell, not the client's, and Apple Mail spells ``Message-Id`` (:class:`core.HeaderMap`)."""
+    return core.HeaderMap(
+        (header.get("name", ""), header.get("value", ""))
         for header in (message.get("payload") or {}).get("headers", [])
-    }
+    )
 
 
 def direction_of(label_ids: list[str], *, sender_internal: bool = False) -> str:
@@ -73,9 +75,7 @@ def is_relevant(label_ids: list[str], excluded_label_id: str | None) -> bool:
 # Body extraction (format=full payloads)
 # --------------------------------------------------------------------------- #
 def _decode(data: str) -> str:
-    return base64.urlsafe_b64decode(data + "=" * (-len(data) % 4)).decode(
-        "utf-8", errors="replace"
-    )
+    return base64.urlsafe_b64decode(data + "=" * (-len(data) % 4)).decode("utf-8", errors="replace")
 
 
 def _walk_parts(part: dict[str, Any], mime: str) -> str | None:

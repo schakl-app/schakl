@@ -15,6 +15,21 @@ def test_blank_input_is_none() -> None:
     assert html_to_markdown("<div>  </div>") is None
 
 
+def test_a_document_head_is_dropped_and_its_void_tags_do_not_swallow_the_body() -> None:
+    """Apple Mail and Outlook open every body with ``<html><head><meta …></head>``. ``<meta>``
+    has no end tag, so counting it as a drop scope left the counter at one after ``</head>``
+    and the whole message converted to ``None`` — which is why an HTML-only Apple Mail body
+    reached the task intake flattened to one line of tag-stripped text."""
+    md = html_to_markdown(
+        '<html><head><meta http-equiv="content-type" content="text/html; charset=utf-8">'
+        "<title>x</title><style>p{}</style></head>"
+        '<body style="word-wrap: break-word;"><div>Hoi Stan,</div><div><br></div>'
+        "<div>Zie onder.</div></body></html>"
+    )
+    assert md == "Hoi Stan,\n\nZie onder."
+    assert html_to_markdown('<link rel="stylesheet" href="x"><p>Tekst</p>') == "Tekst"
+
+
 def test_paragraphs_and_inline_emphasis() -> None:
     md = html_to_markdown(
         "<p>Beste Stan,</p><p>Hierbij de <strong>offerte</strong> en een "

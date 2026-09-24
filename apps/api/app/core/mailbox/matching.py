@@ -20,6 +20,30 @@ from html import unescape
 _HEADER_ROLES = (("From", "from"), ("To", "to"), ("Cc", "cc"))
 
 
+class HeaderMap(dict):
+    """A message's headers, looked up **case-insensitively**.
+
+    RFC 5322 says a header name is case-insensitive and mail clients take it at its word:
+    Gmail and Outlook write ``Message-ID``, Apple Mail writes ``Message-Id``, and a provider
+    hands the name back exactly as the client spelled it. A plain ``dict`` keyed on the spelling
+    answered ``None`` for every Apple Mail message's RFC-822 id — so its receipt at the task
+    address carried no cross-mailbox key, and the sender's Sent copy and the colleague's
+    delivered copy each became a task. Keys are stored lower-cased; every read lowers its key.
+    """
+
+    def __init__(self, pairs: Iterable[tuple[str, str]] = ()) -> None:
+        super().__init__(((str(k) or "").lower(), v) for k, v in pairs)
+
+    def get(self, key: str, default: str | None = None) -> str | None:  # type: ignore[override]
+        return super().get(key.lower(), default)
+
+    def __getitem__(self, key: str) -> str:
+        return super().__getitem__(key.lower())
+
+    def __contains__(self, key: object) -> bool:
+        return super().__contains__(str(key).lower())
+
+
 def parse_participants(headers: dict[str, str]) -> list[dict[str, str]]:
     """``[{email, name, role}]`` from the From/To/Cc headers, addresses lowercased."""
     participants: list[dict[str, str]] = []
@@ -235,6 +259,16 @@ def resolve_mappings(
 # Text
 # --------------------------------------------------------------------------- #
 _TAG_RE = re.compile(r"<[^>]+>")
+#: A tag that starts or ends a line of the rendered mail: line breaks, and the opening and
+#: closing of every block-level element a mail client writes prose in.
+_LINE_TAG_RE = re.compile(
+    r"(?i)<br\s*/?>|</?(?:p|div|tr|li|h[1-6]|blockquote|table|ul|ol|pre|section|article|"
+    r"header|footer|dd|dt|hr)\b[^>]*>"
+)
+#: A tag that wraps words without separating them: ``stan@<a href=…>breik.nl</a>`` is one
+#: address, and a space in the middle of it is a search that finds nothing.
+_INLINE_TAG_RE = re.compile(r"(?i)</?(?:a|b|i|u|em|strong|span|font|code|small|sup|sub)\b[^>]*>")
+_SPACES_RE = re.compile(r"[ \t\xa0]+")
 _BLANK_RE = re.compile(r"\n{3,}")
 #: Zero-width joiners, BOMs, soft hyphens, bidi marks — a marketing preheader's invisible
 #: padding, which a provider happily includes in the preview it hands us.
@@ -256,11 +290,20 @@ def clean_snippet(raw: str | None) -> str | None:
 
 def html_to_text(html: str | None) -> str | None:
     """A body's plain-text reading of its HTML part — what search reads when there is no
-    ``text/plain`` alternative to prefer."""
+    ``text/plain`` alternative to prefer.
+
+    A block element ends a line and a ``<br>`` breaks one: Apple Mail writes a whole message as
+    ``<div>``s on a single line of source, and flattening every tag to a space turned the
+    colleague's instruction, their signature and the ``Begin forwarded message:`` marker into
+    one line — which nothing that reads a mail *by its lines* (the sign-off cut, the forward
+    split) could then find."""
     if html is None:
         return None
-    text = unescape(_TAG_RE.sub(" ", re.sub(r"(?is)<(script|style).*?</\1>", " ", html)))
-    text = "\n".join(line.strip() for line in text.splitlines())
+    text = re.sub(r"(?is)<(script|style|head).*?</\1>", " ", html)
+    text = _LINE_TAG_RE.sub("\n", text)
+    text = _INLINE_TAG_RE.sub("", text)
+    text = unescape(_TAG_RE.sub(" ", text))
+    text = "\n".join(_SPACES_RE.sub(" ", line).strip() for line in text.splitlines())
     return _BLANK_RE.sub("\n\n", text).strip() or None
 
 

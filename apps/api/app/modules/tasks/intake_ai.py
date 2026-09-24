@@ -82,9 +82,11 @@ SUBMIT_INTAKE = ToolDef(
                 "type": ["string", "null"],
                 "description": (
                     "Short notes for whoever picks the task up: what has to happen and any "
-                    "constraint that changes how. At most three sentences or three short "
-                    "bullets. Never retell the mail — it is attached to the task. Null when "
-                    "the colleague's own words already say everything."
+                    "constraint that changes how — every fact, name, address and condition "
+                    "the colleague stated, in your own words. At most three sentences or "
+                    "three short bullets. Always written: the colleague's words are NOT "
+                    "copied onto the task, so this is the only way what they asked reaches "
+                    "it. Never retell the forwarded mail — it is attached to the task."
                 ),
             },
             "company_id": {
@@ -229,7 +231,11 @@ def _grounded_links(raw: Any, *, body: str) -> list[tuple[str, str | None]]:
 
 
 def plan_from_call(
-    submitted: dict[str, Any], *, candidates, body: str, today: date  # noqa: ANN001
+    submitted: dict[str, Any],
+    *,
+    candidates,
+    body: str,
+    today: date,  # noqa: ANN001
 ) -> IntakePlan:
     """The model's one call into a grounded plan. Every field is re-derived, never passed
     through: the schema says what shape to answer in and guarantees nothing about what arrives."""
@@ -295,9 +301,11 @@ def _system_prompt(
             "lists below verbatim, or answer null — never invent, never pick the closest.",
             f"{calendar_line(today, now)} Resolve relative deadlines ('vrijdag', 'volgende "
             f"week') against it. Write in {language_name(locale)}.",
-            "Be short. The mail is stored with the task, so notes are the few lines someone "
-            "needs to act, never a retelling. Never open with the sender, the date or the "
-            "subject; never state what the mail did not say.",
+            "Be short. The forwarded mail is stored with the task, so notes are the few "
+            "lines someone needs to act, never a retelling of it — but the colleague's own "
+            "instruction is not stored with the task, so the summary must carry everything "
+            "they asked for. Never open with the sender, the date or the subject; never "
+            "state what the mail did not say.",
             "What the colleague tells the application to do — make the task, attach the "
             "attachment, set the deadline, use the forwarded mail for context — is not a "
             "step and not a note: the application does that itself. A step is work the "

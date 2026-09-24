@@ -1091,6 +1091,32 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   refused is named on the receipt *and* in the task's own notes (`tasks.intake.attachment_skipped`)
   — a loss with nothing taking its place is stated where the person will look. The confirmation
   notification was never broken; it was the tenth row under nine that shared its timestamp.
+- **A header name is the RFC's to spell, and a mail is one line of HTML source** (the second
+  live week of `taak@`, `core/mailbox/matching.HeaderMap`, `core/htmlmd.py`). Two mails sent
+  from an iPhone each became two tasks, minutes apart, with the whole mail — signature, forward
+  marker and the client's message — pasted into the notes. Neither fault was in the intake. **The
+  RFC-822 id was `NULL`**: Apple Mail writes `Message-Id`, Gmail hands the name back as the client
+  spelled it, and the feed's header map was a `dict` keyed on the spelling — so the receipt's
+  cross-mailbox key was empty and the fallback key (the provider's own id) differs between the
+  sender's Sent copy and the copy the address delivered to a colleague's mailbox. The same map fed
+  the timeline's `LOGGED_ELSEWHERE` dedup, which was therefore blind to every Apple Mail message
+  for as long as it has existed. A header name is case-insensitive by RFC 5322, so the map is
+  (`HeaderMap`), and the metadata fetch asks Gmail for both spellings because the filter is the
+  provider's to match. **The HTML reading was `None`**: Apple Mail and Outlook open every body
+  with `<head><meta …></head>`, `meta` sat in the converter's drop set, and a void element has no
+  end tag to close the scope it opened — so the counter stayed at one after `</head>` and every
+  such body converted to nothing. The plain reading then took over and flattened each `<div>` to
+  a space, which put the sign-off, `Begin forwarded message:` and the original's headers on the
+  instruction's own line, where nothing that reads a mail *by its lines* could find them. A void
+  tag is skipped, never counted; `html_to_text` ends a line where a block element does; and the
+  parser learned Apple Mail's marker in its three languages plus `Reply-To` as a header of the
+  block rather than the first line of its body. **And the notes are the model's summary alone**
+  (`_description`): a summary over the words it summarises was the mail in the task twice, so the
+  colleague's own words are the notes only when no model wrote any, the schema says the summary is
+  always written because those words are not stored with the task, and the forwarded mail stays
+  what it was — a contact moment on the task, never notes. The general lesson is the one the test
+  now pins from the raw HTML rather than from a hand-typed markdown body: **a fixture written in
+  the shape you expect cannot find the fault in the shape you receive.**
 - **Somebody is always on a task, and a create resolves where an update refuses** (tasks' roster,
   `docs/UX.md`). #392's argument one column over: an unassigned task is on no board and in no
   one's nudges, so every door asks — `taskCreateBody` refuses a rendered roster that names nobody,

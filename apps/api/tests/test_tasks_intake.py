@@ -164,6 +164,58 @@ def test_the_signature_is_cut_and_the_forward_headers_are_read() -> None:
     )
 
 
+#: An HTML-only forward as iOS Mail sends it: one line of source, ``<div>`` per line, a
+#: ``<head><meta>`` in front, the original's headers in bold with ``<br>`` between them.
+APPLE_MAIL_HTML = (
+    '<html><head><meta http-equiv="content-type" content="text/html; charset=utf-8"></head>'
+    '<body dir="auto"><div>Voor breik.nl moet ik toevoegen aan smtp2go. Dit gaat over '
+    "domeinnaam.breik.nl deadline as dinsdag</div><div><br></div>"
+    "<div>Met vriendelijke groet,&nbsp;</div><div>Stan Marcusse</div>"
+    '<div>T. 0113 | E. stan@<a href="mailto:stan@breik.nl">breik.nl</a></div><div><br></div>'
+    "<div>Begin forwarded message:</div><div><br></div>"
+    "<div><b>From: </b>The EmailJS Crew &lt;support@emailjs.com&gt;<br>"
+    "<b>Date: </b>21 September 2026 at 01:12:14 CEST<br><b>To: </b>stan@breik.nl<br>"
+    "<b>Subject: </b><b>One of your services may have stopped working</b><br>"
+    "<b>Reply-To: </b>reply@emailjs.zendesk.com</div><div><br></div>"
+    "<div>EmailJS<br>The service failed three times.</div>"
+    '<div>Open <a href="https://dashboard.emailjs.com/admin/events">Events</a></div>'
+    "</body></html>"
+)
+
+
+def test_an_apple_mail_forward_is_split_in_both_readings_of_its_html() -> None:
+    """The live mail (2026-09-21): iOS Mail sent HTML only, the markdown reading came back
+    ``None`` (the ``<meta>`` fault, ``test_htmlmd``) and the plain reading flattened every
+    ``<div>`` to a space — so the sign-off, ``Begin forwarded message:`` and the original's
+    headers all sat on the instruction's own line, nothing was cut or filed, and the whole
+    mail, signature and all, became the task's notes."""
+    from app.core.htmlmd import html_to_markdown
+    from app.core.mailbox.matching import html_to_text
+
+    zone = ZoneInfo("Europe/Amsterdam")
+    for body in (html_to_markdown(APPLE_MAIL_HTML), html_to_text(APPLE_MAIL_HTML)):
+        assert body is not None
+        draft = intake.parse_intake("Fwd: One of your services may have stopped working", body)
+        assert draft.own_text == (
+            "Voor breik.nl moet ik toevoegen aan smtp2go. Dit gaat over domeinnaam.breik.nl "
+            "deadline as dinsdag"
+        )
+        assert draft.due_hint == "as dinsdag"
+        mail = intake.parse_forwarded(draft.forwarded_text, zone=zone)
+        assert (mail.from_name, mail.from_email) == ("The EmailJS Crew", "support@emailjs.com")
+        assert mail.subject == "One of your services may have stopped working"
+        assert mail.sent_at == datetime(2026, 9, 21, 1, 12, 14, tzinfo=zone)
+        assert mail.to == [(None, "stan@breik.nl")]
+        # Reply-To is a header of the block, not the first line of the forwarded body.
+        assert mail.body.startswith("EmailJS") and "Reply-To" not in mail.body
+    # The plain reading keeps an address that an inline tag split in the source.
+    assert "stan@breik.nl" in (html_to_text(APPLE_MAIL_HTML) or "")
+    # And Apple Mail's own languages for the marker.
+    for marker in ("Begin doorgestuurd bericht:", "Anfang der weitergeleiteten Nachricht:"):
+        own, forwarded = intake.split_forward(f"Zie onder.\n\n{marker}\n\nVan: k@x.nl")
+        assert (own, forwarded.startswith(marker)) == ("Zie onder.", True)
+
+
 def test_merge_links_files_the_interaction_onto_the_task() -> None:
     task_id, company_id = uuid.uuid4(), uuid.uuid4()
     outcome = IntakeOutcome(status="created", links={"task_id": task_id, "company_id": company_id})
@@ -402,6 +454,72 @@ async def test_a_mail_to_the_task_address_becomes_the_senders_task(
         # task, decided by the database, not a second one.
         assert await _poll(t, connection_id, stub, monkeypatch) == 0
         assert len(await _rows(t.org.id, Task)) == 1
+
+
+def _html_only(message: dict, html: str) -> dict:
+    """The message as an HTML-only client sends it: no ``text/plain`` alternative at all."""
+    message["payload"] = {
+        "headers": message["payload"]["headers"],
+        "mimeType": "text/html",
+        "body": {"data": base64.urlsafe_b64encode(html.encode()).decode()},
+    }
+    return message
+
+
+async def test_a_second_copy_spelled_the_apple_mail_way_is_one_task(
+    client_for, monkeypatch
+) -> None:
+    """The live duplicate (2026-09-21, two tasks four minutes apart): Apple Mail writes
+    ``Message-Id``, the header map was keyed on the spelling, so the receipt carried no RFC-822
+    id and the fallback key — the provider's own message id — differs between the sender's Sent
+    copy and the copy the address delivered. Two copies, two Gmail ids, one header: one task."""
+    t = await make_tenant("intake-apple")
+    connection_id = await _seed(t)
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await _configure(c, headers)
+        company = (
+            await c.post("/api/v1/companies", json={"name": "breik"}, headers=headers)
+        ).json()
+
+    def _copy(message_id: str) -> dict:
+        message = _html_only(
+            _sent(message_id, subject="Fwd: [breik] Services stopped", body=""),
+            APPLE_MAIL_HTML,
+        )
+        for header in message["payload"]["headers"]:
+            if header["name"] == "Message-ID":
+                header["name"] = "Message-Id"
+                header["value"] = "<apple-1@breik.nl>"
+        return message
+
+    stub = _StubGmail(
+        history=["sent-1", "delivered-1"],
+        messages={"sent-1": _copy("sent-1"), "delivered-1": _copy("delivered-1")},
+        history_id="9500",
+    )
+    assert await _poll(t, connection_id, stub, monkeypatch) == 1
+    tasks = await _rows(t.org.id, Task)
+    assert len(tasks) == 1
+    task = tasks[0]
+    assert task.company_id == uuid.UUID(company["id"])
+    receipts = await _rows(t.org.id, TaskIntakeMessage)
+    assert len(receipts) == 1
+    assert receipts[0].rfc822_message_id == "<apple-1@breik.nl>"
+    assert receipts[0].body_markdown is not None  # the HTML reading survived its <meta>
+    # No model here, so the notes are the colleague's own words — without the signature and
+    # without the forwarded mail, which is a contact moment on the task under its own sender.
+    assert task.description == (
+        "Voor breik.nl moet ik toevoegen aan smtp2go. Dit gaat over domeinnaam.breik.nl "
+        "deadline as dinsdag"
+    )
+    assert task.due_date is not None
+    forwarded = await _rows(t.org.id, Interaction)
+    assert [(m.source, m.task_id, m.subject) for m in forwarded] == [
+        ("forwarded", task.id, "One of your services may have stopped working")
+    ]
+    assert [p["email"] for p in forwarded[0].participants][0] == "support@emailjs.com"
+    assert "The service failed three times." in (forwarded[0].body_markdown or "")
 
 
 async def test_a_mail_with_no_recognisable_client_parks_for_its_sender(
@@ -716,7 +834,9 @@ async def test_the_model_fills_only_what_the_words_left_blank(client_for, monkey
     assert task.company_id == uuid.UUID(company["id"])
     assert task.assignee_user_id == t.user.id  # the invented id was dropped; the sender holds it
     assert task.due_date == date(2027, 1, 15)
-    assert (task.description or "").startswith("Nieuwsbrief-template bouwen")
+    # The notes are the model's summary and nothing else: the colleague's words are what it
+    # was written from, and pasting them underneath was the mail in the task twice.
+    assert task.description == "Nieuwsbrief-template bouwen in Mailchimp."
     receipts = await _rows(t.org.id, TaskIntakeMessage)
     assert receipts[0].hints["by_model"] == ["company", "due_date"]
     async with client_for(t.host) as c:

@@ -59,7 +59,9 @@ logger = logging.getLogger("schakl.google.gmail")
 GMAIL_API = "https://www.googleapis.com/gmail/v1/users/me"
 PENDING_EVENT = "interactions.email_pending"
 _HISTORY_PAGE_SIZE = 100
-_METADATA_HEADERS = ("From", "To", "Cc", "Subject", "Message-ID")
+#: Both spellings of the RFC-822 id: the filter is the provider's to match, and Apple Mail
+#: writes ``Message-Id``. Asking twice costs nothing; asking once may answer nothing.
+_METADATA_HEADERS = ("From", "To", "Cc", "Subject", "Message-ID", "Message-Id")
 
 
 def deep_link(message_id: str) -> str:
