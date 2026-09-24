@@ -2,6 +2,98 @@
 
 _Releases v0.25.0 through v0.41.0 are written up on their GitHub Releases; this file resumes at v0.42.0._
 
+## v0.56.0 — 2026-09-24
+
+Meeting minutes are now the record as soon as they exist: the confirm step is gone, the contact
+moment files itself and follows every edit. A one-time product sale is now an agreement with
+interval "once". A domain can carry several websites at different paths, each with its own
+client. The WordPress bridge reaches Contact Form 7 forms in every WPML language. And a mail
+sent from Apple Mail to the task address makes one task again, not two.
+
+Four migrations, applied in order: `b4d7e2f9a1c6` → `c5e8f1a2b7d3` → `b7d4f2c9a1e6` →
+`a3d8f1c6e2b7`. The head moves from `a3c9e1f7b5d2` to `a3d8f1c6e2b7`. The first one creates
+`invoicing_product_sales` and the second drops it again: that table was never released, and the
+second migration adds `subscriptions.interval = once`, the `completed` status and `product_id`
+on presets and agreements. The meetings migration is a data migration (`review`/`done` →
+`ready`); the websites one is purely additive (`websites.path`, `websites.company_override_id`).
+There is one new permission key, `wordpress.forms.delete` (admin by default). Removed:
+`POST /meetings/{id}/confirm`. New: `POST /meetings/{id}/interaction`,
+`POST /meetings/{id}/time`, `GET /invoicing/products?usage=true`, and six
+`/wordpress/sites/{id}/bridge/forms` routes. No new environment variables. The typed client is
+regenerated.
+
+### Meetings: no confirm step
+
+- **The minutes stay editable.** `review` and `done` are one state, `ready`, and the page saves
+  every edit by itself. A word beside the title says whether it has saved.
+- **The contact moment is automatic.** When the minutes land, the worker files them on the
+  client as the colleague who recorded the meeting. Every later save of the minutes, the title,
+  the filing or the participants rewrites that contact moment.
+- **Tasks are made one action item at a time**, through the task sheet. The bulk checkbox is
+  gone.
+- **The hours have their own button** (`POST /meetings/{id}/time`), with the same gates as
+  before: `time.entry.write:any` to book for someone else, and the `time` licence.
+- The minutes PDF no longer prints "Vastgesteld" or "Concept".
+
+### Subscriptions: a product sold once
+
+- **New interval: `once`.** An agreement with this interval has no cycle. It offers exactly one
+  period, is billed once, and then gets the new status **Afgerond** (`completed`). It never
+  counts towards MRR. It keeps everything else an agreement has: the standard subscription it
+  is made from, the task templates, the project link, the invoice notes and the custom fields.
+- **Claiming by hand completes it too.** Putting the period on an invoice by hand completes the
+  agreement. Deleting, cancelling or fully crediting that invoice reopens it.
+- **A preset or an agreement can name the product it sells** (`product_id`). Picking a product
+  copies its name and price, and both stay editable. Instellingen → Facturatie shows the price
+  list as a searchable table with an "In gebruik" column.
+- Fix: *Toevoegen aan factuur* in the invoice's period picker no longer submits the whole
+  document with an empty set of lines.
+
+### Websites: a site at an address
+
+- **One domain, several sites.** A website now has a path, so `breik.dev/briellaerd` and
+  `breik.dev/nova` are two sites. Type `host/path` into the picker and it is split into the
+  domain and the path. The picker shows what is already on each domain, and an address that is
+  taken is refused with the address named. The import's preview refuses it too.
+- **A site can belong to a different client than its domain.** A client's dev site on the
+  agency's domain is the client's. That client decides the hub panel, the client filter and
+  what a restricted colleague can see.
+- Every screen now prints the site's label from the API instead of composing `www.` itself. The
+  domain page lists its sites. Uptime matching tells the sites on one host apart by the
+  monitor's path. The WordPress connect form and the uptime target are suggested from the
+  site's URL.
+- Fix: a validation error on a body field named `path`, `body` or `query` now names the field.
+
+### WordPress: Contact Form 7 through the bridge
+
+- schakl WordPress MCP Bridge 1.2.0 adds six forms routes: list, read, create, update, delete
+  and translations. The forms include their parsed fields and any objections from CF7's own
+  validator. `/mcp/wordpress` now has 28 bridge tools.
+- **Deleting a form needs its own key**, `wordpress.forms.delete` (admin by default). CF7 has
+  no trash, so a delete is permanent and empties every page that embeds the form.
+- **WPML works both ways.** Where forms are a translatable post type, a copy is made per
+  language. Where the Contact Form 7 Multilingual add-on is used, the String Translation
+  strings are read and written instead.
+
+### Tasks: the e-mail intake and Apple Mail
+
+- **One mail is one task again.** Apple Mail writes `Message-Id` in a different spelling, so the
+  sender's Sent copy and the delivered copy each made a task. Header names are now read
+  case-insensitively. The same fix repairs the timeline's cross-mailbox dedup for Apple Mail
+  messages.
+- **Apple Mail and Outlook HTML bodies are read again.** They used to convert to nothing, so the
+  whole mail landed in the notes. The notes are now the model's summary alone, and the forwarded
+  mail stays a contact moment on the task.
+
+### Upgrade notes
+
+- The migrations run by themselves on upgrade. Meetings in `review` or `done` become `ready`.
+  `meetings.confirmed_at` is kept for one more release.
+- Anyone calling `POST /meetings/{id}/confirm` must switch: the contact moment now files itself,
+  hours go through `POST /meetings/{id}/time`, and tasks go through the action-item routes.
+- To delete forms through the bridge, update the WordPress plugin to 1.2.0 and grant
+  `wordpress.forms.delete` where a role needs it.
+
 ## v0.55.0 — 2026-09-23
 
 The meeting review desk now turns an action item into a real task and records the meeting's
