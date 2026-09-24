@@ -37,7 +37,9 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    and_,
     column,
+    or_,
     select,
     table,
     text,
@@ -53,7 +55,13 @@ from app.db import Base
 # ``websites`` and ``domains`` belong to other modules; reference them as bare tables rather
 # than importing their models (CLAUDE.md §6) — the bridge ``websites`` itself uses for its
 # parent domain, and ``cloudflare`` for its client.
-_websites = table("websites", column("id"), column("org_id"), column("domain_id"))
+_websites = table(
+    "websites",
+    column("id"),
+    column("org_id"),
+    column("domain_id"),
+    column("company_override_id"),
+)
 _domains = table("domains", column("id"), column("org_id"), column("company_id"))
 
 
@@ -200,14 +208,22 @@ class WordPressSite(
         ``websites.domain_id`` and ``domains.company_id`` are both ``NOT NULL``, so there is no
         client-less site to exempt: a row either resolves into the scope or it is out of it.
         """
+        # The website's own rule, restated over the bare table: the client it names for
+        # itself (a dev install on the agency's domain), else its domain's.
         return cls.website_id.in_(
             select(_websites.c.id).where(
                 _websites.c.org_id == cls.org_id,
-                _websites.c.domain_id.in_(
-                    select(_domains.c.id).where(
-                        _domains.c.org_id == cls.org_id,
-                        _domains.c.company_id.in_(scope),
-                    )
+                or_(
+                    _websites.c.company_override_id.in_(scope),
+                    and_(
+                        _websites.c.company_override_id.is_(None),
+                        _websites.c.domain_id.in_(
+                            select(_domains.c.id).where(
+                                _domains.c.org_id == cls.org_id,
+                                _domains.c.company_id.in_(scope),
+                            )
+                        ),
+                    ),
                 ),
             )
         )

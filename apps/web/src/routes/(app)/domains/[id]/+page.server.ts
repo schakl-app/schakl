@@ -1,6 +1,6 @@
 import { error, fail, redirect } from "@sveltejs/kit";
 
-import { apiErrorKey, lookupItems } from "$lib/core/errors";
+import { apiErrorKey } from "$lib/core/errors";
 import { originOf } from "$lib/core/origin";
 import { parseParty } from "$lib/core/party";
 import {
@@ -44,32 +44,23 @@ export const load: PageServerLoad = async (event) => {
   // — clients, providers, employees, contacts, the domain custom fields, the two inline
   // quick-create sets, the TLD prices — comes from the section layout, which does not rerun
   // when you move between domains (#290).
+  // A domain carries one site per *address* (`app/core/webaddress.py`), so the page lists them
+  // rather than holding one; the record itself lives on its own page, and creating one is the
+  // websites dialog opened on this domain (`/websites?domain=…&new=1`).
   const [domain, websites, ...panelData] = await Promise.all([
     api.GET("/api/v1/domains/{domain_id}", { params: { path: { domain_id } } }),
-    api.GET("/api/v1/websites", { params: { query: { domain_id, limit: 1, offset: 0 } } }),
+    api.GET("/api/v1/websites", {
+      params: { query: { domain_id, limit: 20, offset: 0, sort: "name" } },
+    }),
     ...panels.map((panel) => panel.load(api, context)),
   ]);
-
-  // The website form is a modal most visits never open, so its own bundle streams in behind the
-  // page (the `createForm` pattern, docs/PERFORMANCE.md).
-  const websiteForm = Promise.all([
-    api.GET("/api/v1/custom-fields/definitions", { params: { query: { entity_type: "website" } } }),
-    api.GET("/api/v1/hosting", { params: { query: { limit: 200, offset: 0 } } }),
-    api.GET("/api/v1/custom-fields/definitions", { params: { query: { entity_type: "hosting" } } }),
-  ])
-    .then(([websiteDefs, hosting, hostingDefs]) => ({
-      websiteDefinitions: websiteDefs.data ?? [],
-      hosting: lookupItems(hosting, "hosting").map((h) => ({ id: h.id, name: h.name })),
-      hostingDefinitions: hostingDefs.data ?? [],
-    }))
-    .catch(() => ({ websiteDefinitions: [], hosting: [], hostingDefinitions: [] }));
 
   if (!domain.data) throw error(404, { code: "not_found", message: "errors.not_found" });
 
   return {
     domain: domain.data,
-    website: websites.data?.items?.[0] ?? null,
-    websiteForm,
+    websites: websites.data?.items ?? [],
+    websiteTotal: websites.data?.total ?? 0,
     panels: panels.map((panel, i) => ({
       key: panel.key,
       titleKey: panel.titleKey,
@@ -136,42 +127,6 @@ export const actions: Actions = {
     return { refreshed: true };
   },
 
-  saveWebsite: async (event) => {
-    const form = await event.request.formData();
-    const website_id = String(form.get("website_id") ?? "");
-    const body = {
-      root: form.get("root") !== "www",
-      technical_owner: parseParty(form.get("technical_owner")),
-      hosting_id: String(form.get("hosting_id") ?? "") || null,
-      uptime_enabled: form.get("uptime_enabled") !== null,
-      custom: parseCustom(form.get("custom")),
-    };
-    if (website_id) {
-      const { error: err } = await apiFor(event).PATCH("/api/v1/websites/{website_id}", {
-        params: { path: { website_id } },
-        body,
-      });
-      if (err) return fail(400, { error: apiErrorKey(err).key });
-    } else {
-      const { error: err } = await apiFor(event).POST("/api/v1/websites", {
-        body: { ...body, domain_id: event.params.id },
-      });
-      if (err) return fail(400, { error: apiErrorKey(err).key });
-    }
-    return { websiteSaved: true };
-  },
-
-  deleteWebsite: async (event) => {
-    const form = await event.request.formData();
-    const website_id = String(form.get("website_id") ?? "");
-    if (website_id) {
-      await apiFor(event).DELETE("/api/v1/websites/{website_id}", {
-        params: { path: { website_id } },
-      });
-    }
-    return { websiteDeleted: true };
-  },
-
   delete: async (event) => {
     await apiFor(event).DELETE("/api/v1/domains/{domain_id}", {
       params: { path: { domain_id: event.params.id } },
@@ -185,21 +140,4 @@ export const actions: Actions = {
   createCompany: createCompanyAction,
   createContact: createContactAction,
   createProvider: createProviderAction,
-
-  // Inline-create for the website form's hosting picker (#115): the full HostingForm in a modal.
-  createHosting: async (event) => {
-    const form = await event.request.formData();
-    const body = {
-      name: String(form.get("name") ?? "").trim(),
-      company_id: String(form.get("company_id") ?? "") || null,
-      provider_id: String(form.get("provider_id") ?? "") || null,
-      ip_address: String(form.get("ip_address") ?? "").trim() || null,
-      contact: parseParty(form.get("contact")),
-      custom: parseCustom(form.get("custom")),
-    };
-    if (!body.name) return fail(400, { qcError: "errors.required" });
-    const { data, error: err } = await apiFor(event).POST("/api/v1/hosting", { body });
-    if (err || !data) return fail(400, { qcError: apiErrorKey(err).key });
-    return { inlineCreated: { slot: "hosting_account", id: data.id } };
-  },
 };

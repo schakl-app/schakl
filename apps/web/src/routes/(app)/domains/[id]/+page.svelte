@@ -6,30 +6,24 @@
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { fmtDateTime, fmtMoney, fmtNumericDate } from "$lib/core/format";
-  import { t } from "$lib/core/i18n";
-  import { originOf, withOrigin } from "$lib/core/origin";
+  import { t, tn } from "$lib/core/i18n";
+  import { fromHref, originOf, withOrigin } from "$lib/core/origin";
   import { can } from "$lib/core/permissions";
   import { entityPanelComponent } from "$lib/core/registry";
   import { InFlight } from "$lib/core/submit.svelte";
-  import ActionsMenu from "$lib/core/ui/ActionsMenu.svelte";
   import Button from "$lib/core/ui/Button.svelte";
   import ConfirmDialog from "$lib/core/ui/ConfirmDialog.svelte";
   import EditToggle from "$lib/core/ui/EditToggle.svelte";
-  import CustomFieldsForm from "$lib/core/customfields/CustomFieldsForm.svelte";
-  import PartyPicker from "$lib/core/ui/PartyPicker.svelte";
-  import Combobox from "$lib/core/ui/Combobox.svelte";
-  import { companyLifecycle } from "$lib/modules/companies/picker";
+  import PanelRow from "$lib/core/ui/PanelRow.svelte";
   import ProviderQuickCreate from "$lib/core/ui/ProviderQuickCreate.svelte";
   import { pageTitle } from "$lib/core/title";
   import CompanyQuickCreate from "$lib/modules/companies/CompanyQuickCreate.svelte";
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
   import DomainForm from "$lib/modules/domains/DomainForm.svelte";
-  import HostingQuickCreate from "$lib/modules/hosting/HostingQuickCreate.svelte";
 
   let { data, form } = $props();
 
   let editing = $state(false);
-  let editingWebsite = $state(false);
 
   // A detour that started on a client's page (#408): every exit — Opslaan, Annuleren, ✕ and
   // Verwijderen — returns to where it started. With no `?from=` there is nowhere to return to and
@@ -39,8 +33,6 @@
     if (origin) void goto(origin, { invalidateAll: true });
     else editing = false;
   }
-  // Radio selection is component state, never a one-way checked (docs/UX.md).
-  let websiteHost = $state<"root" | "www">("root");
   let confirmDelete = $state(false);
   const busy = new InFlight();
 
@@ -53,11 +45,8 @@
   let qcContactName = $state("");
   let qcContactSlot = $state("contact");
   let qcProviderOpen = $state(false);
-  // Includes "hosting" for the website form's hosting dialog, which shares this one provider modal.
   let qcProviderKind = $state<"registrar" | "dns" | "email" | "hosting">("registrar");
   let qcProviderName = $state("");
-  let qcHostingOpen = $state(false);
-  let qcHostingName = $state("");
 
   function quickCreateCompany(name: string, slot = "company") {
     qcCompanyName = name;
@@ -70,38 +59,18 @@
     qcContactOpen = true;
   }
 
-  // The website form's hosting picker lives in this page, so its auto-select does too.
-  let websiteHostingCreated = $state("");
-  $effect(() => {
-    const c = form?.inlineCreated;
-    if (c?.slot === "hosting_account") websiteHostingCreated = c.id;
-  });
-
   const domain = $derived(data.domain);
-  const website = $derived(data.website);
+  // The sites on this domain, in address order (`sort=name`): root, then by path.
+  const websites = $derived(data.websites);
   // Defaulted server-side (#298), so the schema types it optional; an absent list and an empty
   // one mean the same thing here — no register holds this name.
   const registers = $derived(domain.registers ?? []);
-
-  // The website form's own bundle streams in behind the page (#290) — the hosting picker, the
-  // website custom fields and the hosting ones are only ever drawn inside a modal, and most
-  // visits never open one. Held in state, not awaited in the markup: a re-run load hands us a
-  // *new* promise, and an `{#await}` would fall back to its pending branch and remount the
-  // form, throwing away what the user had typed.
-  let websiteForm = $state<Awaited<typeof data.websiteForm> | null>(null);
-  $effect(() => {
-    void data.websiteForm.then((resolved) => (websiteForm = resolved));
-  });
-  const hostingItems = $derived(
-    (websiteForm?.hosting ?? []).map((h) => ({ value: h.id, label: h.name })),
-  );
 
   // Actions render only for holders of the matching permission (#253). The DNS refresh posts
   // a write on the API, so it follows domains.domain.write.
   const canWrite = $derived(can(page.data.user, "domains.domain.write"));
   const canDelete = $derived(can(page.data.user, "domains.domain.delete"));
   const canWriteWebsite = $derived(can(page.data.user, "websites.website.write"));
-  const canDeleteWebsite = $derived(can(page.data.user, "websites.website.delete"));
 
   // Through the shared formatter (#125): tenant timezone + the personal clock/date prefs,
   // instead of the browser-locale toLocaleString dump this replaced.
@@ -372,176 +341,41 @@
   </section>
 </div>
 
-<!-- Website (0/1 per domain). The `id` anchors the client page's "＋ website" quick link. -->
+<!-- Websites on this domain — one per address (`app/core/webaddress.py`), each with its own
+     page, so the section lists rather than holds: a domain of the agency's may carry a dev
+     install per client. Creating one is the websites dialog opened on this domain. The `id`
+     anchors the client page's "＋ website" quick link. -->
 <section id="website" class="mt-4 rounded-xl border border-border bg-surface-raised p-5">
   <div class="mb-4 flex items-center justify-between">
-    <h2 class="text-sm font-semibold text-text">{t("websites.title")}</h2>
-    <div class="flex items-center gap-3">
-      {#if website && !editingWebsite}
-        <!-- The site has its own page now; this section stays because "does this domain run a
-             site" belongs on the domain, but the record itself lives one click away. -->
-        <a href={`/websites/${website.id}`} class="text-sm text-brand hover:underline">
-          {t("websites.open")}
-        </a>
-      {/if}
-      {#if website && !editingWebsite && (canWriteWebsite || canDeleteWebsite)}
-        <ActionsMenu
-          items={[
-            ...(canWriteWebsite
-              ? [
-                  {
-                    label: t("common.edit"),
-                    onclick: () => {
-                      websiteHost = website?.root ? "root" : "www";
-                      editingWebsite = true;
-                    },
-                  },
-                ]
-              : []),
-            ...(canDeleteWebsite
-              ? [
-                  {
-                    label: t("common.delete"),
-                    icon: Trash2,
-                    danger: true,
-                    onclick: () =>
-                      (
-                        document.getElementById("delete-website-form") as HTMLFormElement | null
-                      )?.requestSubmit(),
-                  },
-                ]
-              : []),
-          ]}
-        />
-      {/if}
-    </div>
+    <h2 class="text-sm font-semibold text-text">{t("websites.panel.title")}</h2>
+    {#if canWriteWebsite}
+      <a href={`/websites?domain=${domain.id}&new=1`} class="text-sm text-brand hover:underline">
+        ＋ {t("websites.new")}
+      </a>
+    {/if}
   </div>
-
-  {#if website && !editingWebsite}
-    <dl class="space-y-2 text-sm">
-      <div class="flex justify-between">
-        <dt class="text-text-muted">{t("websites.host")}</dt>
-        <dd class="text-text">{website.root ? "@ (root)" : "www"}</dd>
-      </div>
-      <!-- Who looks after it, where it runs and whether we watch it are the agency's view of a
-           site — the websites list keeps these columns off a client's table for the same reason. -->
-      {#if !page.data.user?.isPortal}
-        <div class="flex justify-between">
-          <dt class="text-text-muted">{t("websites.technical_owner")}</dt>
-          <dd class="text-text">{website.technical_owner?.label || "—"}</dd>
-        </div>
-        <div class="flex justify-between">
-          <dt class="text-text-muted">{t("websites.hosting")}</dt>
-          <dd class="text-text">{website.hosting_name ?? "—"}</dd>
-        </div>
-        <div class="flex justify-between">
-          <dt class="text-text-muted">{t("websites.uptime")}</dt>
-          <dd class="text-text">{website.uptime_enabled ? t("common.yes") : t("common.no")}</dd>
-        </div>
-      {/if}
-    </dl>
-    <form
-      id="delete-website-form"
-      method="POST"
-      action="?/deleteWebsite"
-      use:enhance
-      class="hidden"
-    >
-      <input type="hidden" name="website_id" value={website.id} />
-    </form>
-  {:else if canWriteWebsite && (editingWebsite || !website)}
-    <form
-      method="POST"
-      action="?/saveWebsite"
-      use:enhance={busy.wrap("save-website", () => ({ result, update }) => {
-        if (result.type === "success") editingWebsite = false;
-        void update({ reset: false });
-      })}
-    >
-      {#if website}<input type="hidden" name="website_id" value={website.id} />{/if}
-      <div class="space-y-4">
-        <div>
-          <span class="mb-1 block text-sm text-text">{t("websites.host")}</span>
-          <div class="flex gap-3">
-            <label class="flex items-center gap-1.5 text-sm text-text">
-              <input type="radio" name="root" value="root" bind:group={websiteHost} /> @ (root)
-            </label>
-            <label class="flex items-center gap-1.5 text-sm text-text">
-              <input type="radio" name="root" value="www" bind:group={websiteHost} />
-              www
-            </label>
-          </div>
-        </div>
-        <div>
-          <span class="mb-1 block text-sm text-text">{t("websites.technical_owner")}</span>
-          <PartyPicker
-            name="technical_owner"
-            value={website?.technical_owner ?? { type: "agency", id: null }}
-            agencyLabel={data.agencyLabel}
-            companies={data.companies}
-            companyLifecycle={companyLifecycle()}
-            employees={data.employees}
-            contacts={data.contacts}
-            id="website-owner"
-            oncreatecompany={quickCreateCompany}
-            oncreatecontact={quickCreateContact}
-            created={form?.inlineCreated ?? null}
-          />
-        </div>
-        <div>
-          <label for="website-hosting" class="mb-1 block text-sm text-text"
-            >{t("websites.hosting")}</label
-          >
-          <Combobox
-            items={hostingItems}
-            name="hosting_id"
-            value={websiteHostingCreated || (website?.hosting_id ?? "")}
-            id="website-hosting"
-            placeholder={t("common.none")}
-            oncreate={(name) => {
-              qcHostingName = name;
-              qcHostingOpen = true;
-            }}
-          />
-        </div>
-        <label class="flex items-center gap-2 text-sm text-text">
-          <input
-            type="checkbox"
-            name="uptime_enabled"
-            value="on"
-            checked={website?.uptime_enabled ?? false}
-          />
-          {t("websites.uptime")}
-        </label>
-        {#if websiteForm && websiteForm.websiteDefinitions.length > 0}
-          <CustomFieldsForm
-            definitions={websiteForm.websiteDefinitions}
-            values={website?.custom ?? {}}
-            locale={data.locale}
-          />
-        {:else}
-          <input type="hidden" name="custom" value={JSON.stringify(website?.custom ?? {})} />
-        {/if}
-      </div>
-      {#if form?.error}<p class="mt-3 text-sm text-red-600 dark:text-red-400">
-          {t(form.error)}
-        </p>{/if}
-      <div class="mt-4 flex justify-end gap-2">
-        {#if website}
-          <button
-            type="button"
-            class="rounded-lg border border-border px-4 py-2 text-sm text-text"
-            onclick={() => (editingWebsite = false)}>{t("common.cancel")}</button
-          >
-        {/if}
-        <Button loading={busy.is("save-website")} disabled={busy.active}>
-          {website ? t("common.save") : t("websites.add")}
-        </Button>
-      </div>
-    </form>
+  {#if websites.length === 0}
+    <p class="text-sm text-text-muted">{t("websites.panel.empty")}</p>
   {:else}
-    <!-- No website and no permission to connect one: an honest empty value, not a form. -->
-    <p class="text-sm text-text-muted">—</p>
+    <ul class="divide-y divide-border">
+      {#each websites as site (site.id)}
+        <!-- The address as the API resolves it; the client where the site names one of its own
+             (a dev install on the agency's domain), which is the one fact the domain cannot say. -->
+        <PanelRow
+          href={fromHref(`/websites/${site.id}`, page.url)}
+          title={site.label}
+          meta={site.company_override_id ? site.company_name : null}
+        />
+      {/each}
+    </ul>
+    {#if data.websiteTotal > websites.length}
+      <a
+        href={`/websites?q=${encodeURIComponent(domain.name)}`}
+        class="mt-3 inline-block text-sm text-brand hover:underline"
+      >
+        {tn("websites.panel.view_all", data.websiteTotal)}
+      </a>
+    {/if}
   {/if}
 </section>
 
@@ -556,29 +390,6 @@
   {/if}
 {/each}
 
-<!-- The hosting dialog sits over the (inline) website form; the provider/company/contact dialogs
-     below it are rendered last so they stack above it (equal z-index → DOM order wins). -->
-<HostingQuickCreate
-  bind:open={qcHostingOpen}
-  name={qcHostingName}
-  companies={data.companies}
-  providers={data.providers}
-  employees={data.employees}
-  contacts={data.contacts}
-  agencyLabel={data.agencyLabel}
-  definitions={websiteForm?.hostingDefinitions ?? []}
-  locale={data.locale}
-  initialCompanyId={domain.company_id ?? ""}
-  error={form?.qcError ?? null}
-  oncreatecompany={quickCreateCompany}
-  oncreatecontact={quickCreateContact}
-  oncreateprovider={(kind, name) => {
-    qcProviderKind = kind;
-    qcProviderName = name;
-    qcProviderOpen = true;
-  }}
-  created={form?.inlineCreated ?? null}
-/>
 <CompanyQuickCreate
   bind:open={qcCompanyOpen}
   name={qcCompanyName}

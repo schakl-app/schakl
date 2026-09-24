@@ -56,6 +56,9 @@ class WordPressSiteRead(BaseModel):
     company_id: uuid.UUID | None = None
     company_name: str | None = None
     domain_name: str | None = None
+    #: The website's address as every screen prints it (``breik.dev/briellaerd``) — the
+    #: name to pick a site by where several share one domain.
+    website_label: str | None = None
     rankmath_version: str | None = None
     #: Whether this Rank Math is new enough to have AI Visibility at all (≥ 1.0.273). Resolved
     #: server-side so the panel never re-implements a version comparison in two languages.

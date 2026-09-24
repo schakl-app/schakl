@@ -1193,11 +1193,16 @@ async def test_available_domains_is_one_statement_whatever_the_register_holds(
                 )
                 assert created.status_code == 201, created.text
 
-        async def measure(expected_free: int) -> int:
+        async def measure(expected_domains: int, expected_taken: int) -> int:
             with count_queries() as counter:
                 res = await c.get("/api/v1/websites/available-domains", headers=headers)
             assert res.status_code == 200, res.text
-            assert len(res.json()) == expected_free, res.text
+            # Every domain is offered — a domain carries one site per *address* now, so the
+            # one already holding a site is where the next dev install goes — and each says
+            # what is on it, which is the aggregate riding the same statement.
+            rows = res.json()
+            assert len(rows) == expected_domains, res.text
+            assert sum(1 for row in rows if row["taken"]) == expected_taken, res.text
             # Never the two list reads this replaced, and never their attach work.
             flat = [" ".join(s.split()).lower() for s in counter.statements]
             assert not [s for s in flat if "domain_tld_prices" in s], flat
@@ -1205,11 +1210,11 @@ async def test_available_domains_is_one_statement_whatever_the_register_holds(
 
         await add_domain(1, with_site=False)
         await add_domain(2, with_site=True)
-        small = await measure(1)
+        small = await measure(2, 1)
 
         for i in range(3, 9):
             await add_domain(i, with_site=i % 2 == 0)
-        large = await measure(4)
+        large = await measure(8, 4)
 
         assert small == large, (small, large)
 

@@ -592,6 +592,29 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   resolution is one clause**, taken by the renewal cron, the list filter, the outstanding picker
   and the per-row read alike, so a screen and the cron can never disagree about which domains
   bill. Reported wherever it changes an answer, never silently applied.
+- **A website is a site at an address, and a domain may carry several** (`app/core/webaddress.py`).
+  A website was a strict 0/1 child of a domain with a root/`www` flag, so the agency's dev installs
+  — `breik.dev/briellaerd`, `breik.dev/nova`, one WordPress per client under one domain of the
+  agency's — could not be recorded: the domain normaliser stripped the path off anything typed into
+  the picker, the second site 409'd, and the one that landed sat under whichever client the domain
+  had been filed on. Three rules replace it. **The address is the identity**: `websites.path`
+  (`""` for the root, `NOT NULL` so the unique key can hold it) joins `root` in
+  `uq_websites_address`, and the API resolves `host` / `label` / `url` **once** on every row —
+  eight screens each composed `root ? name : "www." + name` and none of them knew about the path,
+  which is the "eight copies, the ninth forgets" failure `naming.py` already describes; the
+  borrowers' bare-table SQL (uptime, WordPress, marketing, subscriptions, the domains panel) reads
+  the same rule through `website_label_sql` / `website_company_sql`. **Whose it is may be the
+  site's own decision**: `company_override_id`, `NULL` = *follow the domain* (an override that
+  restates the domain's client is stored as `NULL`, so a form re-posting the default never freezes
+  it), read by the horizon clause, the client filter, the hub's panel, every borrower and the
+  restricted member's write guard alike — a client's dev site on the agency's domain is the
+  **client's**. And **the constraint shows itself working** (#305): the picker offers every domain
+  with what is already on it (`taken`), a typed `breik.dev/briellaerd` splits into the domain
+  quick-create and the path box, and a taken address is refused naming the address — in the
+  service, and in the import's preview (`validate_row`), where a domain-only file still matches a
+  domain carrying one site and never guesses among several. Its sibling was a core bug it found:
+  the validation envelope dropped every `loc` segment named `body`, `query` or `path`, so a body
+  field called `path` failed with no field named at all.
 - **The client portal is a module, and what it sells is not what it enforces** (#193/#296,
   `docs/PORTAL.md`). Everything the portal does happens on a *contact's* page, which is why it
   started life inside `contacts` and why that was wrong: it is a product the agency buys

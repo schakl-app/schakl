@@ -254,13 +254,17 @@
       headers: { accept: "application/json" },
     })
       .then((r) => (r.ok ? r.json() : { items: [] }))
-      .then((page: { items: { id: string; domain_name: string; root: boolean }[] }) => {
-        websites = page.items.map((w) => ({
-          id: w.id,
-          name: w.root ? w.domain_name : `www.${w.domain_name}`,
-          company,
-        }));
-      })
+      .then(
+        (page: { items: { id: string; label?: string; domain_name: string; root: boolean }[] }) => {
+          websites = page.items.map((w) => ({
+            id: w.id,
+            // The address the API resolved (host plus path); the composed host only for a row
+            // from an older API that carried no label.
+            name: w.label || (w.root ? w.domain_name : `www.${w.domain_name}`),
+            company,
+          }));
+        },
+      )
       .catch(() => {});
   });
   const websiteItems = $derived(

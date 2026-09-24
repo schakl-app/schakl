@@ -6133,7 +6133,7 @@ export interface paths {
         put?: never;
         /**
          * Impex Import Website
-         * @description Import website rows from a spreadsheet, upserting on the first of `domain` each row fills (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
+         * @description Import website rows from a spreadsheet, upserting on the first of `address`, `domain` each row fills (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
          */
         post: operations["impex_import_website_api_v1_impex_website_import_post"];
         delete?: never;
@@ -15202,7 +15202,9 @@ export interface paths {
         };
         /**
          * List Available Domains
-         * @description The domains that do not have a website yet — the create picker's options.
+         * @description Every domain a website may be created on — the create picker's options — each with the
+         *     addresses already recorded on it (``taken``), since a domain carries one site per address
+         *     and the next dev install goes on a domain that already has one.
          *
          *     Declares the **write** permission, not the read one: this is the vocabulary of a form only a
          *     writer can submit, so a read-only member's section layout skips the call entirely rather than
@@ -17146,11 +17148,16 @@ export interface components {
         };
         /**
          * AvailableDomain
-         * @description A domain with no website yet — the create picker's option, and nothing more.
+         * @description A domain a website may be created on — the create picker's option, and nothing more.
          *
          *     Deliberately not a ``DomainRead`` subset: a picker that borrows another module's read schema
          *     inherits every field somebody adds to it, and this one crosses a module boundary already
          *     (§6 — a bare-table bridge, not an import).
+         *
+         *     ``taken`` names the addresses already recorded on the domain (``breik.dev``,
+         *     ``breik.dev/briellaerd``), so the form can show the constraint working (#305) instead of
+         *     letting the save discover it: a domain with several sites is the ordinary case now, and a
+         *     picker that hid every claimed domain would hide exactly the ones a dev install goes on.
          */
         AvailableDomain: {
             /**
@@ -17165,6 +17172,8 @@ export interface components {
             id: string;
             /** Name */
             name: string;
+            /** Taken */
+            taken?: string[];
         };
         /** BacklogSourceTotal */
         BacklogSourceTotal: {
@@ -38371,6 +38380,8 @@ export interface components {
         };
         /** WebsiteCreate */
         WebsiteCreate: {
+            /** Company Override Id */
+            company_override_id?: string | null;
             /** Custom */
             custom?: {
                 [key: string]: unknown;
@@ -38382,6 +38393,11 @@ export interface components {
             domain_id: string;
             /** Hosting Id */
             hosting_id?: string | null;
+            /**
+             * Path
+             * @default
+             */
+            path: string;
             /**
              * Root
              * @default true
@@ -38400,6 +38416,8 @@ export interface components {
             company_id?: string | null;
             /** Company Name */
             company_name?: string | null;
+            /** Company Override Id */
+            company_override_id?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -38409,6 +38427,8 @@ export interface components {
             custom?: {
                 [key: string]: unknown;
             };
+            /** Domain Company Id */
+            domain_company_id?: string | null;
             /**
              * Domain Id
              * Format: uuid
@@ -38419,6 +38439,11 @@ export interface components {
              * @default
              */
             domain_name: string;
+            /**
+             * Host
+             * @default
+             */
+            host: string;
             /** Hosting Id */
             hosting_id?: string | null;
             /** Hosting Name */
@@ -38429,10 +38454,20 @@ export interface components {
              */
             id: string;
             /**
+             * Label
+             * @default
+             */
+            label: string;
+            /**
              * Org Id
              * Format: uuid
              */
             org_id: string;
+            /**
+             * Path
+             * @default
+             */
+            path: string;
             /** Root */
             root: boolean;
             technical_owner?: components["schemas"]["PartyReadRef"] | null;
@@ -38448,6 +38483,11 @@ export interface components {
             uptime_enabled: boolean;
             /** Uptime Status */
             uptime_status?: string | null;
+            /**
+             * Url
+             * @default
+             */
+            url: string;
         };
         /**
          * WebsiteRef
@@ -38464,12 +38504,16 @@ export interface components {
         };
         /** WebsiteUpdate */
         WebsiteUpdate: {
+            /** Company Override Id */
+            company_override_id?: string | null;
             /** Custom */
             custom?: {
                 [key: string]: unknown;
             } | null;
             /** Hosting Id */
             hosting_id?: string | null;
+            /** Path */
+            path?: string | null;
             /** Root */
             root?: boolean | null;
             technical_owner?: components["schemas"]["PartyRef"] | null;
@@ -39649,6 +39693,8 @@ export interface components {
              * Format: uuid
              */
             website_id: string;
+            /** Website Label */
+            website_label?: string | null;
         };
         /**
          * WordPressSiteSummary
@@ -70100,7 +70146,7 @@ export interface operations {
                 offset?: number;
                 domain_id?: string | null;
                 company_id?: string | null;
-                /** @description Matches the parent domain's name */
+                /** @description Matches the address: the domain's name or the path */
                 q?: string | null;
                 hosting_id?: string | null;
                 uptime_enabled?: boolean | null;

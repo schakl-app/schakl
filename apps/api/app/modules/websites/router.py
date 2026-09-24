@@ -34,7 +34,9 @@ async def list_websites(
     offset: int = Query(0, ge=0),
     domain_id: uuid.UUID | None = Query(None),
     company_id: uuid.UUID | None = Query(None),
-    q: str | None = Query(None, max_length=200, description="Matches the parent domain's name"),
+    q: str | None = Query(
+        None, max_length=200, description="Matches the address: the domain's name or the path"
+    ),
     hosting_id: uuid.UUID | None = Query(None),
     uptime_enabled: bool | None = Query(None),
     sort: str | None = Query(
@@ -94,7 +96,9 @@ async def list_available_domains(
     limit: int = Query(200, ge=1, le=500),
     ctx: RequestContext = Depends(require_context),
 ) -> list[AvailableDomain]:
-    """The domains that do not have a website yet — the create picker's options.
+    """Every domain a website may be created on — the create picker's options — each with the
+    addresses already recorded on it (``taken``), since a domain carries one site per address
+    and the next dev install goes on a domain that already has one.
 
     Declares the **write** permission, not the read one: this is the vocabulary of a form only a
     writer can submit, so a read-only member's section layout skips the call entirely rather than

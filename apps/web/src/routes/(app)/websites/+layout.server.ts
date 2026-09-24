@@ -19,9 +19,10 @@ import type { LayoutServerLoad } from "./$types";
  * - **The domain picker is one question, so it is one call.** It used to be answered by
  *   subtraction — every domain (200 rows, fully resolved) minus every website (200 rows, fully
  *   resolved) — which was both the section's two most expensive reads and *wrong past 200
- *   websites*: a domain whose website fell outside that page came back offered as free and 409'd
- *   on save. `GET /websites/available-domains` is a single `NOT EXISTS`, and it is skipped
- *   entirely for a member who cannot create a website.
+ *   websites*. `GET /websites/available-domains` answers it directly: every domain, each with
+ *   the addresses already on it (a domain carries one site per address now, so nothing is
+ *   "taken" — the form says what is there), and it is skipped entirely for a member who cannot
+ *   create a website.
  * - **Five definition calls are one.** Each re-read the tenant's whole definition set to filter
  *   it in Python, so this section spent five round-trips and five full reads on data that
  *   arrives in one.
@@ -62,8 +63,7 @@ export const load: LayoutServerLoad = async (event) => {
     ]);
   const defs = definitions.data ?? {};
   return {
-    // Already filtered to the domains that may still be given a website — the picker does not
-    // subtract anything client-side any more.
+    // Every domain, with what is already on it — the picker subtracts nothing client-side.
     availableDomains: availableDomains.data ?? [],
     hosting: (hosting.data?.items ?? []).map((h) => ({ id: h.id, name: h.name })),
     companies: lookupItems(companies, "companies").map((c) => ({

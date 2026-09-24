@@ -14,9 +14,16 @@
     domain_id: string;
     name: string;
     root: boolean;
+    /** The address as the API resolves it (host plus path); absent on an older API. */
+    label?: string;
     hosting_name: string | null;
     uptime_enabled: boolean;
   }
+
+  /** The row's title: the resolved address, or the host composed from the two facts an older
+   *  API sent — never both rules on one screen. */
+  const titleOf = (site: PanelWebsite) =>
+    site.label || (site.root ? site.name : `www.${site.name}`);
 
   let { companyId, data }: { companyId: string; data: Record<string, unknown> } = $props();
   const websites = $derived((data.websites ?? []) as PanelWebsite[]);
@@ -41,7 +48,7 @@
         {#each shown as site (site.id)}
           <PanelRow
             href={fromHref(`/websites/${site.id}`, page.url)}
-            title={site.root ? site.name : `www.${site.name}`}
+            title={titleOf(site)}
             meta={site.hosting_name}
           >
             {#snippet trailing()}

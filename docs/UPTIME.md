@@ -690,10 +690,13 @@ The create form sits beside the attach control on both anchors and is shaped by 
   `event.params.id`, exactly as `uptimeLink` does, and posts **no `company_id` at all** — the API
   derives it. `cloudflare` paid for the other shape once, in an adopt button that posted whatever
   was typed above it rather than the row it was drawn from.
-- **The target is suggested, visible, and correctable.** A website has no URL column: its host is
-  the apex or `www.` plus the apex depending on `websites.root`, which is what
-  `matching.build_index` already derives when it decides which website a *found* monitor belongs
-  to. The panel mirrors that rule off the record the host page has already loaded rather than
+- **The target is suggested, visible, and correctable.** A website's host and URL come resolved
+  on the record (`host` / `url`, one rule in `app/core/webaddress.py`: the apex or `www.` plus
+  the apex depending on `websites.root`, plus the site's `path`), the same rule
+  `matching.build_index` applies when it decides which website a *found* monitor belongs to —
+  and where one host carries several sites (`breik.dev/briellaerd` beside `breik.dev/nova`), the
+  monitor's own path picks the site whose path it sits under (`matching.path_of`, longest first;
+  the root where it sits under none). The panel reads that off the record the host page has already loaded rather than
   fetching it — one more request on every website and domain page, to serve a form most visits
   never open, is the trade `docs/PERFORMANCE.md` bans — and puts the answer in a field you can
   see. A drift between the two derivations is then something you notice, not something you find

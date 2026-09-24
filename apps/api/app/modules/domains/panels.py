@@ -11,6 +11,7 @@ import uuid
 from sqlalchemy import bindparam, text
 
 from app.core.tenancy import RequestContext
+from app.core.webaddress import website_label_sql
 from app.modules.domains.service import DomainService
 from app.registry import SIZE_HALF, PanelSpec
 
@@ -31,22 +32,28 @@ async def _domains_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
     # Invoiced and not-invoiced kept apart (#298): an agency's own names are set *not invoiced*
     # and still cost their renewal. One grouped statement, skipped when there is nothing to add.
     totals = (await service.totals(company_id=company_id)).total if total else None
-    # Which domains already carry their (0/1) website — so the panel can link to it, or offer
+    # Which domains already carry websites — so the panel can link to them, or offer
     # "＋ website" where there is none: everything for a client starts from the client's page.
-    # Raw table SQL (the websites service's own `_attach` pattern) — never a Python import of
-    # another module's internals.
-    website_by_domain: dict[uuid.UUID, uuid.UUID] = {}
+    # A domain may carry several (one per address, app/core/webaddress.py), so the row gets
+    # the list. Raw table SQL (the websites service's own `_attach` pattern) — never a Python
+    # import of another module's internals.
+    websites_by_domain: dict[uuid.UUID, list[dict[str, str]]] = {}
     if domains:
         rows = (
             await ctx.session.execute(
                 text(
-                    "SELECT domain_id, id FROM websites"
-                    " WHERE org_id = :org_id AND domain_id IN :ids"
+                    f"SELECT w.domain_id, w.id, {website_label_sql()} FROM websites w"
+                    " JOIN domains d ON d.id = w.domain_id"
+                    " WHERE w.org_id = :org_id AND w.domain_id IN :ids"
+                    " ORDER BY w.root DESC, w.path"
                 ).bindparams(bindparam("ids", expanding=True)),
                 {"org_id": ctx.org.id, "ids": [d.id for d in domains]},
             )
         ).all()
-        website_by_domain = {row[0]: row[1] for row in rows}
+        for domain_id, website_id, label in rows:
+            websites_by_domain.setdefault(domain_id, []).append(
+                {"id": str(website_id), "label": label}
+            )
     return {
         # The whole count, not the shown one: a card that says "5" over a client who has 23 is
         # the truncated-total failure (#37) in miniature — it reads as the complete answer.
@@ -63,8 +70,11 @@ async def _domains_provider(ctx: RequestContext, company_id: uuid.UUID) -> dict:
                 # the boolean meant the panel could only link at the domain and let the reader
                 # find the site from there.
                 "website_id": (
-                    str(website_by_domain[d.id]) if d.id in website_by_domain else None
+                    websites_by_domain[d.id][0]["id"] if d.id in websites_by_domain else None
                 ),
+                # Every site on the domain, by address — the id above is the first of
+                # these, kept for the older panel that links to exactly one.
+                "websites": websites_by_domain.get(d.id, []),
                 # Renewal + resolved price (#250): what this domain costs and when it next
                 # bills — the numbers the client conversation is about.
                 "next_invoice_date": (

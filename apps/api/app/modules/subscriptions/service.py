@@ -49,6 +49,7 @@ from app.core.richtext import sanitize_markdown
 from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext, TenantScopedRepository
 from app.core.timezone import org_zoneinfo
+from app.core.webaddress import website_company_sql, website_label_sql
 from app.errors import AppError
 from app.modules.subscriptions.models import (
     Subscription,
@@ -83,12 +84,12 @@ ENTITY_TYPE = "subscription"
 _LINK_TABLES: dict[str, str] = {"project": "projects", "task": "tasks", "website": "websites"}
 
 #: ``(id, label)`` per kind, for the page's links in one statement each. A website is named by
-#: the host it answers on, exactly as its own page titles it.
+#: its address — host plus path — exactly as its own page titles it (app/core/webaddress.py).
 _LINK_LABEL_SQL: dict[str, str] = {
     "project": "SELECT id, name FROM projects WHERE org_id = :oid AND id IN :ids",
     "task": "SELECT id, title FROM tasks WHERE org_id = :oid AND id IN :ids",
     "website": (
-        "SELECT w.id, CASE WHEN w.root THEN d.name ELSE 'www.' || d.name END"
+        f"SELECT w.id, {website_label_sql()}"
         " FROM websites w JOIN domains d ON d.id = w.domain_id"
         " WHERE w.org_id = :oid AND w.id IN :ids"
     ),
@@ -1655,13 +1656,14 @@ class SubscriptionService:
 
     async def _linkable_conditions(self, entity_type: str, entity_id: uuid.UUID) -> list[Any]:
         """Where the agreements that *could* cover ``entity`` are: the record's own client (a
-        website's is its domain's, a project's its own), alive, and — for a website — of a kind
-        that covers websites. A record this tenant does not hold answers an empty list, never
-        another client's agreements."""
+        website's is the one it names or else its domain's, a project's its own), alive, and —
+        for a website — of a kind that covers websites. A record this tenant does not hold
+        answers an empty list, never another client's agreements."""
         if entity_type == "website":
             company_id = await self.ctx.session.scalar(
                 text(
-                    "SELECT d.company_id FROM websites w JOIN domains d ON d.id = w.domain_id"
+                    f"SELECT {website_company_sql()} FROM websites w"
+                    " JOIN domains d ON d.id = w.domain_id"
                     " WHERE w.id = :eid AND w.org_id = :oid"
                 ),
                 {"eid": entity_id, "oid": self._org_id},

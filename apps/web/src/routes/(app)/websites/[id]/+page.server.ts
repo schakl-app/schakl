@@ -88,6 +88,10 @@ export const actions: Actions = {
       params: { path: { website_id: event.params.id } },
       body: {
         root: form.get("root") !== "www",
+        // The path under the host ("" = the root); the API normalises what was typed.
+        path: String(form.get("path") ?? "").trim(),
+        // The site's own client, or null to follow the domain (§18: explicit null clears).
+        company_override_id: String(form.get("company_override_id") ?? "") || null,
         technical_owner: parseParty(form.get("technical_owner")),
         hosting_id: String(form.get("hosting_id") ?? "") || null,
         uptime_enabled: form.get("uptime_enabled") !== null,

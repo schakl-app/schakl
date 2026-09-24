@@ -38,6 +38,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from app.core.activity.service import ActivityService
 from app.core.tenancy import RequestContext
 from app.core.timezone import org_today
+from app.core.webaddress import website_company_sql
 from app.errors import AppError
 from app.modules.companies.models import Company
 from app.modules.marketing.aisearch import (
@@ -183,9 +184,11 @@ class AiSearchService:
                 return target, "seranking"
         name = await self.ctx.session.scalar(
             text(
+                # The client's own sites, by the resolved client (app/core/webaddress.py); the
+                # target is the *host* — a path is not something AI search indexes a brand by.
                 "SELECT d.name FROM websites w JOIN domains d ON d.id = w.domain_id"
-                " WHERE w.org_id = :org_id AND d.company_id = :company_id"
-                " ORDER BY w.created_at LIMIT 1"
+                f" WHERE w.org_id = :org_id AND {website_company_sql()} = :company_id"
+                " ORDER BY w.path, w.created_at LIMIT 1"
             ),
             {"org_id": self.ctx.org.id, "company_id": company_id},
         )

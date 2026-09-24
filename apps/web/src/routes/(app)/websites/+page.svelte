@@ -44,6 +44,7 @@
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
   import DomainQuickCreate from "$lib/modules/domains/DomainQuickCreate.svelte";
   import HostingQuickCreate from "$lib/modules/hosting/HostingQuickCreate.svelte";
+  import { splitTypedAddress } from "$lib/modules/websites/address";
   import { WEBSITE_COLUMNS } from "$lib/modules/websites/columns";
   import type { WebsiteFilterKey } from "$lib/modules/websites/filters";
   import { uptimeChipClass, uptimeLabel, uptimeState } from "$lib/modules/websites/uptime";
@@ -105,15 +106,20 @@
     qcProviderOpen = true;
   }
 
-  // A domain carries at most one website, so the picker offers only unclaimed domains — which
-  // the API now answers directly (`GET /websites/available-domains`). Subtracting a claimed set
-  // here was both the section's two heaviest reads and wrong past 200 websites, since a domain
-  // whose website fell outside that page came back offered as free and 409'd on save.
-  const domainItems = $derived(
-    data.availableDomains
-      .filter((d) => !initialCompanyId || d.company_id === initialCompanyId)
-      .map((d) => ({ value: d.id, label: d.name })),
-  );
+  // Every domain, from `GET /websites/available-domains`: a domain carries one site per
+  // *address*, so the one already holding a site is exactly where the next dev install goes.
+  // Opened from a client's card the client's own domains come first, but nobody's are hidden —
+  // a client's dev site lives on the agency's domain, which is the case this form exists for.
+  const domainItems = $derived.by(() => {
+    const items = data.availableDomains.map((d) => ({
+      value: d.id,
+      label: d.name,
+      own: !!initialCompanyId && d.company_id === initialCompanyId,
+    }));
+    return [...items.filter((d) => d.own), ...items.filter((d) => !d.own)].map(
+      ({ value, label }) => ({ value, label }),
+    );
+  });
   const hostingItems = $derived(data.hosting.map((h) => ({ value: h.id, label: h.name })));
   // Inline-created records auto-select per slot and *stay* selected (#115): remembered in a
   // map, because `form.inlineCreated` only holds the latest create — a derived read straight
@@ -130,25 +136,39 @@
   const hostingCreated = $derived(createdBySlot["hosting_account"] ?? "");
   const domainCreated = $derived(createdBySlot["domain"] ?? "");
 
-  // The technical owner offers exactly two choices — the agency or the client — labelled
-  // with their actual names. The client is the picked domain's company, so the picker's
-  // label follows the domain selection; before a domain is picked it reads "Deze klant".
-  let selectedDomainId = $state("");
+  // `?domain=` opens the dialog on that domain (the domain page's "＋ website"), the way
+  // `?company=` narrows it to a client.
+  const initialDomainId = $derived(page.url.searchParams.get("domain") ?? "");
+  let selectedDomainId = $state(page.url.searchParams.get("domain") ?? "");
   $effect(() => {
     if (domainCreated) selectedDomainId = domainCreated;
   });
-  const ownerCompanyName = $derived.by(() => {
-    if (editing) return editing.company_name ?? "";
-    const domain = data.availableDomains.find((d) => d.id === selectedDomainId);
-    return data.companies.find((c) => c.id === domain?.company_id)?.name ?? "";
+  const selectedDomain = $derived(data.availableDomains.find((d) => d.id === selectedDomainId));
+  // The path under the host and the site's own client (both empty for the ordinary site: the
+  // root, the domain's client). Component state, so a typed address can fill them in.
+  let pathValue = $state("");
+  let clientOverride = $state("");
+  // The domain's client — what the site follows unless it names one of its own.
+  const domainCompanyName = $derived.by(() => {
+    const id = editing ? editing.domain_company_id : selectedDomain?.company_id;
+    return data.companies.find((c) => c.id === id)?.name ?? "";
   });
-  // The website's own client (#247): a hosting account quick-created from this form belongs to
-  // the same client — the edited site's, else the picked domain's, else the deep-link filter.
+  // A client quick-created from the override picker selects itself there (#115).
+  $effect(() => {
+    const created = createdBySlot["website_client"];
+    if (created) clientOverride = created;
+  });
+  // The technical owner offers exactly two choices — the agency or the client — labelled
+  // with their actual names. The client is the site's own where it names one, else the picked
+  // domain's, so the picker's label follows both selections.
   const ownerCompanyId = $derived.by(() => {
+    if (clientOverride) return clientOverride;
     if (editing) return editing.company_id ?? "";
-    const domain = data.availableDomains.find((d) => d.id === selectedDomainId);
-    return domain?.company_id ?? initialCompanyId ?? "";
+    return selectedDomain?.company_id ?? initialCompanyId ?? "";
   });
+  const ownerCompanyName = $derived(
+    data.companies.find((c) => c.id === ownerCompanyId)?.name ?? "",
+  );
 
   // Radio selection is component state, never a one-way checked (docs/UX.md).
   let hostChoice = $state<"root" | "www">("root");
@@ -156,16 +176,31 @@
   function openCreate() {
     editing = null;
     hostChoice = "root";
+    pathValue = "";
+    clientOverride = "";
     createdBySlot = {};
-    selectedDomainId = "";
+    selectedDomainId = initialDomainId;
     showModal = true;
   }
   function openEdit(w: Website) {
     editing = w;
     hostChoice = w.root ? "root" : "www";
+    pathValue = w.path ?? "";
+    clientOverride = w.company_override_id ?? "";
     createdBySlot = {};
     selectedDomainId = "";
     showModal = true;
+  }
+  /** Typing a whole address into the domain picker: the host goes to the domain quick-create,
+   *  the rest fills the path and the host choice here, so `breik.dev/briellaerd` becomes a
+   *  domain `breik.dev` (once) and a site at `/briellaerd` — never a root site named by the
+   *  normaliser's leftovers. */
+  function createDomainFrom(query: string) {
+    const typed = splitTypedAddress(query);
+    if (typed.path) pathValue = typed.path;
+    if (typed.www) hostChoice = "www";
+    qcDomainName = typed.host || query;
+    qcDomainOpen = true;
   }
   function requestDelete(id: string) {
     deleteId = id;
@@ -270,8 +305,9 @@
 </script>
 
 {#snippet nameCell(site: Website)}
+  <!-- The address as the API resolves it (host plus path, `app/core/webaddress.py`). -->
   <a href={`/websites/${site.id}`} class="block truncate font-medium text-text hover:text-brand">
-    {site.root ? site.domain_name : `www.${site.domain_name}`}
+    {site.label}
   </a>
 {/snippet}
 
@@ -330,9 +366,7 @@
   <!-- A phone gets the concept's row, not a sideways-scrolling grid (docs/UX.md). -->
   <div class="flex items-center gap-3">
     <a href={`/websites/${site.id}`} class="min-w-0 flex-1">
-      <span class="block truncate font-medium text-text">
-        {site.root ? site.domain_name : `www.${site.domain_name}`}
-      </span>
+      <span class="block truncate font-medium text-text">{site.label}</span>
       {#if site.company_name}
         <span class="mt-0.5 block truncate text-sm text-text-muted">{site.company_name}</span>
       {/if}
@@ -463,12 +497,16 @@
                 bind:value={selectedDomainId}
                 id="website-domain"
                 placeholder={t("websites.field.domain")}
-                oncreate={(name) => {
-                  qcDomainName = name;
-                  qcDomainOpen = true;
-                }}
+                oncreate={createDomainFrom}
               />
               <p class="mt-1 text-xs text-text-muted">{t("websites.domain_hint")}</p>
+              {#if selectedDomain?.taken?.length}
+                <!-- The constraint, shown working (#305): one site per address, and here is
+                     what this domain already carries. -->
+                <p class="mt-1 text-xs text-text-muted">
+                  {t("websites.taken_hint", { list: selectedDomain.taken.join(", ") })}
+                </p>
+              {/if}
             </div>
           {/if}
           <div>
@@ -482,6 +520,37 @@
                 www
               </label>
             </div>
+          </div>
+          <div>
+            <label for="website-path" class="mb-1 block text-sm text-text"
+              >{t("websites.field.path")}</label
+            >
+            <input
+              id="website-path"
+              name="path"
+              type="text"
+              bind:value={pathValue}
+              placeholder="/klant"
+              autocomplete="off"
+              class="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
+            />
+            <p class="mt-1 text-xs text-text-muted">{t("websites.path_hint")}</p>
+          </div>
+          <div>
+            <label for="website-client" class="mb-1 block text-sm text-text"
+              >{t("websites.field.client")}</label
+            >
+            <!-- Empty follows the domain's client (the placeholder names it); a pick makes the
+                 site somebody else's — a client's dev install on the agency's own domain. -->
+            <Combobox
+              items={companyPicker.live}
+              name="company_override_id"
+              bind:value={clientOverride}
+              id="website-client"
+              placeholder={t("websites.client_follows_domain", { name: domainCompanyName })}
+              oncreate={(name) => quickCreateCompany(name, "website_client")}
+            />
+            <p class="mt-1 text-xs text-text-muted">{t("websites.client_hint")}</p>
           </div>
           <div>
             <span class="mb-1 block text-sm text-text">{t("websites.technical_owner")}</span>
