@@ -2,6 +2,69 @@
 
 _Releases v0.25.0 through v0.41.0 are written up on their GitHub Releases; this file resumes at v0.42.0._
 
+## v0.58.0 — 2026-09-25
+
+A meeting recording that a phone interrupts now resumes by itself, and a long recording keeps
+one speaker label per person across the cuts. The WordPress bridge reports whether the plugin
+can update itself, and it can hand a record back as plain text.
+
+Two migrations, applied in order: `a3d7f2c9e5b8` → `f1a7c3e9b2d5`. The head moves from
+`e8a2c5f9d4b1` to `f1a7c3e9b2d5`. Both are purely additive: `wordpress_sites.bridge_updates`
+and `meetings.recording_gaps`. There are no new permission keys, no new routes and no new
+environment variables. Changed: `POST /meetings/{id}/chunks` takes `session` and `head`, the
+meeting read gains `recording_gaps` and `transcript_voiced`, the WordPress site read gains
+`bridge_updates` and `can_update`, and the bridge record routes take `mode=text`. The typed
+client is regenerated.
+
+### Meetings: an interrupted recording goes on
+
+- **A lost capture is resumed, not ended.** When a phone locks, the tab is frozen or another
+  app takes the microphone, the recorder used to notice on return and stop the meeting. A
+  108-minute meeting ended that way mid-sentence while the conversation went on for another
+  hour. The recorder now asks for the microphone again every five seconds for up to ten
+  minutes and continues on the same meeting. The screen says "hervatten… opgeslagen tot" in
+  amber meanwhile, and afterwards how many times it was interrupted. Only a spent budget ends
+  the recording, and the message then says it could not be resumed. Tab-audio recordings
+  still end, because a browser will not share a tab again without a click.
+- **What the interruption cost is measured and shown.** A resumed capture is a new session
+  with its own container header, so the worker folds each session and joins them with ffmpeg
+  into one file. It measures each gap from the pieces' own arrival times and lengths, never
+  from the phone's clock, and the meeting page prints it: "1× onderbroken: 1 min 32 s niet
+  opgenomen vanaf 1:47:50". The minutes model reads the gap as a line of its own where it
+  falls, so two sentences an hour apart are never read as one exchange.
+- **One label per person across the cuts.** OpenAI's diarize model takes 25 minutes per
+  request, so a long recording is transcribed in parts, and every part used to label the
+  speakers afresh. The 45-second overlap matched only the person who never stopped talking;
+  the 108-minute meeting came back with seventeen labels for three people. Every part after
+  the first now carries a short sample of each voice the earlier parts labelled, and the model
+  keeps those labels by voice. The overlap, now 90 seconds, pairs only what the model did not
+  recognise, and the labels are numbered without holes at the end. The participants editor
+  says which mechanism ran.
+- A recording resumed on a server without ffmpeg fails with `meetings.error.needs_join`
+  rather than being processed as its first half.
+
+### WordPress: the bridge plugin's own updates, and records as text
+
+- **The site panel says whether the bridge plugin can update itself.** Bridge 1.3.1 reports
+  where its GitHub token comes from, the latest release it saw, why its check failed and
+  whether WordPress auto-updates it. The panel prints that under the version and links a site
+  without a working token to the plugin's settings screen. An older plugin reads "not
+  reported", never "cannot update".
+- **A record can be read as one text.** Bridge 1.4.0 answers `mode=text` with the record as
+  readable text: title, body without markup, the ACF fields in order, choices by label. The
+  record list takes `fields`, so an agent or a chatbot pulls every FAQ item with its answer in
+  one call. The same works for terms and options pages.
+
+### Upgrade notes
+
+- A meeting transcribed before this release with many speaker labels can be run again with
+  *Opnieuw verwerken*. The voice samples are cut from the stored recording, so the second run
+  costs the transcription again and redrafts the minutes.
+- A recording in progress during the upgrade is unaffected: an uninterrupted recording sends
+  exactly what it sent before.
+- The update block and text reads need bridge plugin 1.3.1 and 1.4.0 respectively; an older
+  plugin answers with its own "no route" error for `mode=text`.
+
 ## v0.57.0 — 2026-09-25
 
 One mail to the task address can now become several tasks. The WordPress bridge can now edit
