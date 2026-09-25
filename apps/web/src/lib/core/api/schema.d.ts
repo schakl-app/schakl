@@ -15695,7 +15695,9 @@ export interface paths {
         /**
          * Bridge List Records
          * @description Records of any post type through the plugin — REST-hidden types included — with the
-         *     page path, status, and WPML language and translation ids per row.
+         *     page path, status, and WPML language and translation ids per row. `search` matches the
+         *     title, the body and the ACF fields; `fields=text` returns every record with its readable
+         *     text in one call (every FAQ item with its answer).
          */
         get: operations["bridge_list_records_api_v1_wordpress_sites__site_id__bridge_records_get"];
         put?: never;
@@ -15722,7 +15724,8 @@ export interface paths {
         /**
          * Bridge Get Record
          * @description One record whole: core fields, taxonomies, SEO, the ACF `fields` (compact: per
-         *     page-builder row only what that row uses) and `references` for every id in them.
+         *     page-builder row only what that row uses) and `references` for every id in them; or,
+         *     with `mode=text`, the record as one readable text in `text`.
          */
         get: operations["bridge_get_record_api_v1_wordpress_sites__site_id__bridge_records__wp_id__get"];
         put?: never;
@@ -39924,7 +39927,8 @@ export interface components {
          * @description One record whole. ``fields`` is the ACF tree in the requested mode — ``compact`` keeps,
          *     per page-builder row, only the fields the editor shows for that row and only the ones
          *     that hold something — and ``references`` resolves every attachment, post and term id the
-         *     values name (url, alt, title, type).
+         *     values name (url, alt, title, type). With mode ``text`` there is no tree: ``text`` holds
+         *     the record as one readable text (title, body, fields in order, choices by label).
          */
         WordPressRecord: {
             /**
@@ -39962,6 +39966,8 @@ export interface components {
             taxonomies?: {
                 [key: string]: unknown;
             };
+            /** Text */
+            text?: string | null;
             /** Title */
             title: string;
             /** Translations */
@@ -40062,6 +40068,8 @@ export interface components {
         };
         /** WordPressRecordList */
         WordPressRecordList: {
+            /** Fields Mode */
+            fields_mode?: string | null;
             /** Items */
             items?: components["schemas"]["WordPressRecordRow"][];
             /**
@@ -40091,6 +40099,10 @@ export interface components {
         };
         /** WordPressRecordRow */
         WordPressRecordRow: {
+            /** Fields */
+            fields?: {
+                [key: string]: unknown;
+            } | null;
             /** Id */
             id: number;
             /** Lang */
@@ -40103,10 +40115,16 @@ export interface components {
             path?: string[];
             /** Post Type */
             post_type: string;
+            /** References */
+            references?: {
+                [key: string]: unknown;
+            } | null;
             /** Slug */
             slug: string;
             /** Status */
             status: string;
+            /** Text */
+            text?: string | null;
             /** Title */
             title: string;
             /** Translations */
@@ -40147,7 +40165,7 @@ export interface components {
             } | null;
             /**
              * Mode
-             * @description Read mode of the returned record: compact | visible | full | none.
+             * @description Read mode of the returned record: compact | visible | full | none | text.
              */
             mode?: string | null;
             /**
@@ -71978,6 +71996,8 @@ export interface operations {
                 parent?: number | null;
                 page?: number;
                 per_page?: number;
+                /** @description Also read each record's ACF fields: compact | visible | full, or text for each record as one readable text. Default none: rows only. */
+                fields?: string;
             };
             header?: never;
             path: {
@@ -72045,6 +72065,7 @@ export interface operations {
     bridge_get_record_api_v1_wordpress_sites__site_id__bridge_records__wp_id__get: {
         parameters: {
             query?: {
+                /** @description compact (default) | visible | full | none, or text: the record as one readable text — title, body, fields in order, choices by label — instead of the tree. */
                 mode?: string;
                 include_schema?: boolean;
             };

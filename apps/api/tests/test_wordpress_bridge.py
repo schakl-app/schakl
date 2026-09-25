@@ -184,6 +184,21 @@ async def test_info_schema_and_records_read_through_the_plugin(client_for, wp) -
         assert res.status_code == 404
         assert res.json()["error"]["message"] == "errors.wordpress_not_on_site"
 
+        # The text mode: what a chatbot reads — no tree, the words in order.
+        text = (await c.get(_url(site, "/records/8262?mode=text"), headers=member_h)).json()
+        assert text["fields_mode"] == "text" and text["fields"] is None
+        assert text["text"].startswith("Arbeidsongeschiktheidsverzekering")
+        assert "Eerst het risico begrijpen" in text["text"]
+        assert ("GET", "/content/8262", None) in wp.bridge_calls
+        rows = (
+            await c.get(_url(site, "/records?post_type=page&fields=text"), headers=member_h)
+        ).json()
+        assert rows["fields_mode"] == "text"
+        assert all("Eerst het risico" in r["text"] or r["text"] for r in rows["items"])
+        assert rows["items"][0]["fields"] is None
+        res = await c.get(_url(site, "/records/8262?mode=prose"), headers=member_h)
+        assert res.status_code == 422
+
         # An unknown post type is the plugin's 404 with its `known` list carried.
         res = await c.get(_url(site, "/records?post_type=nope"), headers=member_h)
         assert res.status_code == 404

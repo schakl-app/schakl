@@ -248,6 +248,7 @@ class WordPressBridgeService(WordPressSurfaceService):
         parent: int | None,
         page: int,
         per_page: int,
+        fields: str = "none",
     ) -> WordPressRecordList:
         _, client = await self._open(site_id)
         params: dict[str, Any] = {
@@ -255,6 +256,8 @@ class WordPressBridgeService(WordPressSurfaceService):
             "page": max(1, page),
             "per_page": max(1, min(per_page, _MAX_PER_PAGE)),
         }
+        if fields and fields != "none":
+            params["fields"] = fields
         if search:
             params["search"] = search
         if status:

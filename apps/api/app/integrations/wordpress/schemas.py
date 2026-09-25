@@ -545,6 +545,11 @@ class WordPressRecordRow(_BridgeOpen):
     lang: str | None = None
     #: WPML: ``{lang: id}`` for the translation group.
     translations: dict[str, int] = Field(default_factory=dict)
+    #: With ``fields`` asked for: the ACF tree in that mode, with its references.
+    fields: dict[str, Any] | None = None
+    references: dict[str, Any] | None = None
+    #: With ``fields=text``: the record as one readable text.
+    text: str | None = None
 
 
 class WordPressRecordList(_BridgeOpen):
@@ -554,13 +559,15 @@ class WordPressRecordList(_BridgeOpen):
     per_page: int = 20
     pages: int = 0
     post_type: str
+    fields_mode: str | None = None
 
 
 class WordPressRecord(_BridgeOpen):
     """One record whole. ``fields`` is the ACF tree in the requested mode — ``compact`` keeps,
     per page-builder row, only the fields the editor shows for that row and only the ones
     that hold something — and ``references`` resolves every attachment, post and term id the
-    values name (url, alt, title, type)."""
+    values name (url, alt, title, type). With mode ``text`` there is no tree: ``text`` holds
+    the record as one readable text (title, body, fields in order, choices by label)."""
 
     id: int
     post_type: str
@@ -568,6 +575,7 @@ class WordPressRecord(_BridgeOpen):
     status: str
     link: str | None = None
     content: str = ""
+    text: str | None = None
     fields: dict[str, Any] | None = None
     fields_mode: str | None = None
     references: dict[str, Any] = Field(default_factory=dict)
@@ -649,7 +657,8 @@ class WordPressRecordUpdate(BaseModel):
     fields: dict[str, Any] | None = Field(None, description=_FIELDS_DOC)
     ops: list[dict[str, Any]] | None = Field(None, description=_OPS_DOC)
     mode: str | None = Field(
-        None, description="Read mode of the returned record: compact | visible | full | none."
+        None,
+        description="Read mode of the returned record: compact | visible | full | none | text.",
     )
 
 

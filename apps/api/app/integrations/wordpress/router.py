@@ -515,10 +515,20 @@ async def bridge_list_records(
     parent: int | None = Query(None),
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
+    fields: str = Query(
+        "none",
+        pattern="^(none|compact|visible|full|text)$",
+        description=(
+            "Also read each record's ACF fields: compact | visible | full, or text for each "
+            "record as one readable text. Default none: rows only."
+        ),
+    ),
     ctx: RequestContext = Depends(require_context),
 ) -> WordPressRecordList:
     """Records of any post type through the plugin — REST-hidden types included — with the
-    page path, status, and WPML language and translation ids per row."""
+    page path, status, and WPML language and translation ids per row. `search` matches the
+    title, the body and the ACF fields; `fields=text` returns every record with its readable
+    text in one call (every FAQ item with its answer)."""
     return await WordPressBridgeService(ctx).list_records(
         site_id,
         post_type=post_type,
@@ -528,6 +538,7 @@ async def bridge_list_records(
         parent=parent,
         page=page,
         per_page=per_page,
+        fields=fields,
     )
 
 
@@ -556,12 +567,20 @@ async def bridge_create_record(
 async def bridge_get_record(
     site_id: uuid.UUID,
     wp_id: int,
-    mode: str = Query("compact", pattern="^(compact|visible|full|none)$"),
+    mode: str = Query(
+        "compact",
+        pattern="^(compact|visible|full|none|text)$",
+        description=(
+            "compact (default) | visible | full | none, or text: the record as one readable "
+            "text — title, body, fields in order, choices by label — instead of the tree."
+        ),
+    ),
     include_schema: bool = Query(False),
     ctx: RequestContext = Depends(require_context),
 ) -> WordPressRecord:
     """One record whole: core fields, taxonomies, SEO, the ACF `fields` (compact: per
-    page-builder row only what that row uses) and `references` for every id in them."""
+    page-builder row only what that row uses) and `references` for every id in them; or,
+    with `mode=text`, the record as one readable text in `text`."""
     return await WordPressBridgeService(ctx).get_record(
         site_id, wp_id, mode=mode, include_schema=include_schema
     )
@@ -625,7 +644,7 @@ async def bridge_list_terms(
     taxonomy: str = Query(..., max_length=40),
     search: str | None = Query(None, max_length=200),
     lang: str | None = Query(None, max_length=10),
-    mode: str = Query("none", pattern="^(none|compact|visible|full)$"),
+    mode: str = Query("none", pattern="^(none|compact|visible|full|text)$"),
     ctx: RequestContext = Depends(require_context),
 ) -> WordPressBridgeTermList:
     """The terms of one taxonomy, with their WPML language and, on request, ACF fields."""
@@ -672,7 +691,7 @@ async def bridge_options_get(
     site_id: uuid.UUID,
     page: str,
     lang: str | None = Query(None, max_length=10),
-    mode: str = Query("compact", pattern="^(compact|visible|full)$"),
+    mode: str = Query("compact", pattern="^(compact|visible|full|text)$"),
     include_schema: bool = Query(False),
     ctx: RequestContext = Depends(require_context),
 ) -> WordPressOptionsRead:
