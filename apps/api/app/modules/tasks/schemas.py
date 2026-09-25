@@ -1153,6 +1153,9 @@ class TaskIntakeRead(BaseModel):
     body_markdown: str | None = None
     received_at: datetime
     task_id: uuid.UUID | None = None
+    #: Every task the mail became, lead first (``task_id`` is the lead). One entry for the
+    #: ordinary mail; several when the model split it.
+    task_ids: list[uuid.UUID] = Field(default_factory=list)
     hints: dict[str, Any] = Field(default_factory=dict)
     decided_at: datetime | None = None
     created_at: datetime
@@ -1174,3 +1177,6 @@ class TaskIntakeComplete(BaseModel):
     due_date: date | None = None
     assignees: list[AssigneeWrite] | None = None
     assignee_user_id: uuid.UUID | None = None
+    #: A mail the model planned as several tasks is finished as all of them; ``true`` folds
+    #: them into one task instead — each planned task a step, the notes pooled.
+    as_one: bool = False

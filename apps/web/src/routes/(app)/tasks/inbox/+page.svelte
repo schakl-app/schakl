@@ -7,6 +7,12 @@
    * it carried — the words, the attachments, what the parser and the model made of it — and
    * `Taak aanmaken` opens the ordinary quick-create dialog over it, prefilled, posting to the
    * mail's own create action so the rest travels with the task.
+   *
+   * A mail the model read as **several** tasks says so on the card — each planned task with its
+   * client, or "nog geen klant" — because finishing it makes all of them, and a dialog showing
+   * one title over a create that makes three is a surprise. The dialog's title, deadline and
+   * roster apply to the lead; the client picked fills every task that had none. "Maak er toch
+   * één taak van" is the sender's override and rides the create action as `as_one`.
    */
   import Mail from "@lucide/svelte/icons/mail";
   import Paperclip from "@lucide/svelte/icons/paperclip";
@@ -44,6 +50,25 @@
     quickCreateOpen = true;
   }
   const hints = $derived((creating?.hints ?? {}) as Record<string, unknown>);
+
+  interface PlannedTask {
+    title?: string | null;
+    company_name?: string | null;
+    company_id?: string | null;
+  }
+  /** The tasks the model read in a mail — more than one only when it split it. */
+  function planned(row: Row): PlannedTask[] {
+    const tasks = (row.hints as Record<string, unknown> | null)?.tasks;
+    return Array.isArray(tasks) ? (tasks as PlannedTask[]) : [];
+  }
+  function titleOf(row: Row, index: number): string {
+    return planned(row)[index]?.title || row.subject || t("tasks.intake.untitled");
+  }
+  // Per parked mail: fold its planned tasks into one on create. Off by default — the split is
+  // the model's reading and the card shows it; the checkbox is the sender's veto.
+  let asOne = $state<Record<string, boolean>>({});
+  const creatingAsOne = $derived(creating ? Boolean(asOne[creating.id]) : false);
+  const creatingCount = $derived(creating ? planned(creating).length : 0);
   const prefilledAssignee = $derived(
     typeof hints.assignee_user_id === "string" && hints.assignee_user_id
       ? hints.assignee_user_id
@@ -122,7 +147,9 @@
             </form>
             {#if row.status === "needs_client"}
               <Button type="button" onclick={() => startCreate(row)}>
-                {t("tasks.inbox.create")}
+                {planned(row).length > 1 && !asOne[row.id]
+                  ? t("tasks.inbox.create_many", { count: planned(row).length })
+                  : t("tasks.inbox.create")}
               </Button>
             {/if}
           </div>
@@ -132,6 +159,31 @@
             class="mt-3 max-h-64 overflow-y-auto rounded-lg border border-border bg-surface p-3 text-sm"
           >
             <Markdown value={row.body_markdown ?? row.body_text} images />
+          </div>
+        {/if}
+        {#if planned(row).length > 1}
+          <div class="mt-3 rounded-lg border border-border bg-surface p-3 text-sm">
+            <p class="mb-1 text-xs font-semibold text-text">
+              {t("tasks.inbox.planned", { count: planned(row).length })}
+            </p>
+            <ol class="list-decimal space-y-0.5 pl-5">
+              {#each planned(row) as task, index (index)}
+                <li>
+                  <span class="text-text">{task.title || t("tasks.intake.untitled")}</span>
+                  <span class="text-xs text-text-muted">
+                    · {task.company_name
+                      ? t("tasks.inbox.planned_for", { company: task.company_name })
+                      : t("tasks.inbox.planned_no_client")}
+                  </span>
+                </li>
+              {/each}
+            </ol>
+            {#if row.status === "needs_client"}
+              <label class="mt-2 flex items-center gap-2 text-xs text-text-muted">
+                <input type="checkbox" class="rounded border-border" bind:checked={asOne[row.id]} />
+                {t("tasks.inbox.fold")}
+              </label>
+            {/if}
           </div>
         {/if}
         {#if byModel(row)}
@@ -165,7 +217,16 @@
             {t(`tasks.inbox.status.${row.status}`)}
           </span>
         </div>
-        {#if row.task_id}
+        {#if row.task_ids && row.task_ids.length > 1}
+          <span class="flex flex-wrap items-center gap-x-2 text-xs text-text-muted">
+            {t("tasks.inbox.became_tasks", { count: row.task_ids.length })}
+            {#each row.task_ids as taskId, index (taskId)}
+              <a href="/tasks/{taskId}" class="text-brand hover:underline">
+                {titleOf(row, index)}
+              </a>
+            {/each}
+          </span>
+        {:else if row.task_id}
           <a href="/tasks/{row.task_id}" class="text-xs text-brand hover:underline">
             {t("tasks.inbox.open_task")}
           </a>
@@ -178,9 +239,13 @@
 {#if creating}
   <TaskQuickCreate
     bind:open={quickCreateOpen}
-    title={String(hints.title ?? creating.subject ?? "")}
+    title={String(
+      creatingAsOne ? (creating.subject ?? "") : (hints.title ?? creating.subject ?? ""),
+    )}
     assignees={prefilledAssignee ? [{ user_id: prefilledAssignee, is_primary: true }] : []}
-    action="?/createFromIntake&id={creating.id}"
+    action="?/createFromIntake&id={creating.id}{creatingCount > 1 && creatingAsOne
+      ? '&as_one=1'
+      : ''}"
     error={form?.qcError ?? null}
     pickerSlot="task_intake"
   />

@@ -31,6 +31,18 @@ turns it into a task, or parks it for its sender. The rules, in the order they r
    itself never a contact moment: the feeds skip its timeline half (``SkipReason.INTAKE_ONLY``)
    when the address was its only recipient, because an instruction to the system is not a
    conversation with a client.
+7. **One mail may be several tasks, and how many is the model's call.** A colleague empties a
+   phone call into one mail — three jobs, two clients, a deadline each — and one card titled
+   after the subject line is work nobody can finish or hand over. With ``task_intake`` on, the
+   model answers with a *list* (``intake_ai.MAX_TASKS`` at most), told to split only what can
+   be assigned, dated and finished on its own and never a job into its steps; every rule above
+   then holds **per task**: a directive the sender typed decides that field for all of them (a
+   ``klant:`` line is a statement about the mail), a client the forwarded addresses name is the
+   default the model may vary per task, and every id is grounded per task. The mail stays one
+   act — it becomes all of its tasks, or parks whole when any of them has no client, with the
+   split on the card so the sender finishes them together (or, by choice, as one). What was
+   forwarded is filed once, on the roster of every task it produced; an attachment follows the
+   task the model names it for, and one nobody claims goes with the first.
 
 The sender hears the outcome through the ordinary notification system — bell, mail, digest,
 by their own preferences — with the client, the assignee and the deadline in the sentence, and
@@ -65,7 +77,7 @@ from app.core.tenancy import RequestContext
 from app.core.timezone import org_today, org_zoneinfo
 from app.errors import AppError
 from app.modules.tasks import intake_ai
-from app.modules.tasks.intake_ai import IntakePlan
+from app.modules.tasks.intake_ai import IntakePlan, PlannedTask
 from app.modules.tasks.models import (
     Task,
     TaskIntakeMessage,
@@ -97,6 +109,8 @@ INTAKE_KEY = "tasks"
 ENTITY_TYPE = "task_intake"
 #: Notification events (registered in ``notifications/events.py``).
 CREATED_EVENT = "task.intake_created"
+#: The same mail became several tasks (recipient = the sender; the lead task is the subject).
+SPLIT_EVENT = "task.intake_split"
 PARKED_EVENT = "task.intake_parked"
 
 #: What a parked row's ``reason`` may say. i18n: ``tasks.intake.reason.<value>``.
@@ -596,15 +610,97 @@ def parse_due(value: str | None, *, today: date) -> date | None:
 
 @dataclass
 class Resolved:
+    """What the mail settles for **every** task it becomes — the sender's own words and the
+    forwarded block's people, before the model is asked anything."""
+
+    company_id: uuid.UUID | None = None
+    company_name: str | None = None
+    #: The client came from the sender's own words (a directive, a ``[Klant]`` subject) rather
+    #: than from the forwarded addresses. Words lock the client for every task; addresses are a
+    #: default a split may vary per task, since a mail forwarding one client's message may
+    #: still hand a colleague a job for another.
+    company_by_words: bool = False
+    assignee_user_id: uuid.UUID | None = None
+    project_id: uuid.UUID | None = None
+    due_date: date | None = None
+    label_ids: list[uuid.UUID] = field(default_factory=list)
+    reason: str | None = None
+
+
+@dataclass
+class TaskDecision:
+    """One task the mail becomes, every field settled: the sender's words first, then the
+    mail's people, then the model — recorded per task in ``by_model``. ``due_date`` and
+    ``assignee_user_id`` may still be ``None`` here; the create applies the org's default and
+    the sender, in that order, so the decision says what the mail said and nothing more."""
+
+    title: str | None = None
+    summary: str | None = None
     company_id: uuid.UUID | None = None
     company_name: str | None = None
     assignee_user_id: uuid.UUID | None = None
     project_id: uuid.UUID | None = None
     due_date: date | None = None
+    priority: str = TaskPriority.NORMAL.value
     label_ids: list[uuid.UUID] = field(default_factory=list)
+    checklist_title: str | None = None
+    checklist_items: list[tuple[str, str | None]] = field(default_factory=list)
+    links: list[tuple[str, str | None]] = field(default_factory=list)
+    attachments: list[str] = field(default_factory=list)
+    requires_interaction: bool = False
     #: Which fields the model decided (``company``, ``assignee``, ``due_date``, ``project``).
     by_model: list[str] = field(default_factory=list)
-    reason: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "title": self.title,
+            "summary": self.summary,
+            "company_id": str(self.company_id) if self.company_id else None,
+            "company_name": self.company_name,
+            "assignee_user_id": str(self.assignee_user_id) if self.assignee_user_id else None,
+            "project_id": str(self.project_id) if self.project_id else None,
+            "due_date": self.due_date.isoformat() if self.due_date else None,
+            "priority": self.priority,
+            "label_ids": [str(x) for x in self.label_ids],
+            "checklist_title": self.checklist_title,
+            "checklist_items": [list(item) for item in self.checklist_items],
+            "links": [list(link) for link in self.links],
+            "attachments": list(self.attachments),
+            "requires_interaction": self.requires_interaction,
+            "by_model": list(self.by_model),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> TaskDecision:
+        decision = cls(
+            title=data.get("title") or None,
+            summary=data.get("summary") or None,
+            company_id=_uuid(data.get("company_id")),
+            company_name=data.get("company_name") or None,
+            assignee_user_id=_uuid(data.get("assignee_user_id")),
+            project_id=_uuid(data.get("project_id")),
+            due_date=_iso(data.get("due_date")),
+            priority=data.get("priority") or TaskPriority.NORMAL.value,
+            checklist_title=data.get("checklist_title") or None,
+            checklist_items=[
+                (str(item[0]), item[1] if len(item) > 1 else None)
+                for item in data.get("checklist_items") or []
+                if item
+            ],
+            links=[
+                (str(link[0]), link[1] if len(link) > 1 else None)
+                for link in data.get("links") or []
+                if link
+            ],
+            attachments=[str(name) for name in data.get("attachments") or []],
+            requires_interaction=bool(data.get("requires_interaction")),
+            by_model=[str(x) for x in data.get("by_model") or []],
+        )
+        for raw in data.get("label_ids") or []:
+            found = _uuid(raw)
+            if found is not None:
+                decision.label_ids.append(found)
+        return decision
 
 
 def _horizon_clause(actor: RequestContext) -> tuple[str, dict[str, Any]]:
@@ -814,21 +910,19 @@ async def handle_intake_message(ctx: EmitContext, message: IntakeMessage) -> Int
             status="refused", entity_type=ENTITY_TYPE, entity_id=row.id, reason=REASON_NO_PERMISSION
         )
 
-    # 4. The words, then the records, then the model.
+    # 4. The words, then the records, then the model — settled per task.
     today = await org_today(session, ctx.org.id)
     settings_row = await _settings_row(session, ctx.org.id)
     default_days = settings_row.intake_default_due_days if settings_row else 1
     draft = parse_intake(message.subject, message.body_markdown or message.body_text)
     resolved = await _resolve(actor, message, draft, today=today)
     plan = await _model_plan(actor, message, draft, resolved, today=today)
-    if plan is not None:
-        _fill_blanks(resolved, plan, draft)
-        if resolved.company_id is not None and resolved.company_name is None:
-            resolved.company_name = await _company_name(session, ctx.org.id, resolved.company_id)
-    row.hints = _hints(draft, resolved, plan)
+    decisions = _decide(draft, resolved, plan)
+    await _name_companies(session, ctx.org.id, decisions)
+    row.hints = _hints(draft, resolved, decisions)
 
-    if resolved.company_id is None:
-        # 5. Parked: the sender finishes it, with everything the mail carried.
+    if any(d.company_id is None for d in decisions):
+        # 5. Parked: the sender finishes it — every task of it — with everything it carried.
         await _settle(
             row, TaskIntakeStatus.NEEDS_CLIENT, reason=resolved.reason or REASON_NO_CLIENT
         )
@@ -838,30 +932,38 @@ async def handle_intake_message(ctx: EmitContext, message: IntakeMessage) -> Int
             status="parked", entity_type=ENTITY_TYPE, entity_id=row.id, reason=row.reason
         )
 
-    due = resolved.due_date or today + timedelta(days=default_days)
-    assignee = resolved.assignee_user_id or message.sender_user_id
-    task = await create_task_system(
-        ctx,
-        title=await _title(ctx, draft, plan),
-        company_id=resolved.company_id,
-        project_id=resolved.project_id,
-        assignee_user_id=assignee,
-        description=_description(draft, plan),
-        priority=_priority(draft, plan),
-        due_date=due,
-        actor_name=_sender_display(message),
-        actor_user_id=message.sender_user_id,
-        requires_interaction=bool(plan and plan.requires_interaction),
-        created_payload={"via": "email", "intake_id": str(row.id)},
-        # The sender hears about *their* mail through the intake event below, not as a
-        # colleague assigning them something; everyone else on the roster hears as usual.
-        extra_payload={"_exclude": [message.sender_user_id]},
-    )
-    await _apply_plan_extras(ctx, task.id, plan, resolved, today=today, intake_id=row.id)
-    # 6. What was forwarded is a contact moment on the task, not notes in it.
+    tasks: list[Task] = []
+    for decision in decisions:
+        task = await create_task_system(
+            ctx,
+            title=await _title(ctx, decision),
+            company_id=decision.company_id,
+            project_id=decision.project_id,
+            assignee_user_id=decision.assignee_user_id or message.sender_user_id,
+            description=_description(draft, decision),
+            priority=decision.priority,
+            due_date=decision.due_date or today + timedelta(days=default_days),
+            actor_name=_sender_display(message),
+            actor_user_id=message.sender_user_id,
+            requires_interaction=decision.requires_interaction,
+            created_payload={
+                "via": "email",
+                "intake_id": str(row.id),
+                **({"split": len(decisions)} if len(decisions) > 1 else {}),
+            },
+            # The sender hears about *their* mail through the intake event below, not as a
+            # colleague assigning them something; everyone else on the roster hears as usual.
+            extra_payload={"_exclude": [message.sender_user_id]},
+        )
+        tasks.append(task)
+        await _apply_plan_extras(
+            ctx, task.id, decision, intake_id=row.id, today=today, split=len(decisions)
+        )
+    lead = tasks[0]
+    # 6. What was forwarded is a contact moment on every task it produced, not notes in one.
     interaction_id = await file_forwarded_mail(
         ctx,
-        task=task,
+        tasks=tasks,
         sender_user_id=message.sender_user_id,
         sender_name=message.sender_name,
         sender_email=message.sender_email,
@@ -872,33 +974,54 @@ async def handle_intake_message(ctx: EmitContext, message: IntakeMessage) -> Int
     )
     if interaction_id is None and draft.forwarded_text:
         # Nothing readable to file it under (no sender in the block): the words stay with
-        # the task rather than being lost.
-        task.description = _description(draft, plan, forwarded=draft.forwarded_text)
-    inline, skipped = await _store_attachments(ctx, message, "task", task.id, None)
-    if inline and task.description:
-        from app.core.htmlmd import rewrite_cid_images
+        # the lead task rather than being lost.
+        lead.description = _description(draft, decisions[0], forwarded=draft.forwarded_text)
+    # 7. Attachments follow the task that claims them; the rest, and every inline image, go
+    #    with the lead — the only task whose body can still point at a ``cid:``.
+    claimed_elsewhere = {name for d in decisions[1:] for name in d.attachments}
+    skipped_all: list[str] = []
+    for task, decision in zip(tasks, decisions, strict=True):
+        if task is lead:
+            inline, skipped = await _store_attachments(
+                ctx, message, "task", task.id, None, skip=claimed_elsewhere
+            )
+            if inline and task.description:
+                from app.core.htmlmd import rewrite_cid_images
 
-        task.description = rewrite_cid_images(task.description, inline)
-    if skipped:
-        row.hints = {**(row.hints or {}), "skipped_attachments": skipped}
-        task.description = await _with_skipped_note(ctx, task.description, skipped)
+                task.description = rewrite_cid_images(task.description, inline)
+        elif decision.attachments:
+            _, skipped = await _store_attachments(
+                ctx, message, "task", task.id, None, keep=set(decision.attachments)
+            )
+        else:
+            skipped = []
+        if skipped:
+            skipped_all.extend(skipped)
+            task.description = await _with_skipped_note(ctx, task.description, skipped)
+    if skipped_all:
+        row.hints = {**(row.hints or {}), "skipped_attachments": skipped_all}
     if interaction_id is not None:
         row.hints = {**(row.hints or {}), "interaction_id": str(interaction_id)}
-    await _settle(row, TaskIntakeStatus.CREATED, task_id=task.id)
+    row.hints = {**(row.hints or {}), "task_ids": [str(t.id) for t in tasks]}
+    await _settle(row, TaskIntakeStatus.CREATED, task_id=lead.id)
     await session.flush()
-    await _notify_created(ctx, row, task, resolved, due)
+    await _notify_created(ctx, row, tasks, decisions, today=today, default_days=default_days)
     return IntakeOutcome(
         status="created",
         entity_type="task",
-        entity_id=task.id,
-        links={"task_id": task.id, "company_id": task.company_id},
+        entity_id=lead.id,
+        links={
+            "task_id": lead.id,
+            "task_ids": [t.id for t in tasks],
+            "company_id": lead.company_id,
+        },
     )
 
 
 async def file_forwarded_mail(
     ctx: EmitContext,
     *,
-    task: Task,
+    tasks: list[Task],
     sender_user_id: uuid.UUID,
     sender_name: str | None,
     sender_email: str,
@@ -907,7 +1030,11 @@ async def file_forwarded_mail(
     received_at: datetime,
     internals: Any = None,
 ) -> uuid.UUID | None:
-    """The message underneath the forward, filed on the task as an e-mail contact moment.
+    """The message underneath the forward, filed on the task(s) as an e-mail contact moment.
+
+    ``tasks`` is the roster the row lands on, lead first: one mail that became three tasks is
+    one contact moment on three timelines, never three copies (``interaction_tasks`` is a
+    roster, ``task_id`` its lead).
 
     Its headers are read from the plain-text body (the markdown one wraps every address in a
     link) and its words from the markdown one, so the row renders as the mail did. The sender
@@ -945,14 +1072,16 @@ async def file_forwarded_mail(
         sender_email=sender_email,
         sender_user_id=sender_user_id,
     )
+    lead = tasks[0]
     if existing is not None:
-        await interactions_system.file_on_task(
-            ctx,
-            existing,
-            task_id=task.id,
-            company_id=task.company_id,
-            project_id=task.project_id,
-        )
+        for task in tasks:
+            await interactions_system.file_on_task(
+                ctx,
+                existing,
+                task_id=task.id,
+                company_id=task.company_id,
+                project_id=task.project_id,
+            )
         return existing.id
     participants = participants_from_addresses(
         sender=(head.from_name, head.from_email), to=head.to, cc=head.cc
@@ -960,7 +1089,7 @@ async def file_forwarded_mail(
     matches = await match_contacts(ctx.session, ctx.org.id, participants, internals)
     ranked = resolve_mappings(matches, internal_company_ids=internals.company_ids)
     contact_id = (
-        ranked.get("contact_id") if ranked.get("company_id") in (None, task.company_id) else None
+        ranked.get("contact_id") if ranked.get("company_id") in (None, lead.company_id) else None
     )
     body_md = from_markdown.body if from_markdown else None
     body_plain = from_text.body if from_text else (head.body or None)
@@ -978,9 +1107,10 @@ async def file_forwarded_mail(
         # outsider's, so our own mention markup must not survive the forward (#327).
         body_markdown=_untrusted_markdown(body_md, limit=MAX_DESCRIPTION_CHARS),
         mappings={
-            "company_id": task.company_id,
-            "project_id": task.project_id,
-            "task_id": task.id,
+            "company_id": lead.company_id,
+            "project_id": lead.project_id,
+            "task_id": lead.id,
+            "task_ids": [t.id for t in tasks],
             "contact_id": contact_id,
         },
     )
@@ -1074,6 +1204,7 @@ async def _resolve(
         resolved.company_id, hit = await _company_by_name(actor, draft.client_hint)
         if resolved.company_id is not None:
             resolved.company_name = hit
+            resolved.company_by_words = True
         else:
             resolved.reason = hit
     if resolved.company_id is None:
@@ -1128,103 +1259,219 @@ async def _model_plan(
             "project": bool(resolved.project_id),
         },
     }
-    search_text = " ".join(
-        part for part in (draft.title, draft.own_text[:2000], draft.client_hint or "") if part
-    )
     zone = await org_zoneinfo(actor.session, actor.org.id)
     return await intake_ai.plan_intake(
         actor,
         document=document,
-        search_text=search_text,
+        search_text=_search_text(draft),
         body=draft.body,
         today=today,
         now=message.occurred_at.astimezone(zone),
+        attachment_names={a.filename for a in message.attachments if not a.content_id},
     )
 
 
-def _fill_blanks(resolved: Resolved, plan: IntakePlan, draft: IntakeDraft) -> None:
-    """The model fills what the sender's own words left blank — never what they decided."""
-    if resolved.company_id is None and plan.company_id is not None:
-        resolved.company_id = plan.company_id
-        resolved.company_name = None
-        resolved.reason = None
-        resolved.by_model.append("company")
-    if resolved.assignee_user_id is None and not draft.assignee_hint and plan.assignee_user_id:
-        resolved.assignee_user_id = plan.assignee_user_id
-        resolved.by_model.append("assignee")
-    if resolved.due_date is None and not draft.due_hint and plan.due_date is not None:
-        resolved.due_date = plan.due_date
-        resolved.by_model.append("due_date")
-    if resolved.project_id is None and not draft.project_hint and plan.project_id is not None:
-        resolved.project_id = plan.project_id
-        resolved.by_model.append("project")
-    if not resolved.label_ids and plan.label_ids:
-        resolved.label_ids = list(plan.label_ids)
+_CAPITALISED_RE = re.compile(r"(?<![\w@.])[A-ZÀ-Ý][\w'&-]{2,}")
 
 
-def _hints(draft: IntakeDraft, resolved: Resolved, plan: IntakePlan | None) -> dict[str, Any]:
+def _search_text(draft: IntakeDraft) -> str:
+    """What the candidate shortlist is searched with. ``name_tokens`` keeps the first eight
+    words that could name a record, which is plenty for a dictated line and blind to the second
+    sentence of a mail — and a mail that lists three jobs names its third client last. So the
+    words most likely to be names go first: the sender's client hint, then every capitalised
+    word of the subject and their own text (clients, colleagues, products), then the rest."""
+    names = _CAPITALISED_RE.findall(f"{draft.title}\n{draft.own_text[:4000]}")
+    parts = (draft.client_hint or "", *dict.fromkeys(names), draft.title, draft.own_text[:2000])
+    return " ".join(part for part in parts if part)
+
+
+def _decide(draft: IntakeDraft, resolved: Resolved, plan: IntakePlan | None) -> list[TaskDecision]:
+    """Every task the mail becomes, each field settled in order: the sender's words, the mail's
+    people, the model. With no plan (the feature off, the provider down, an unreadable answer)
+    the mail is the one task its words alone support."""
+    if plan is None:
+        return [
+            TaskDecision(
+                title=draft.title or None,
+                company_id=resolved.company_id,
+                company_name=resolved.company_name,
+                assignee_user_id=resolved.assignee_user_id,
+                project_id=resolved.project_id,
+                due_date=resolved.due_date,
+                priority=draft.priority or TaskPriority.NORMAL.value,
+                label_ids=list(resolved.label_ids),
+            )
+        ]
+    decisions: list[TaskDecision] = []
+    for planned in plan.tasks:
+        decision = TaskDecision(
+            # One task keeps the subject as its title, as it always did; in a split each
+            # planned title is the card, and the subject is what the mail was called.
+            title=(planned.title if plan.split else draft.title or planned.title) or None,
+            summary=planned.summary,
+            company_id=resolved.company_id,
+            company_name=resolved.company_name,
+            assignee_user_id=resolved.assignee_user_id,
+            project_id=resolved.project_id,
+            due_date=resolved.due_date,
+            priority=draft.priority or planned.priority or TaskPriority.NORMAL.value,
+            label_ids=list(resolved.label_ids),
+            checklist_title=planned.checklist_title,
+            checklist_items=list(planned.checklist_items),
+            links=list(planned.links),
+            attachments=list(planned.attachments),
+            requires_interaction=bool(planned.requires_interaction),
+        )
+        _fill_blanks(decision, planned, draft, resolved, split=plan.split)
+        decisions.append(decision)
+    return decisions
+
+
+def _fill_blanks(
+    decision: TaskDecision,
+    planned: PlannedTask,
+    draft: IntakeDraft,
+    resolved: Resolved,
+    *,
+    split: bool,
+) -> None:
+    """The model fills what the sender's own words left blank — never what they decided.
+
+    The one widening is the client of a task in a **split**: a client the forwarded addresses
+    named is the default for every task, but the sender did not type it, so a task the model
+    files under another client of theirs keeps that — "Fwd: Nova's mail … en voor Klokuus nog
+    de DNS" is two clients, and the addresses only know one. A ``klant:`` line or a
+    ``[Klant]`` subject stays a statement about the whole mail and is never varied.
+    """
+    may_vary_client = split and not resolved.company_by_words
+    if planned.company_id is not None and (
+        decision.company_id is None
+        or (may_vary_client and planned.company_id != decision.company_id)
+    ):
+        decision.company_id = planned.company_id
+        decision.company_name = None
+        decision.by_model.append("company")
+    if decision.assignee_user_id is None and not draft.assignee_hint and planned.assignee_user_id:
+        decision.assignee_user_id = planned.assignee_user_id
+        decision.by_model.append("assignee")
+    if decision.due_date is None and not draft.due_hint and planned.due_date is not None:
+        decision.due_date = planned.due_date
+        decision.by_model.append("due_date")
+    if decision.project_id is None and not draft.project_hint and planned.project_id is not None:
+        decision.project_id = planned.project_id
+        decision.by_model.append("project")
+    if not decision.label_ids and planned.label_ids:
+        decision.label_ids = list(planned.label_ids)
+
+
+async def _name_companies(
+    session: AsyncSession, org_id: uuid.UUID, decisions: list[TaskDecision]
+) -> None:
+    """The label of every client the model chose, once per client — the notification and the
+    parked card print it, and a decision only ever carried the id."""
+    wanted = {d.company_id for d in decisions if d.company_id and not d.company_name}
+    names = {cid: await _company_name(session, org_id, cid) for cid in wanted}
+    for decision in decisions:
+        if decision.company_id in names:
+            decision.company_name = names[decision.company_id]
+
+
+def _hints(draft: IntakeDraft, resolved: Resolved, decisions: list[TaskDecision]) -> dict[str, Any]:
+    """What the parked screen prefills and the trail can say. ``tasks`` is the whole plan; the
+    top-level fields mirror its lead so a reader written for one task (the quick-create's
+    prefill, a row parked before mails could split) still reads the same keys."""
+    lead = decisions[0]
     return {
-        "title": draft.title,
+        "title": lead.title or draft.title,
         "client_hint": draft.client_hint,
         "assignee_hint": draft.assignee_hint,
         "due_hint": draft.due_hint,
-        "company_id": str(resolved.company_id) if resolved.company_id else None,
-        "assignee_user_id": str(resolved.assignee_user_id) if resolved.assignee_user_id else None,
-        "project_id": str(resolved.project_id) if resolved.project_id else None,
-        "due_date": resolved.due_date.isoformat() if resolved.due_date else None,
-        "label_ids": [str(x) for x in resolved.label_ids],
-        "by_model": list(resolved.by_model),
-        "plan": _plan_dict(plan),
+        "company_id": str(lead.company_id) if lead.company_id else None,
+        "assignee_user_id": str(lead.assignee_user_id) if lead.assignee_user_id else None,
+        "project_id": str(lead.project_id) if lead.project_id else None,
+        "due_date": lead.due_date.isoformat() if lead.due_date else None,
+        "label_ids": [str(x) for x in lead.label_ids],
+        "by_model": list(lead.by_model),
+        "tasks": [d.to_dict() for d in decisions],
     }
 
 
-def _plan_dict(plan: IntakePlan | None) -> dict[str, Any] | None:
-    if plan is None:
-        return None
-    return {
-        "title": plan.title,
-        "summary": plan.summary,
-        "priority": plan.priority,
-        "checklist_title": plan.checklist_title,
-        "checklist_items": [list(item) for item in plan.checklist_items],
-        "links": [list(link) for link in plan.links],
-        "requires_interaction": plan.requires_interaction,
-        "label_ids": [str(x) for x in plan.label_ids],
-    }
-
-
-def _plan_from_dict(data: dict[str, Any] | None) -> IntakePlan | None:
-    if not data:
-        return None
-    plan = IntakePlan(
-        title=data.get("title"),
-        summary=data.get("summary"),
-        priority=data.get("priority"),
-        checklist_title=data.get("checklist_title"),
-        checklist_items=[(str(i[0]), i[1]) for i in data.get("checklist_items") or [] if i],
-        links=[(str(link[0]), link[1]) for link in data.get("links") or [] if link],
-        requires_interaction=data.get("requires_interaction"),
+def _decisions_from_hints(hints: dict[str, Any], draft: IntakeDraft) -> list[TaskDecision]:
+    """The plan off a parked row. A row parked before mails could split carries the old
+    one-task shape (``plan`` beside the top-level fields) and still finishes."""
+    stored = hints.get("tasks")
+    if isinstance(stored, list) and stored:
+        decisions = [TaskDecision.from_dict(entry) for entry in stored if isinstance(entry, dict)]
+        if decisions:
+            return decisions
+    plan = hints.get("plan") if isinstance(hints.get("plan"), dict) else {}
+    legacy = TaskDecision.from_dict(
+        {
+            **plan,
+            "title": hints.get("title") or plan.get("title") or draft.title,
+            "company_id": hints.get("company_id"),
+            "assignee_user_id": hints.get("assignee_user_id"),
+            "project_id": hints.get("project_id"),
+            "due_date": hints.get("due_date"),
+            "label_ids": hints.get("label_ids") or plan.get("label_ids"),
+            "priority": draft.priority or plan.get("priority"),
+            "by_model": hints.get("by_model"),
+        }
     )
-    for raw in data.get("label_ids") or []:
-        try:
-            plan.label_ids.append(uuid.UUID(str(raw)))
-        except ValueError:
-            continue
-    return plan
+    return [legacy]
 
 
-def _priority(draft: IntakeDraft, plan: IntakePlan | None) -> str:
-    return draft.priority or (plan.priority if plan else None) or TaskPriority.NORMAL.value
+def _fold(decisions: list[TaskDecision], draft: IntakeDraft) -> TaskDecision:
+    """Several planned tasks as one — the sender's own override on the parked screen. Each
+    task becomes a step, its summary the step's notes; links, labels and files are pooled;
+    the earliest deadline and the highest priority win; the lead's client and roster hold."""
+    lead = decisions[0]
+    if len(decisions) == 1:
+        return lead
+    order = {TaskPriority.LOW.value: 0, TaskPriority.NORMAL.value: 1, TaskPriority.HIGH.value: 2}
+    summaries = [
+        f"**{d.title}**\n{d.summary}" if d.summary else f"**{d.title}**" for d in decisions
+    ]
+    steps: list[tuple[str, str | None]] = []
+    for d in decisions:
+        own_steps = "\n".join(f"- {t}" for t, _ in d.checklist_items)
+        steps.append((d.title or "", own_steps or None))
+    links: list[tuple[str, str | None]] = []
+    for d in decisions:
+        for link in d.links:
+            if link[0] not in {u for u, _ in links}:
+                links.append(link)
+    labels: list[uuid.UUID] = []
+    for d in decisions:
+        for label in d.label_ids:
+            if label not in labels:
+                labels.append(label)
+    dates = [d.due_date for d in decisions if d.due_date]
+    return TaskDecision(
+        title=draft.title or lead.title,
+        summary="\n\n".join(summaries),
+        company_id=lead.company_id,
+        company_name=lead.company_name,
+        assignee_user_id=lead.assignee_user_id,
+        project_id=lead.project_id,
+        due_date=min(dates) if dates else None,
+        priority=max((d.priority for d in decisions), key=lambda p: order.get(p, 1)),
+        label_ids=labels,
+        checklist_title=None,
+        checklist_items=[(t, n) for t, n in steps if t],
+        links=links,
+        attachments=[name for d in decisions for name in d.attachments],
+        requires_interaction=any(d.requires_interaction for d in decisions),
+        by_model=list(lead.by_model),
+    )
 
 
-async def _title(ctx: EmitContext, draft: IntakeDraft, plan: IntakePlan | None) -> str:
-    """The subject, else the model's phrase, else a translated placeholder in the org's own
-    language — a task is named (#391), and a mail with no subject and no words is still a mail
-    somebody sent to the task address on purpose."""
-    if draft.title:
-        return draft.title
-    if plan and plan.title:
-        return plan.title
+async def _title(ctx: EmitContext, decision: TaskDecision) -> str:
+    """The decision's title (the subject, or the model's phrase in a split), else a translated
+    placeholder in the org's own language — a task is named (#391), and a mail with no subject
+    and no words is still a mail somebody sent to the task address on purpose."""
+    if decision.title:
+        return decision.title
     from app.i18n import translate
 
     return translate("tasks.intake.untitled", await _org_locale(ctx))[:512]
@@ -1256,19 +1503,19 @@ async def _with_skipped_note(
 
 
 def _description(
-    draft: IntakeDraft, plan: IntakePlan | None, *, forwarded: str | None = None
+    draft: IntakeDraft, decision: TaskDecision, *, forwarded: str | None = None
 ) -> str | None:
-    """The task's notes: the model's summary — written *from* the colleague's instruction and
-    the forwarded mail, never a copy of either — or, with no model to write one, what the
-    colleague typed (signature already cut). Not both: a summary over the words it summarises
-    is the mail pasted into the task twice, and the owner's ask was a description generated
-    from the mail rather than the mail. What they forwarded is a contact moment on the task,
-    not notes — it is appended here only when it could not be filed (``forwarded``).
+    """The task's notes: the model's summary for *this* task — written *from* the colleague's
+    instruction and the forwarded mail, never a copy of either — or, with no model to write
+    one, what the colleague typed (signature already cut). Not both: a summary over the words
+    it summarises is the mail pasted into the task twice, and the owner's ask was a description
+    generated from the mail rather than the mail. What they forwarded is a contact moment on
+    the task, not notes — it is appended here only when it could not be filed (``forwarded``).
     Everything through the untrusted strip: our own mention markup must not survive a forward
     (#327)."""
     parts: list[str] = []
-    if plan and plan.summary:
-        parts.append(plan.summary)
+    if decision.summary:
+        parts.append(decision.summary)
     elif draft.own_text:
         parts.append(draft.own_text)
     if forwarded:
@@ -1280,33 +1527,40 @@ def _description(
 async def _apply_plan_extras(
     ctx: EmitContext,
     task_id: uuid.UUID,
-    plan: IntakePlan | None,
-    resolved: Resolved,
+    decision: TaskDecision,
     *,
     today: date,
     intake_id: uuid.UUID,
+    split: int = 1,
 ) -> None:
     """Steps, links and labels onto the fresh task, through the system seam (#327's writer)."""
     applied: dict[str, Any] = {}
-    if plan is not None and (plan.checklist_items or plan.links):
+    if decision.checklist_items or decision.links:
         applied = await apply_ai_enrichment_system(
             ctx,
             task_id,
             TaskEnrichment(
-                checklist_title=plan.checklist_title,
-                checklist_items=plan.checklist_items or None,
-                links=plan.links or None,
+                checklist_title=decision.checklist_title,
+                checklist_items=decision.checklist_items or None,
+                links=decision.links or None,
             ),
             today=today,
         )
-    if resolved.label_ids:
-        await set_task_labels_system(ctx, task_id, resolved.label_ids)
-    if applied or resolved.by_model:
+    if decision.label_ids:
+        await set_task_labels_system(ctx, task_id, decision.label_ids)
+    if applied or decision.by_model or split > 1:
+        # Its own action in a split: the trail renders the action's sentence and nothing from
+        # the payload, and "one of several" is the fact a reader of this card wants.
         await record_ai_activity_system(
             ctx,
             task_id,
-            "ai_intake",
-            {"intake_id": str(intake_id), "by_model": list(resolved.by_model), **applied},
+            "ai_intake_split" if split > 1 else "ai_intake",
+            {
+                "intake_id": str(intake_id),
+                "by_model": list(decision.by_model),
+                **({"split": split} if split > 1 else {}),
+                **applied,
+            },
         )
 
 
@@ -1316,10 +1570,17 @@ async def _store_attachments(
     entity_type: str,
     entity_id: uuid.UUID,
     row: TaskIntakeMessage | None,
+    *,
+    keep: set[str] | None = None,
+    skip: frozenset[str] | set[str] = frozenset(),
 ) -> tuple[dict[str, str], list[str]]:
     """Every part with bytes onto the host; inline parts keep their ``content_id`` so the body's
     ``cid:`` markers resolve. Returns ``({content id: file id}, [skipped file names])`` and,
     for a parked row, rewrites its own body in place and records what it could not keep.
+
+    ``keep`` narrows the parts to those file names (a task in a split takes what it claimed, and
+    never an inline image — those are body content of the lead); ``skip`` leaves out the names
+    other tasks claimed, so the lead takes the rest.
 
     A mail client labels what it does not recognise ``application/octet-stream`` — a ``.md``
     spec, a ``.pptx`` — so the type is re-read off the file name before the storage core's
@@ -1333,6 +1594,10 @@ async def _store_attachments(
     resolved: dict[str, str] = {}
     skipped: list[str] = []
     for part in message.attachments:
+        if keep is not None and (part.content_id or part.filename not in keep):
+            continue
+        if not part.content_id and part.filename in skip:
+            continue
         stored = await storage_system.store_system_file(
             ctx,
             filename=part.filename,
@@ -1372,25 +1637,52 @@ def _attachment_type(filename: str, declared: str) -> str:
 
 
 async def _notify_created(
-    ctx: EmitContext, row: TaskIntakeMessage, task: Task, resolved: Resolved, due: date
+    ctx: EmitContext,
+    row: TaskIntakeMessage,
+    tasks: list[Task],
+    decisions: list[TaskDecision],
+    *,
+    today: date,
+    default_days: int,
 ) -> None:
+    """One notification per mail, whatever it became: the sentence for one task names its
+    client, assignee and deadline; the sentence for several names the tasks, because the
+    thing to check at a glance is whether the split was right."""
+    lead, decision = tasks[0], decisions[0]
+    if len(tasks) > 1:
+        await emit(
+            SPLIT_EVENT,
+            ctx,
+            {
+                "task_id": lead.id,
+                "task_ids": [t.id for t in tasks],
+                "count": len(tasks),
+                "titles": "; ".join(t.title for t in tasks),
+                "subject": row.subject or "",
+                "company": decision.company_name or "",
+                "by_model": ", ".join(sorted({f for d in decisions for f in d.by_model})),
+                "_recipients": [row.sender_user_id],
+                "_dedup_key": f"task-intake-created:{row.id}",
+            },
+        )
+        return
     assignee_name = None
-    if task.assignee_user_id and task.assignee_user_id != row.sender_user_id:
+    if lead.assignee_user_id and lead.assignee_user_id != row.sender_user_id:
         assignee_name = await ctx.session.scalar(
             text("SELECT COALESCE(full_name, email) FROM users WHERE id = :uid"),
-            {"uid": task.assignee_user_id},
+            {"uid": lead.assignee_user_id},
         )
     await emit(
         CREATED_EVENT,
         ctx,
         {
-            "task_id": task.id,
-            "title": task.title,
+            "task_id": lead.id,
+            "title": lead.title,
             "subject": row.subject or "",
-            "company": resolved.company_name or "",
+            "company": decision.company_name or "",
             "assignee": assignee_name or "",
-            "due_date": due.isoformat(),
-            "by_model": ", ".join(resolved.by_model),
+            "due_date": (decision.due_date or today + timedelta(days=default_days)).isoformat(),
+            "by_model": ", ".join(decision.by_model),
             "_recipients": [row.sender_user_id],
             "_dedup_key": f"task-intake-created:{row.id}",
         },
@@ -1463,7 +1755,7 @@ class TaskIntakeService:
         if status:
             stmt = stmt.where(TaskIntakeMessage.status == status)
         rows = (await self.ctx.session.execute(stmt)).scalars().all()
-        return [TaskIntakeRead.model_validate(row) for row in rows]
+        return [_read(row) for row in rows]
 
     async def summary(self) -> TaskIntakeSummary:
         self.ctx.require("tasks.task.create")
@@ -1487,54 +1779,74 @@ class TaskIntakeService:
 
     async def complete(self, intake_id: uuid.UUID, data: TaskIntakeComplete) -> Task:
         """Finish a parked mail as the person: an ordinary ``TaskService.create`` under every
-        rule a form submit meets, then the mail's attachments move onto the task."""
+        rule a form submit meets — once per task the mail was planned as, or once for the
+        whole mail with ``as_one`` — then the mail's attachments move onto the task(s). What
+        the person typed applies to the lead; the client they picked fills every task that had
+        none (and, folded, is the one task's client outright). Returns the lead."""
         from app.modules.tasks.service import TaskService
 
         row = await self.get_mine(intake_id)
         if row.status not in {TaskIntakeStatus.NEEDS_CLIENT.value, TaskIntakeStatus.REFUSED.value}:
             raise AppError("conflict", "errors.tasks_intake_already_decided", status_code=409)
         hints = row.hints or {}
-        plan = _plan_from_dict(hints.get("plan"))
         draft = parse_intake(row.subject, row.body_markdown or row.body_text)
+        decisions = _decisions_from_hints(hints, draft)
+        if data.as_one:
+            # One task, so the client on the dialog is *its* client — not a fill for the tasks
+            # that had none, of which there is now exactly one and it is the one being named.
+            decisions = [_fold(decisions, draft)]
+            if data.company_id is not None:
+                decisions[0].company_id = data.company_id
+                decisions[0].company_name = None
         today = await org_today(self.ctx.session, self.ctx.org.id)
         settings_row = await _settings_row(self.ctx.session, self.ctx.org.id)
         default_days = settings_row.intake_default_due_days if settings_row else 1
-        due = data.due_date or _iso(hints.get("due_date")) or today + timedelta(days=default_days)
-        company_id = data.company_id or _uuid(hints.get("company_id"))
-        if company_id is None and data.project_id is None:
+        lead = decisions[0]
+        if data.title:
+            lead.title = data.title
+        if data.due_date:
+            lead.due_date = data.due_date
+        if data.project_id:
+            lead.project_id = data.project_id
+        for decision in decisions:
+            if decision.company_id is None and data.company_id is not None:
+                decision.company_id = data.company_id
+        if lead.company_id is None and lead.project_id is None:
             raise AppError(
                 "validation",
                 "errors.validation",
                 status_code=422,
                 fields={"company_id": "errors.tasks_company_required"},
             )
-        body: dict[str, Any] = {
-            "title": data.title or hints.get("title") or await _title(self.ctx, draft, plan),
-            "company_id": company_id,
-            "project_id": data.project_id or _uuid(hints.get("project_id")),
-            "due_date": due,
-            "description": _description(draft, plan),
-            "priority": _priority(draft, plan),
-            "requires_interaction": bool(plan and plan.requires_interaction),
-            "label_ids": [uuid.UUID(x) for x in hints.get("label_ids") or []],
-        }
-        if data.assignees is not None:
-            body["assignees"] = [a.model_dump() for a in data.assignees]
-        elif data.assignee_user_id is not None:
-            body["assignee_user_id"] = data.assignee_user_id
-        elif hints.get("assignee_user_id"):
-            body["assignee_user_id"] = _uuid(hints.get("assignee_user_id"))
-        if plan and plan.checklist_items:
-            body["checklist"] = {
-                "title": plan.checklist_title,
-                "items": [{"title": t, "description": d} for t, d in plan.checklist_items],
+        tasks: list[Task] = []
+        for decision in decisions:
+            body: dict[str, Any] = {
+                "title": decision.title or await _title(self.ctx, decision),
+                "company_id": decision.company_id,
+                "project_id": decision.project_id,
+                "due_date": decision.due_date or today + timedelta(days=default_days),
+                "description": _description(draft, decision),
+                "priority": decision.priority,
+                "requires_interaction": decision.requires_interaction,
+                "label_ids": list(decision.label_ids),
             }
-        if plan and plan.links:
-            body["links"] = [{"url": u, "title": t} for u, t in plan.links]
-        task = await TaskService(self.ctx).create(TaskCreate(**body))
+            if decision is lead and data.assignees is not None:
+                body["assignees"] = [a.model_dump() for a in data.assignees]
+            elif decision is lead and data.assignee_user_id is not None:
+                body["assignee_user_id"] = data.assignee_user_id
+            elif decision.assignee_user_id:
+                body["assignee_user_id"] = decision.assignee_user_id
+            if decision.checklist_items:
+                body["checklist"] = {
+                    "title": decision.checklist_title,
+                    "items": [{"title": t, "description": d} for t, d in decision.checklist_items],
+                }
+            if decision.links:
+                body["links"] = [{"url": u, "title": t} for u, t in decision.links]
+            tasks.append(await TaskService(self.ctx).create(TaskCreate(**body)))
         interaction_id = await file_forwarded_mail(
             self.ctx,
-            task=task,
+            tasks=tasks,
             sender_user_id=row.sender_user_id,
             sender_name=row.sender_name,
             sender_email=row.sender_email,
@@ -1543,27 +1855,37 @@ class TaskIntakeService:
             received_at=row.received_at,
         )
         if interaction_id is None and draft.forwarded_text:
-            task.description = _description(draft, plan, forwarded=draft.forwarded_text)
+            tasks[0].description = _description(draft, lead, forwarded=draft.forwarded_text)
         elif interaction_id is not None:
-            row.hints = {**hints, "interaction_id": str(interaction_id)}
+            hints = {**hints, "interaction_id": str(interaction_id)}
         skipped = [str(name) for name in hints.get("skipped_attachments") or []]
         if skipped:
-            task.description = await _with_skipped_note(self.ctx, task.description, skipped)
-        await self._rehome_files(row.id, task.id)
-        await _settle(row, TaskIntakeStatus.CREATED, task_id=task.id)
+            tasks[0].description = await _with_skipped_note(self.ctx, tasks[0].description, skipped)
+        await self._rehome_files(row.id, tasks, decisions)
+        row.hints = {**hints, "task_ids": [str(t.id) for t in tasks]}
+        await _settle(row, TaskIntakeStatus.CREATED, task_id=tasks[0].id)
         await self.ctx.session.flush()
-        return task
+        return tasks[0]
 
-    async def _rehome_files(self, intake_id: uuid.UUID, task_id: uuid.UUID) -> None:
-        await self.ctx.session.execute(
-            update(StoredFile)
-            .where(
-                StoredFile.org_id == self.ctx.org.id,
-                StoredFile.entity_type == ENTITY_TYPE,
-                StoredFile.entity_id == intake_id,
-            )
-            .values(entity_type="task", entity_id=task_id)
+    async def _rehome_files(
+        self, intake_id: uuid.UUID, tasks: list[Task], decisions: list[TaskDecision]
+    ) -> None:
+        """The parked row's files onto the tasks: a file a task claimed by name goes there, the
+        rest (and every inline image) with the lead."""
+        base = update(StoredFile).where(
+            StoredFile.org_id == self.ctx.org.id,
+            StoredFile.entity_type == ENTITY_TYPE,
+            StoredFile.entity_id == intake_id,
         )
+        for task, decision in list(zip(tasks, decisions, strict=True))[1:]:
+            if decision.attachments:
+                await self.ctx.session.execute(
+                    base.where(
+                        StoredFile.content_id.is_(None),
+                        StoredFile.filename.in_(list(decision.attachments)),
+                    ).values(entity_type="task", entity_id=task.id)
+                )
+        await self.ctx.session.execute(base.values(entity_type="task", entity_id=tasks[0].id))
 
     async def discard(self, intake_id: uuid.UUID) -> None:
         row = await self.get_mine(intake_id)
@@ -1571,6 +1893,15 @@ class TaskIntakeService:
             raise AppError("conflict", "errors.tasks_intake_already_decided", status_code=409)
         await _settle(row, TaskIntakeStatus.DISCARDED)
         await self.ctx.session.flush()
+
+
+def _read(row: TaskIntakeMessage) -> TaskIntakeRead:
+    read = TaskIntakeRead.model_validate(row)
+    stored = (row.hints or {}).get("task_ids") or []
+    read.task_ids = [x for x in (_uuid(v) for v in stored) if x is not None] or (
+        [row.task_id] if row.task_id else []
+    )
+    return read
 
 
 def _uuid(value: Any) -> uuid.UUID | None:
@@ -1596,7 +1927,9 @@ __all__ = [
     "ENTITY_TYPE",
     "INTAKE_KEY",
     "PARKED_EVENT",
+    "SPLIT_EVENT",
     "IntakeDraft",
+    "TaskDecision",
     "TaskIntakeService",
     "clean_subject",
     "handle_intake_message",

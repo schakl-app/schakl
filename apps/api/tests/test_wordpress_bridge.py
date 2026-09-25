@@ -340,6 +340,75 @@ async def test_media_terms_options_and_menus(client_for, wp) -> None:
         res = await c.delete(_url(site, "/menus/hoofdmenu/items/502"), headers=owner_h)
         assert res.status_code == 200 and res.json()["removed"] == 502
 
+        # Editing menus (plugin 1.3.0): an item in place, the order, the menu itself.
+        res = await c.patch(
+            _url(site, "/menus/hoofdmenu/items/501"), json={"title": "Start"}, headers=member_h
+        )
+        assert res.status_code == 403
+        res = await c.patch(_url(site, "/menus/hoofdmenu/items/501"), json={}, headers=owner_h)
+        assert res.status_code == 422
+        res = await c.patch(
+            _url(site, "/menus/hoofdmenu/items/501"), json={"url": "https://x"}, headers=owner_h
+        )
+        assert res.status_code == 422
+        assert res.json()["error"]["details"]["type"] == "post_type"
+        res = await c.patch(
+            _url(site, "/menus/hoofdmenu/items/501"),
+            json={"title": "Start", "target": True},
+            headers=owner_h,
+        )
+        assert res.status_code == 200 and res.json()["updated"] == 501, res.text
+        assert res.json()["items"][0]["title"] == "Start"
+        assert res.json()["items"][0]["url"] == "https://klant.nl/", "what was not sent is kept"
+        assert wp.writes[-1][1] == {"title": "Start", "target": True}, "no unset field is sent"
+
+        res = await c.post(
+            _url(site, "/menus/hoofdmenu/items"),
+            json={"url": "https://klant.nl/contact", "title": "Contact"},
+            headers=owner_h,
+        )
+        contact = res.json()["added"]
+        res = await c.put(
+            _url(site, "/menus/hoofdmenu/order"), json={"order": [9]}, headers=owner_h
+        )
+        assert res.status_code == 422
+        assert res.json()["error"]["details"]["siblings"] == [501, contact]
+        res = await c.put(
+            _url(site, "/menus/hoofdmenu/order"), json={"order": [contact]}, headers=owner_h
+        )
+        assert res.status_code == 200
+        assert [i["id"] for i in res.json()["items"]] == [contact, 501]
+
+        res = await c.post(_url(site, "/menus"), json={"name": "Footer"}, headers=member_h)
+        assert res.status_code == 403
+        res = await c.post(
+            _url(site, "/menus"), json={"name": "Footer", "locations": ["nope"]}, headers=owner_h
+        )
+        assert res.status_code == 422 and res.json()["error"]["details"]["known"] == ["primary"]
+        res = await c.post(
+            _url(site, "/menus"), json={"name": "Footer", "locations": ["primary"]}, headers=owner_h
+        )
+        assert res.status_code == 201, res.text
+        footer = res.json()
+        assert footer["created"] is True and footer["items"] == []
+        assert footer["locations"] == ["primary"]
+        menus = (await c.get(_url(site, "/menus"), headers=member_h)).json()
+        assert menus["locations"] == [{"slug": "primary", "label": "Primary", "menu": footer["id"]}]
+        res = await c.patch(
+            _url(site, "/menus/footer"),
+            json={"name": "Voettekst", "locations": []},
+            headers=owner_h,
+        )
+        assert res.status_code == 200, res.text
+        assert res.json()["slug"] == "voettekst" and res.json()["locations"] == []
+        res = await c.delete(_url(site, "/menus/voettekst"), headers=member_h)
+        assert res.status_code == 403
+        res = await c.delete(_url(site, "/menus/voettekst"), headers=owner_h)
+        assert res.status_code == 200, res.text
+        assert res.json()["deleted"] is True and res.json()["items_removed"] == 0
+        res = await c.get(_url(site, "/menus/voettekst"), headers=member_h)
+        assert res.status_code == 404
+
         trail = (
             await c.get(
                 "/api/v1/activity",
@@ -349,6 +418,7 @@ async def test_media_terms_options_and_menus(client_for, wp) -> None:
         ).json()
         actions = {row["action"] for row in trail}
         assert {"media_uploaded", "term_created", "options_updated", "menu_updated"} <= actions
+        assert {"menu_created", "menu_deleted"} <= actions
 
 
 # ---------------------------------------------------------------- WPML
@@ -466,7 +536,7 @@ async def test_the_bridge_tools_ride_the_wordpress_section(client_for, wp) -> No
     bridge = {
         name for name, path in tool_paths.items() if "/wordpress/sites/{site_id}/bridge" in path
     }
-    assert len(bridge) == 28, sorted(bridge)
+    assert len(bridge) == 33, sorted(bridge)
     assert bridge <= wordpress.tools
     assert {
         "bridge_info",

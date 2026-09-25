@@ -63,6 +63,9 @@ TASK_SCHEDULED = "task.scheduled"
 # could not, and waits for them to name the client. Both are emitted by the worker with no actor,
 # so their sentences are whole ones rather than actor-prefixed predicates.
 TASK_INTAKE_CREATED = "task.intake_created"
+# The same mail became several tasks — its own sentence, naming them, because the thing to
+# check at a glance is whether the split was right. The lead task is the subject.
+TASK_INTAKE_SPLIT = "task.intake_split"
 TASK_INTAKE_PARKED = "task.intake_parked"
 # projects
 PROJECT_ASSIGNED = "project.assigned"
@@ -123,6 +126,7 @@ EVENT_TYPES: tuple[str, ...] = (
     TASK_OVERDUE,
     TASK_SCHEDULED,
     TASK_INTAKE_CREATED,
+    TASK_INTAKE_SPLIT,
     TASK_INTAKE_PARKED,
     PROJECT_ASSIGNED,
     PROJECT_STATUS_CHANGED,
@@ -154,6 +158,7 @@ ENTITY_FOR_EVENT: dict[str, str] = {
     TASK_OVERDUE: ENTITY_TASK,
     TASK_SCHEDULED: ENTITY_TASK,
     TASK_INTAKE_CREATED: ENTITY_TASK,
+    TASK_INTAKE_SPLIT: ENTITY_TASK,
     TASK_INTAKE_PARKED: ENTITY_TASK_INTAKE,
     PROJECT_ASSIGNED: ENTITY_PROJECT,
     PROJECT_STATUS_CHANGED: ENTITY_PROJECT,

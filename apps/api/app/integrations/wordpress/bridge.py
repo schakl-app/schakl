@@ -59,8 +59,13 @@ from app.integrations.wordpress.schemas import (
     WordPressLanguages,
     WordPressMediaUpload,
     WordPressMenu,
+    WordPressMenuCreate,
+    WordPressMenuDeleted,
     WordPressMenuItemAdd,
+    WordPressMenuItemUpdate,
     WordPressMenuList,
+    WordPressMenuReorder,
+    WordPressMenuUpdate,
     WordPressOptionsPages,
     WordPressOptionsRead,
     WordPressOptionsWrite,
@@ -472,6 +477,79 @@ class WordPressBridgeService(WordPressSurfaceService):
             site,
             "menu_updated",
             {"menu": result.slug or menu, "title": result.name, "removed": item_id},
+        )
+        return result
+
+    async def menu_update_item(
+        self, site_id: uuid.UUID, menu: str, item_id: int, data: WordPressMenuItemUpdate
+    ) -> WordPressMenu:
+        site, client = await self._open(site_id)
+        body = await self._bridge(
+            client, "PATCH", f"/menus/{menu}/items/{item_id}", json=_clean(data)
+        )
+        result = WordPressMenu(**(body if isinstance(body, dict) else {}))
+        await self._trail(
+            site,
+            "menu_updated",
+            {
+                "menu": result.slug or menu,
+                "title": result.name,
+                "updated": item_id,
+                "fields": sorted(_clean(data)),
+            },
+        )
+        return result
+
+    async def menu_reorder(
+        self, site_id: uuid.UUID, menu: str, data: WordPressMenuReorder
+    ) -> WordPressMenu:
+        site, client = await self._open(site_id)
+        body = await self._bridge(client, "PUT", f"/menus/{menu}/order", json=_clean(data))
+        result = WordPressMenu(**(body if isinstance(body, dict) else {}))
+        await self._trail(
+            site,
+            "menu_updated",
+            {
+                "menu": result.slug or menu,
+                "title": result.name,
+                "reordered": len(data.order),
+                "parent": data.parent or None,
+            },
+        )
+        return result
+
+    async def menu_create(self, site_id: uuid.UUID, data: WordPressMenuCreate) -> WordPressMenu:
+        site, client = await self._open(site_id)
+        body = await self._bridge(client, "POST", "/menus", json=_clean(data))
+        result = WordPressMenu(**(body if isinstance(body, dict) else {}))
+        await self._trail(
+            site,
+            "menu_created",
+            {"menu": result.slug, "title": result.name, "locations": data.locations or []},
+        )
+        return result
+
+    async def menu_update(
+        self, site_id: uuid.UUID, menu: str, data: WordPressMenuUpdate
+    ) -> WordPressMenu:
+        site, client = await self._open(site_id)
+        body = await self._bridge(client, "PATCH", f"/menus/{menu}", json=_clean(data))
+        result = WordPressMenu(**(body if isinstance(body, dict) else {}))
+        await self._trail(
+            site,
+            "menu_updated",
+            {"menu": result.slug or menu, "title": result.name, "fields": sorted(_clean(data))},
+        )
+        return result
+
+    async def menu_delete(self, site_id: uuid.UUID, menu: str) -> WordPressMenuDeleted:
+        site, client = await self._open(site_id)
+        body = await self._bridge(client, "DELETE", f"/menus/{menu}")
+        result = WordPressMenuDeleted(**(body if isinstance(body, dict) else {}))
+        await self._trail(
+            site,
+            "menu_deleted",
+            {"menu": result.slug, "title": result.name, "items_removed": result.items_removed},
         )
         return result
 

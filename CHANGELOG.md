@@ -2,6 +2,67 @@
 
 _Releases v0.25.0 through v0.41.0 are written up on their GitHub Releases; this file resumes at v0.42.0._
 
+## v0.57.0 — 2026-09-25
+
+One mail to the task address can now become several tasks. The WordPress bridge can now edit
+menus, not only read and extend them. This release also repairs the meeting statuses that the
+v0.56.0 upgrade left behind: on an upgraded instance every existing meeting had vanished from
+the list.
+
+One migration: `e8a2c5f9d4b1`. The head moves from `a3d8f1c6e2b7` to `e8a2c5f9d4b1`. It is a
+data repair and safe to run twice. There are no new permission keys and no new environment
+variables. There is one new notification event, `task.intake_split`. New: five
+`/wordpress/sites/{id}/bridge/menus` routes. Changed: `TaskIntakeComplete` gains `as_one`,
+and the intake read gains `task_ids`. The typed client is regenerated.
+
+### Meetings: the upgrade fix
+
+- **Existing meetings show up again.** `b7d4f2c9a1e6` (v0.56.0) was meant to turn `review` and
+  `done` into `ready`. On a production database role, row-level security made that update
+  match no rows, and it said nothing. The old statuses stayed, `GET /meetings` could not read
+  them, and the list came back empty. `e8a2c5f9d4b1` runs the conversion again with RLS lifted
+  for that one statement. The original migration now does the same, so an instance that
+  upgrades straight from v0.55.0 or earlier needs no repair.
+
+### Tasks: one mail, several tasks
+
+- **The model decides how many tasks a mail is.** A colleague can put a whole phone call into
+  one mail to the task address, for example three jobs for two clients, each with its own
+  deadline. That mail now becomes up to eight tasks. The rules the model gets: one task per
+  piece of work that can be assigned, dated and finished on its own. Different clients are
+  always separate tasks. The steps of one job stay one task with a checklist. When in doubt,
+  it makes one task.
+- **The sender's words still come first.** A directive line the sender typed (`klant:`,
+  `deadline:` and so on) applies to every task. A client taken from the forwarded addresses is
+  only a default, and each task may differ from it. Every id is checked against the sender's
+  own shortlist, task by task.
+- **A mail is still one act.** It becomes all of its tasks at once. If any of them has no
+  client, the whole mail waits under Taken → E-mailinbox. The card there lists the planned
+  tasks with their clients. Picking a client fills only the tasks that had none, and a
+  checkbox folds all of them into one task (`as_one`). The forwarded message becomes one
+  contact moment, filed on every task. An attachment goes to the task that names it. The
+  sender gets one notification naming all the tasks (`task.intake_split`).
+
+### WordPress: menus
+
+- **Menus are editable through the bridge.** This needs schakl WordPress MCP Bridge 1.3.0 on
+  the site. The new routes:
+  - `PATCH …/bridge/menus/{menu}/items/{item_id}` edits one item. Anything you do not send is
+    kept.
+  - `PUT …/bridge/menus/{menu}/order` reorders the children of one parent.
+  - `POST …/bridge/menus` creates a menu.
+  - `PATCH …/bridge/menus/{menu}` renames a menu or sets its theme locations.
+  - `DELETE …/bridge/menus/{menu}` deletes a menu and every item in it.
+- The four writes need `wordpress.content.publish`. Delete needs `wordpress.content.delete`.
+  `/mcp/wordpress` now has 33 bridge tools.
+
+### Upgrade notes
+
+- If you are on v0.56.0 and your meetings list is empty, this upgrade fixes it. No data was
+  lost; the rows were only unreadable.
+- Menu editing on a site running bridge plugin 1.2 or older fails with the plugin's own
+  "no route" error. Update the plugin to 1.3.0.
+
 ## v0.56.0 — 2026-09-24
 
 Meeting minutes are now the record as soon as they exist: the confirm step is gone, the contact

@@ -519,6 +519,40 @@ than parking it behind an outage. The confirmation is the sender's own notificat
 client, the assignee and the deadline and which of them the model chose — a wrong pick is visible
 within the minute, on the phone the mail was sent from.
 
+### One mail, several tasks
+
+A colleague empties a phone call into one mail — "de DNS voor Nova, de nieuwsbrief voor Klokuus,
+en Jan moet het contract nog nakijken" — and one task titled after the subject line is three jobs
+for three people on one card nobody can finish or hand over. So the model's tool is
+`submit_intake_plan` and it answers with a **list** (`tasks`, one to `MAX_TASKS` = 8), with the
+rule stated in the prompt rather than left to taste: one task per piece of work that can be
+assigned, dated and finished on its own; work for different clients is always separate; the steps
+of one job are one task with `checklist_items`; never split to look thorough, and when in doubt,
+one. One entry is the ordinary answer and behaves exactly as before (the subject stays the title).
+
+Everything above holds **per task**, and the precedence is worth stating because it is the only
+place it widens. A directive the sender typed (`klant:`, `voor:`, `deadline:`, a `[Klant]` subject)
+is a statement about the *mail* and decides that field for every task; the model may not vary it.
+A client the **forwarded addresses** named is the default for every task and, in a split only, a
+task the model files under another client keeps that — the sender did not type the client, and
+"Fwd: Nova's mail … en voor Klokuus nog de DNS" is two clients of which the addresses know one
+(`Resolved.company_by_words`, `_fill_blanks`). Every id is still grounded per task in the sender's
+own shortlist, and because `name_tokens` keeps only the first eight words, the shortlist is searched
+with the capitalised words of the subject and the colleague's own text first (`_search_text`) — a
+mail that lists three jobs names its third client last, and a client not on the shortlist cannot be
+chosen. A task may also claim the mail's **attachments** by file name (grounded against the names
+the mail carried); a file no task claims, and every inline image, goes with the first task.
+
+The mail stays one act. It becomes all of its tasks, or — when any of them has no client — parks
+whole for its sender with the whole plan on the row (`hints.tasks`, the top-level fields mirroring
+the lead so a one-task reader still works); finishing it creates every planned task, the client the
+person picks filling only the ones that had none, or `as_one: true` folds them into one task with
+each planned task as a step (`_fold`). What was forwarded is filed **once**, on the roster of every
+task it produced (`interaction_tasks`, the lead as `task_id`), and the feed's `merge_links` folds
+the whole roster into the contact-moment half of the same mail. The sender hears about a split in
+its own sentence (`task.intake_split`, naming the tasks) because the thing to check at a glance is
+whether the split was right; each task's trail says it was one of several (`ai_intake_split`).
+
 ## Adding a feature
 
 1. A key in `AI_FEATURES` (and its two web copies — `settings/ai/+page.svelte`,

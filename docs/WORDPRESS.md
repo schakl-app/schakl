@@ -588,8 +588,8 @@ ACF 6.8 container with a REST-hidden post type and the vangessel `pre_get_posts`
 
 ### What schakl adds, and the rules it keeps
 
-`bridge.py` is the surface: **28 routes under `/sites/{id}/bridge/…`**, one per plugin
-operation, which is 28 tools in `/mcp/wordpress` whether the agency holds one site or four
+`bridge.py` is the surface: **33 routes under `/sites/{id}/bridge/…`**, one per plugin
+operation, which is 33 tools in `/mcp/wordpress` whether the agency holds one site or four
 hundred (§7's rule, and `test_the_bridge_tools_ride_the_wordpress_section` counts them).
 
 | Route | Permission | What |
@@ -600,7 +600,8 @@ hundred (§7's rule, and `test_the_bridge_tools_ride_the_wordpress_section` coun
 | `POST /bridge/media` | `content.write` | URL or base64 in, attachment out — the JSON twin `wp/v2/media` never had |
 | `GET` / `POST /bridge/terms` | `content.read` / `write` | terms with ACF fields and WPML |
 | `GET /bridge/options[/{page}]` · `PATCH /bridge/options/{page}` | `content.read` / **`publish`** | ACF options pages, live at once |
-| `GET /bridge/menus[/{menu}]` · `POST` / `DELETE …/items` | `content.read` / **`publish`** | menus, live at once |
+| `GET /bridge/menus[/{menu}]` · `POST /bridge/menus` · `PATCH` / `DELETE /bridge/menus/{menu}` | `content.read` / **`publish`** / **`delete`** | menus, live at once (plugin 1.3.0 for the writes): create one, rename it, `locations` as the exact set of theme locations it fills; delete it with its items |
+| `POST` / `PATCH` / `DELETE …/items[/{item_id}]` · `PUT …/order` | **`publish`** | add a record, term or custom link; edit an item in place (what you leave out is kept), re-point it, move it under another parent, position it among its siblings; put one parent's children in order |
 | `GET /bridge/languages` · `GET` / `POST /bridge/records/{wp_id}/translations` | `content.read` / `write` (+ `publish`) | WPML: the group, create a translation, connect one |
 | `GET` / `PUT /bridge/strings` | `content.read` / **`publish`** | String Translation |
 | `GET` / `POST /bridge/forms` · `GET` / `PATCH` / `DELETE /bridge/forms/{wp_id}` · `POST …/translations` | `forms.read` / `forms.write` / **`forms.delete`** | Contact Form 7 (plugin 1.2.0): the template and the fields CF7 parses off it, both mails, messages, `config_errors`, the shortcode; mails and messages merge on update; WPML both ways — a linked form per language, or one form's `strings` |
@@ -627,8 +628,8 @@ Four rules, three of them §7's restated because they were easy to lose one name
   "may edit, never delete".
 - **Every write is a trail line on the site row** (§16): `content_created` / `content_updated`
   (with `via: schakl-wordpress-mcp-bridge` and the touched fields or `ops×n`), `content_deleted`,
-  `media_uploaded`, `term_created`, `options_updated`, `menu_updated`,
-  `translation_created`, `string_translated`, and for forms `form_created` / `form_updated`
+  `media_uploaded`, `term_created`, `options_updated`, `menu_created` / `menu_updated` /
+  `menu_deleted`, `translation_created`, `string_translated`, and for forms `form_created` / `form_updated`
   (with `via`), `content_deleted` (`type: wpcf7_contact_form`) and `translation_created`.
 
 **Forms, and how WPML knows them.** The `/sites/{id}/forms` routes of §7 reach Contact Form 7

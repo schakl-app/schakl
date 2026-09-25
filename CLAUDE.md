@@ -1140,6 +1140,31 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   what it was — a contact moment on the task, never notes. The general lesson is the one the test
   now pins from the raw HTML rather than from a hand-typed markdown body: **a fixture written in
   the shape you expect cannot find the fault in the shape you receive.**
+- **One mail may be several tasks, and how many is the model's call — under the sender's words**
+  (`tasks/intake_ai.py`, `docs/AI.md` "One mail, several tasks"). A colleague empties a phone call
+  into one mail — three jobs, two clients, a deadline each — and one card titled after the subject
+  line is work nobody can finish or hand over. The tool answers with a **list** (`submit_intake_plan`,
+  `MAX_TASKS` = 8) and the prompt states the rule rather than leaving it to taste: one task per
+  piece of work that can be assigned, dated and finished on its own, different clients always
+  separate, the steps of one job one task with a checklist, when in doubt one. Four rules
+  generalise. **Every bound holds per task, and precedence is stated where it widens**: a
+  directive the sender typed is a statement about the *mail* and decides that field for every
+  task; a client the forwarded *addresses* named is a default a split may vary per task
+  (`Resolved.company_by_words`), because the sender did not type it and a forward of one client's
+  mail may hand a colleague a job for another; every id is grounded per task. **A shortlist capped
+  at eight words is searched with the likely names first** (`_search_text`: the client hint, then
+  every capitalised word of the subject and the colleague's own text) — a mail that lists three
+  jobs names its third client last, and a client not on the shortlist cannot be chosen, which is
+  the failure direction that *parks* rather than misfiles. **A mail is one act whatever it
+  becomes**: all of its tasks, or parked whole when any lacks a client, the plan stored on the row
+  (`hints.tasks`, the lead mirrored into the old top-level keys so a one-task reader still works)
+  and finished whole — the picked client filling only the tasks that had none — or folded into one
+  by choice (`as_one`, each planned task a step). And **a thing the mail carried lands once**: the
+  forwarded message is one contact moment on the roster of every task (`interaction_tasks`, the
+  lead as `task_id`, `merge_links` folding the whole roster into the feed's own half), an
+  attachment follows the task that claimed it by name and an unclaimed one the first, and the
+  sender hears one sentence naming the tasks (`task.intake_split`) — because whether the split was
+  right is the thing to check at a glance.
 - **Somebody is always on a task, and a create resolves where an update refuses** (tasks' roster,
   `docs/UX.md`). #392's argument one column over: an unassigned task is on no board and in no
   one's nudges, so every door asks — `taskCreateBody` refuses a rendered roster that names nobody,

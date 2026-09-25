@@ -22,13 +22,20 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # Under ``FORCE ROW LEVEL SECURITY`` with no org GUC bound an unqualified UPDATE matches zero
+    # rows silently (``87e32dccc095``). Shipped without this dance first; ``e8a2c5f9d4b1``
+    # repairs the instances that ran the silent version.
+    op.execute("ALTER TABLE meetings NO FORCE ROW LEVEL SECURITY")
     op.execute("UPDATE meetings SET status = 'ready' WHERE status IN ('review', 'done')")
+    op.execute("ALTER TABLE meetings FORCE ROW LEVEL SECURITY")
 
 
 def downgrade() -> None:
+    op.execute("ALTER TABLE meetings NO FORCE ROW LEVEL SECURITY")
     # The old split was "has a contact moment yet": a row filed on the timeline reads as
     # confirmed, one without as still under review.
     op.execute(
         "UPDATE meetings SET status = CASE WHEN interaction_id IS NULL THEN 'review' "
         "ELSE 'done' END WHERE status = 'ready'"
     )
+    op.execute("ALTER TABLE meetings FORCE ROW LEVEL SECURITY")
