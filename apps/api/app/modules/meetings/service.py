@@ -20,6 +20,7 @@ from __future__ import annotations
 import base64
 import binascii
 import logging
+import re
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -68,6 +69,7 @@ from app.modules.meetings.schemas import (
     MeetingUpdate,
     MinutesActionItem,
     MinutesDraft,
+    RecordingGap,
     TranscriptSegment,
 )
 from app.modules.meetings.settings import load_settings
@@ -86,8 +88,26 @@ INTERACTION_KINDS: dict[str, str] = {
 _TRACKED = ("title", "kind", "company_id", "project_id", "occurred_at")
 
 
-def chunk_content_id(seq: int) -> str:
-    return f"{CHUNK_PREFIX}{seq:06d}"
+_CHUNK_ID_RE = re.compile(rf"^{re.escape(CHUNK_PREFIX)}(\d+)(?::s(\d+))?$")
+
+
+def chunk_content_id(seq: int, session: int = 0) -> str:
+    """``chunk:000012`` for the first recorder session, ``chunk:000013:s001`` for a piece of a
+    session the recorder started after an interruption. The sequence number is global across
+    sessions and leads, so ordering the rows by ``content_id`` is the recording's order
+    whichever session a piece belongs to — and a recording made before sessions existed
+    still reads as one session, its rows unchanged."""
+    if session <= 0:
+        return f"{CHUNK_PREFIX}{seq:06d}"
+    return f"{CHUNK_PREFIX}{seq:06d}:s{session:03d}"
+
+
+def parse_chunk_content_id(content_id: str | None) -> tuple[int, int] | None:
+    """``(seq, session)`` for a chunk row's marker; ``None`` for anything else."""
+    match = _CHUNK_ID_RE.match(content_id or "")
+    if match is None:
+        return None
+    return int(match.group(1)), int(match.group(2) or 0)
 
 
 def _now() -> datetime:
@@ -212,7 +232,13 @@ class MeetingService:
             transcript_model=transcript.get("model"),
             transcript_parts=int(transcript.get("parts") or 0),
             transcript_aligned=bool(transcript.get("aligned")),
+            transcript_voiced=bool(transcript.get("voiced")),
             diarized=any(s.speaker for s in segments),
+            recording_gaps=[
+                RecordingGap(at=float(g.get("at") or 0), seconds=float(g.get("seconds") or 0))
+                for g in (row.recording_gaps or [])
+                if isinstance(g, dict)
+            ],
             participants=participants,
             speakers=speaker_names(participants),
             minutes=minutes,
@@ -359,7 +385,7 @@ class MeetingService:
     async def _auto_title(
         self, kind: str, company_id: uuid.UUID | None, occurred_at: datetime
     ) -> str:
-        """"Bespreking met Nova Fietsen · 23-09-2026" — the org's language, the org's calendar
+        """ "Bespreking met Nova Fietsen · 23-09-2026" — the org's language, the org's calendar
         (a meeting recorded at 00:30 is dated the day the people in it would say)."""
         from app.core.timezone import org_zoneinfo
         from app.i18n import translate
@@ -475,13 +501,25 @@ class MeetingService:
         Every piece is also the recording saying it is still alive: it stamps ``status_at``,
         which is how the server decides a recorder is gone and ends the recording itself
         (``jobs._reap_recordings``).
+
+        A piece that opens a new recorder session (``head``, after the capture was lost and
+        taken up again) carries a header of its own and is sniffed like the first — and must
+        sniff as the *same* container, because the worker joins the sessions by copying
+        packets and cannot copy Opus into AAC.
         """
         row = await self._writable(meeting_id)
         if row.status != MeetingStatus.RECORDING.value:
             raise AppError("conflict", "meetings.error.not_recording", status_code=409)
-        if data.seq == 0:
+        if data.seq == 0 or data.head:
             clip = decode_clip(data.audio)
             payload, extension = clip.data, clip.extension
+            if data.head and row.audio_format and extension != row.audio_format:
+                raise AppError(
+                    "validation",
+                    "errors.validation",
+                    status_code=422,
+                    fields={"audio": "meetings.error.session_mismatch"},
+                )
         else:
             if row.audio_format is None:
                 raise AppError(
@@ -505,7 +543,7 @@ class MeetingService:
                 StoredFile.org_id == self.ctx.org.id,
                 StoredFile.entity_type == ENTITY_TYPE,
                 StoredFile.entity_id == row.id,
-                StoredFile.content_id == chunk_content_id(data.seq),
+                StoredFile.content_id == chunk_content_id(data.seq, data.session),
             )
         )
         if existing is not None:
@@ -517,7 +555,7 @@ class MeetingService:
             data=payload,
             entity_type=ENTITY_TYPE,
             entity_id=row.id,
-            content_id=chunk_content_id(data.seq),
+            content_id=chunk_content_id(data.seq, data.session),
             created_by_user_id=self.ctx.user.id,
             max_bytes=MAX_AUDIO_BYTES,
             allowed_types=frozenset(CONTENT_TYPES.values()),
@@ -542,7 +580,7 @@ class MeetingService:
         # that a recorder is gone, and only a piece may make a recording look alive — a title
         # edited mid-recording bumps ``updated_at`` and must not buy a dead tab another hour.
         values: dict[str, Any] = {"chunks_received": received, "status_at": _now()}
-        if data.seq == 0:
+        if data.seq == 0 or (data.head and row.audio_format is None):
             values["audio_format"] = extension
         await self.repo.update(row, **values)
         return received

@@ -3,6 +3,7 @@ the evidence check. No database, no network."""
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import date, datetime
 from pathlib import Path
@@ -14,6 +15,7 @@ from app.core.ai import transcribe as transcribe_module
 from app.core.ai.audio import AudioClip
 from app.core.ai.providers import AIProviderError, ProviderConfig
 from app.core.ai.transcribe import (
+    KnownSpeaker,
     Segment,
     Transcript,
     _fields,
@@ -194,6 +196,7 @@ def test_a_sub_second_tail_from_the_cut_is_never_sent(monkeypatch) -> None:
 
     def fake_run(args, **_kwargs):  # noqa: ANN001, ANN202
         Path(args[-1]).write_bytes(Path(args[-1]).name.encode())
+        return pipeline.subprocess.CompletedProcess(args, 0)
 
     monkeypatch.setattr(pipeline.subprocess, "run", fake_run)
     monkeypatch.setattr(pipeline, "_probe_duration", lambda path: durations[path.name])
@@ -392,10 +395,7 @@ def test_the_draft_keeps_an_unquotable_item_and_marks_it() -> None:
     assert draft.decisions[0].at == 12.5
     assert draft.decisions[1].at is None  # past the end of the recording
     first, second = draft.action_items
-    assert (
-        first.assignee_user_id == staff
-        and first.due_date == date(2026, 9, 25)
-    )
+    assert first.assignee_user_id == staff and first.due_date == date(2026, 9, 25)
     assert second.assignee_user_id is None and second.due_date is None
     assert second.owner_label == "Jan (klant)"
 
@@ -518,3 +518,219 @@ def test_the_minutes_print_the_action_items_by_side_and_then_by_person() -> None
     assert ours < body.index("**Sanne**") < body.index("- Teksten") < theirs
     assert theirs < body.index("**Jan de Vries**") < body.index("- Logo sturen") < rest
     assert rest < body.index("**Piet (drukker)**") < body.index("- Niemand")
+
+
+# --- the voices across the cuts ---------------------------------------------------------- #
+def test_the_diarize_dialect_carries_the_voices_it_already_heard() -> None:
+    """OpenAI's diarize model takes ``known_speaker_names[]`` / ``known_speaker_references[]``
+    as repeated multipart fields, the sample as a data URL; no other dialect is told about
+    them, whatever the caller offers."""
+    sample = AudioClip(data=b"\x1a\x45\xdf\xa3opus", content_type="audio/webm", extension="webm")
+    known = [KnownSpeaker("S1", sample), KnownSpeaker("S2", sample)]
+    fields = _fields(
+        _config("openai", "gpt-4o-transcribe-diarize"),
+        language="nl",
+        diarize=True,
+        timestamps=True,
+        known=known,
+    )
+    assert fields["known_speaker_names[]"] == ["S1", "S2"]
+    refs = fields["known_speaker_references[]"]
+    assert isinstance(refs, list) and len(refs) == 2
+    assert refs[0].startswith("data:audio/webm;base64,")
+    for provider, model in (("mistral", "voxtral-mini-latest"), ("openai", "whisper-1")):
+        fields = _fields(
+            _config(provider, model), language="nl", diarize=True, timestamps=True, known=known
+        )
+        assert not any(k.startswith("known_speaker") for k in fields)
+    assert speech_limits(_config("openai", "gpt-4o-transcribe-diarize")).known_speakers == 4
+    assert speech_limits(_config("mistral", "voxtral-mini-latest")).known_speakers == 0
+
+
+def test_a_voice_the_provider_kept_takes_its_label_before_any_pairing() -> None:
+    """The new part came back with ``S2`` for the voice it was handed a sample of, even though
+    by the clock that voice overlaps S1's rows (two independent diarizations disagree on a
+    boundary): the provider's recognition of a voice outranks an inference from timing, S1
+    stays free for the label the provider did *not* name, and nothing is numbered afresh."""
+    previous = [
+        {"start": 0.0, "end": 60.0, "speaker": "S1", "text": "intro"},
+        {"start": 60.0, "end": 85.0, "speaker": "S2", "text": "antwoord"},
+        {"start": 85.0, "end": 100.0, "speaker": "S1", "text": "drie"},
+    ]
+    incoming = [
+        Segment(0.0, 10.0, "intro", "S2"),  # 55–65 absolute: S1's seconds by the clock
+        Segment(20.0, 30.0, "antwoord", "A"),  # 75–85: S2's seconds — but S2 is spoken for
+        Segment(30.0, 44.0, "drie", "A"),  # 85–99: S1's seconds, and most of A's
+        Segment(50.0, 70.0, "verder", "S2"),  # after the cut
+        Segment(70.0, 80.0, "nog iets", "A"),
+    ]
+    rows, nxt = align_labels(
+        previous, incoming, offset=55.0, window_end=100.0, next_label=3, known=frozenset({"S2"})
+    )
+    assert [(r["speaker"], r["text"]) for r in rows] == [("S2", "verder"), ("S1", "nog iets")]
+    assert nxt == 3
+
+
+def test_reference_windows_pick_the_people_who_spoke_most_from_their_longest_stretch() -> None:
+    """Four names is the provider's bound, so the four who carried the meeting are sampled;
+    each sample is that person's longest single stretch, cut a little inside its own ends and
+    capped at the target; a person with no stretch long enough is left for the overlap."""
+    segments = [
+        {"start": 0.0, "end": 30.0, "speaker": "S1", "text": "a"},
+        {"start": 30.0, "end": 31.0, "speaker": "S2", "text": "hm"},
+        {"start": 31.0, "end": 36.0, "speaker": "S3", "text": "c"},
+        {"start": 36.0, "end": 37.0, "speaker": "S2", "text": "ja"},
+        {"start": 37.0, "end": 41.0, "speaker": "S4", "text": "d"},
+        {"start": 41.0, "end": 42.0, "speaker": "S5", "text": "e"},
+    ]
+    windows = pipeline.reference_windows(segments, limit=4, min_seconds=2.0, max_seconds=10.0)
+    assert [w[0] for w in windows] == ["S1", "S3", "S4"]  # S2's two short turns cannot be sampled
+    s1, s3, s4 = windows
+    assert s1[1] == pytest.approx(0.25) and s1[2] == pytest.approx(8.0)  # capped at the target
+    assert s3[1] == pytest.approx(31.25) and s3[2] == pytest.approx(4.5)
+    assert s4[1] == pytest.approx(37.25) and s4[2] == pytest.approx(3.5)
+    # The bound holds: three names when three are asked for, most-spoken first.
+    assert [
+        w[0]
+        for w in pipeline.reference_windows(segments, limit=2, min_seconds=2.0, max_seconds=10.0)
+    ] == ["S1", "S3"]
+
+
+def test_reference_clips_are_cut_from_the_recording_and_measured(monkeypatch) -> None:
+    """A clip the cut measured outside the vendor's 2–10 s is left out rather than sent (a
+    refused request costs the whole part), and without ffmpeg there are no clips at all."""
+    segments = [
+        {"start": 0.0, "end": 30.0, "speaker": "S1", "text": "a"},
+        {"start": 30.0, "end": 36.0, "speaker": "S2", "text": "b"},
+    ]
+    limits = speech_limits(_config("openai", "gpt-4o-transcribe-diarize"))
+    monkeypatch.setattr(pipeline, "ffmpeg_available", lambda: False)
+    assert pipeline.reference_clips(b"audio", "webm", segments, limits=limits) == []
+    monkeypatch.setattr(pipeline, "ffmpeg_available", lambda: True)
+    seen: list[list[tuple[float, float]]] = []
+
+    def fake_cut(data, ext, windows):  # noqa: ANN001, ANN202
+        seen.append(windows)
+        return [
+            Part(data=b"s1", offset_seconds=windows[0][0], length_seconds=8.0),
+            Part(data=b"s2", offset_seconds=windows[1][0], length_seconds=1.2),  # too short
+        ]
+
+    monkeypatch.setattr(pipeline, "cut_windows", fake_cut)
+    clips = pipeline.reference_clips(b"audio", "webm", segments, limits=limits)
+    assert [(c.name, c.sample.data, c.sample.content_type) for c in clips] == [
+        ("S1", b"s1", "audio/webm")
+    ]
+    assert seen == [[(0.25, 8.0), (30.25, 5.5)]]
+
+
+def test_labels_are_renumbered_densely_after_the_parts() -> None:
+    """Numbering on through the parts leaves holes where a label's every row fell inside an
+    overlap: thirteen voices counted up to S17. Renumbered by first appearance, in place."""
+    rows = [
+        {"start": 0, "end": 1, "speaker": "S1", "text": "a"},
+        {"start": 1, "end": 2, "speaker": "S3", "text": "b"},
+        {"start": 2, "end": 3, "speaker": None, "text": "c"},
+        {"start": 3, "end": 4, "speaker": "S7", "text": "d"},
+        {"start": 4, "end": 5, "speaker": "S3", "text": "e"},
+    ]
+    assert pipeline.compact_labels(rows) == {"S1": "S1", "S3": "S2", "S7": "S3"}
+    assert [r["speaker"] for r in rows] == ["S1", "S2", None, "S3", "S2"]
+
+
+async def test_every_later_part_is_handed_the_voices_of_the_parts_before_it(monkeypatch) -> None:
+    """Three parts over a fake provider that, like OpenAI's, answers a known name for a voice
+    it was given and a letter for one it was not: the second part is asked with the first
+    part's two voices, the third with all three, and the transcript ends with three labels —
+    not seven — with the row saying the voices were matched."""
+    parts = [
+        Part(data=b"one", offset_seconds=0.0, length_seconds=100.0),
+        Part(data=b"two", offset_seconds=55.0, length_seconds=100.0),
+        Part(data=b"three", offset_seconds=110.0, length_seconds=60.0),
+    ]
+    monkeypatch.setattr(pipeline, "plan_parts", lambda *a, **k: parts)
+    monkeypatch.setattr(pipeline, "ffmpeg_available", lambda: True)
+    monkeypatch.setattr(
+        pipeline,
+        "cut_windows",
+        lambda data, ext, windows: [
+            Part(data=f"clip{i}".encode(), offset_seconds=s, length_seconds=length)
+            for i, (s, length) in enumerate(windows)
+        ],
+    )
+    asked: list[list[str]] = []
+    answers = {
+        b"one": (Segment(0, 50, "hallo", "A"), Segment(50, 95, "ja", "B")),
+        # 55–155: S1 and S2 recognised by name; a third voice, "A", is new.
+        b"two": (
+            Segment(0, 40, "ja", "S2"),
+            Segment(45, 70, "verder", "S1"),
+            Segment(70, 100, "nieuw", "A"),
+        ),
+        # 110–170: all three by name.
+        b"three": (Segment(0, 30, "nieuw", "S3"), Segment(30, 60, "slot", "S1")),
+    }
+
+    async def fake(config, clip, *, known=(), **_kw):  # noqa: ANN001, ANN003
+        asked.append([k.name for k in known])
+        segs = answers[clip.data]
+        return Transcript(" ".join(s.text for s in segs), 100, segs)
+
+    monkeypatch.setattr(pipeline, "provider_transcribe", fake)
+    result: TranscribedRecording = await pipeline.transcribe_recording(
+        _config("openai", "gpt-4o-transcribe-diarize"),
+        b"audio",
+        "webm",
+        language="nl",
+        duration_seconds=170,
+    )
+    assert asked == [[], ["S1", "S2"], ["S1", "S2", "S3"]]
+    assert result.parts == 3 and result.aligned and result.voiced
+    assert [(r["speaker"], r["text"]) for r in result.segments] == [
+        ("S1", "hallo"),
+        ("S2", "ja"),
+        ("S1", "verder"),
+        ("S3", "nieuw"),
+        ("S1", "slot"),
+    ]
+
+
+# --- a recording taken up again ---------------------------------------------------------- #
+def test_sessions_fold_apart_and_join_only_with_ffmpeg(monkeypatch) -> None:
+    """Each recorder session is its own file (its first piece carries a header of its own);
+    one session is the recording as it always was, several are joined by ffmpeg's concat
+    demuxer — and without ffmpeg the join is refused in one sentence rather than the second
+    half of the meeting being silently dropped."""
+    folded = pipeline.fold_sessions([[b"h1", b"a", b"b"], [b"h2", b"c"]], "webm")
+    assert folded == [b"h1ab", b"h2c"]
+    monkeypatch.setattr(pipeline, "ffmpeg_available", lambda: False)
+    assert pipeline.concat_with_ffmpeg([b"h1ab"], "webm") == b"h1ab"
+    with pytest.raises(pipeline.NeedsJoin) as refused:
+        pipeline.concat_with_ffmpeg(folded, "webm")
+    assert refused.value.message_key == "meetings.error.needs_join"
+
+
+def test_the_transcript_document_says_where_the_recording_was_interrupted() -> None:
+    """A joined recording has one continuous clock with minutes missing from it; the model
+    reads a line of its own where each gap falls, never two sentences that pretend to follow
+    each other."""
+    document, _cut = transcript_document(
+        title="t",
+        occurred_at=datetime(2026, 9, 25, 9, 0),
+        kind="physical",
+        segments=[
+            {"start": 0.0, "end": 5.0, "speaker": "S1", "text": "voor"},
+            {"start": 5.0, "end": 9.0, "speaker": "S2", "text": "na"},
+        ],
+        text="voor na",
+        gaps=[{"at": 5.0, "seconds": 92.4}],
+    )
+    payload = json.loads(document)
+    assert payload["recording_interrupted"] is True
+    assert [
+        (line["at"], line.get("recording_interrupted_seconds")) for line in payload["transcript"]
+    ] == [
+        (0.0, None),
+        (5.0, 92),
+        (5.0, None),
+    ]

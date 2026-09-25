@@ -27628,8 +27628,18 @@ export interface components {
         MeetingChunk: {
             /** Audio */
             audio: string;
+            /**
+             * Head
+             * @default false
+             */
+            head: boolean;
             /** Seq */
             seq: number;
+            /**
+             * Session
+             * @default 0
+             */
+            session: number;
         };
         /** MeetingCreate */
         MeetingCreate: {
@@ -27759,6 +27769,8 @@ export interface components {
             project_id?: string | null;
             /** Project Name */
             project_name?: string | null;
+            /** Recording Gaps */
+            recording_gaps?: components["schemas"]["RecordingGap"][];
             /** Segments */
             segments?: components["schemas"]["TranscriptSegment"][];
             source: components["schemas"]["MeetingSource"];
@@ -27792,6 +27804,11 @@ export interface components {
             transcript_parts: number;
             /** Transcript Text */
             transcript_text?: string | null;
+            /**
+             * Transcript Voiced
+             * @default false
+             */
+            transcript_voiced: boolean;
             /** Updated At */
             updated_at?: string | null;
         };
@@ -31761,6 +31778,17 @@ export interface components {
         ReadUpdate: {
             /** Read */
             read: boolean;
+        };
+        /**
+         * RecordingGap
+         * @description Where the recording was interrupted: at which second of the (joined) recording, and
+         *     for how long nothing was captured.
+         */
+        RecordingGap: {
+            /** At */
+            at: number;
+            /** Seconds */
+            seconds: number;
         };
         /**
          * Recurrence

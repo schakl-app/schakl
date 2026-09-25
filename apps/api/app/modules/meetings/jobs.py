@@ -65,7 +65,8 @@ from app.modules.meetings.models import (
 from app.modules.meetings.pipeline import (
     CONTENT_TYPES,
     MAX_RECORDING_BYTES,
-    fold_chunks,
+    concat_with_ffmpeg,
+    fold_sessions,
     probe_duration,
     remux,
     transcribe_recording,
@@ -76,6 +77,7 @@ from app.modules.meetings.service import (
     agency_name,
     drop_audio,
     org_locale,
+    parse_chunk_content_id,
     participants_of,
 )
 from app.modules.meetings.settings import load_settings
@@ -181,13 +183,43 @@ async def _fold(ctx, session: AsyncSession, row: Meeting) -> tuple[bytes, str]: 
     )
     if not pieces:
         raise AppError("meetings_no_audio", "meetings.error.no_audio", status_code=422)
-    chunks: list[bytes] = []
+    # The pieces by recorder session, in order: one session is the recording as it always was;
+    # a later one is the capture taken up again after the phone took it away, opening with a
+    # header of its own (``MeetingChunk.session``).
+    sessions: list[list[bytes]] = []
+    heads: list[datetime] = []
+    current = -1
     for piece in pieces:
+        parsed = parse_chunk_content_id(piece.content_id)
+        origin = parsed[1] if parsed else 0
+        if origin != current or not sessions:
+            sessions.append([])
+            heads.append(piece.created_at)
+            current = origin
         backend = storage_for(piece.backend)
-        chunks.append(
+        sessions[-1].append(
             await asyncio.to_thread(lambda p=piece, b=backend: b.open(p.storage_key).read())
         )
-    data = fold_chunks(chunks)
+    folded = fold_sessions(sessions, extension)
+    if len(folded) > 1:
+        # What the interruption cost, measured rather than reported: the first piece of every
+        # session is cut the same few seconds after that session began and uploaded at once,
+        # so the gap before session *n* is the time between the two heads' arrivals less the
+        # length of what session *n − 1* actually stored — which is also the audio the dying
+        # recorder never handed over. Stated in the joined recording's own clock.
+        gaps: list[dict[str, float]] = []
+        elapsed = previous_length = 0.0
+        for index, data in enumerate(folded):
+            length = await asyncio.to_thread(probe_duration, data, extension) or 0.0
+            if index > 0:
+                wall = (heads[index] - heads[index - 1]).total_seconds()
+                lost = max(0.0, wall - previous_length)
+                gaps.append({"at": round(elapsed, 1), "seconds": round(lost, 1)})
+            previous_length = length
+            elapsed += length
+        row.recording_gaps = gaps
+        logger.info("meetings: %s was recorded in %d sessions; gaps %s", row.id, len(folded), gaps)
+    data = await asyncio.to_thread(concat_with_ffmpeg, folded, extension)
     # A browser's streamed WebM states no length and carries no cues, so the player draws no
     # total and cannot be scrubbed; a copy remux writes both. Kept as it came where ffmpeg is
     # absent or refuses — the page has the browser's own workaround for that.
@@ -260,6 +292,7 @@ async def run_pipeline(
             text = row.transcript_text or ""
             parts = int(transcript.get("parts") or 1)
             aligned = bool(transcript.get("aligned"))
+            voiced = bool(transcript.get("voiced"))
             speech_model = transcript.get("model")
         else:
             await _set_status(session, org_id, row, MeetingStatus.TRANSCRIBING.value)
@@ -287,13 +320,14 @@ async def run_pipeline(
             if row is None:
                 return
             segments, text, parts = transcribed.segments, transcribed.text, transcribed.parts
-            aligned = transcribed.aligned
+            aligned, voiced = transcribed.aligned, transcribed.voiced
             speech_model = config.model
             row.transcript = {
                 "segments": segments,
                 "model": speech_model,
                 "parts": parts,
                 "aligned": aligned,
+                "voiced": voiced,
                 # Stated on the row: a transcript with no labels is a *model* that answers
                 # text only, and the screen names it rather than drawing an empty roster.
                 "diarized": any(s.get("speaker") for s in segments),
@@ -330,6 +364,7 @@ async def run_pipeline(
             agency=await agency_name(session, org),
             duration=row.duration_seconds,
             house_rules=house_rules,
+            gaps=[g for g in (row.recording_gaps or []) if isinstance(g, dict)],
         )
         # ``complete`` released and re-bound the session; the row object is still ours.
         row = await _load(session, org_id, meeting_id) or row
@@ -343,6 +378,7 @@ async def run_pipeline(
             "model": speech_model,
             "parts": parts,
             "aligned": aligned,
+            "voiced": voiced,
             "diarized": any(s.get("speaker") for s in segments),
             "chat_model": chat.model,
         }
@@ -532,7 +568,8 @@ async def _reap_recordings(org: Org, session: AsyncSession) -> None:
         row.status_at = now
         row.error_key = None
         logger.warning(
-            "meetings: recording %s went silent with %d pieces; processing them", row.id,
+            "meetings: recording %s went silent with %d pieces; processing them",
+            row.id,
             row.chunks_received,
         )
         # Queued and committed *before* the job is fired, or the worker can pick the row up

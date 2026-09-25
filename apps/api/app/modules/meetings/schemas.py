@@ -83,6 +83,29 @@ class MeetingChunk(BaseModel):
 
     seq: int = Field(ge=0, le=100_000)
     audio: str = Field(min_length=1, max_length=MAX_ENCODED_CHARS)
+    #: Which recorder session the piece belongs to. ``0`` is the one the recording started
+    #: with; every time the capture was lost and taken up again (a locked phone, an incoming
+    #: call) the recorder starts a new ``MediaRecorder`` and counts this up, because that
+    #: one writes a container header of its own and its pieces cannot be byte-appended to
+    #: the first session's. ``seq`` keeps counting across sessions.
+    session: int = Field(default=0, ge=0, le=999)
+    #: The first piece of a later session — the one carrying the header. Sniffed like ``seq``
+    #: 0 and held to the same container.
+    head: bool = False
+
+    @model_validator(mode="after")
+    def _head_is_a_later_session(self) -> MeetingChunk:
+        if self.head and self.session == 0:
+            raise ValueError("head marks the first piece of a session after the first")
+        return self
+
+
+class RecordingGap(BaseModel):
+    """Where the recording was interrupted: at which second of the (joined) recording, and
+    for how long nothing was captured."""
+
+    at: float = Field(ge=0)
+    seconds: float = Field(ge=0)
 
 
 class MeetingFinish(BaseModel):
@@ -154,7 +177,7 @@ class MinutesDraft(BaseModel):
 
 
 class MeetingLogTime(BaseModel):
-    """"Uren registreren" for a meeting (#175's ride-along, #314's gates): one time entry per
+    """ "Uren registreren" for a meeting (#175's ride-along, #314's gates): one time entry per
     colleague named, for the meeting's duration, filed on the contact moment. The dialog shows
     every entry it will write — who, how long, the line beside it — before the press, because
     hours written for a colleague are on *their* timesheet.
@@ -239,10 +262,18 @@ class MeetingDetail(MeetingRow):
     #: A cut recording whose speakers were matched across the cuts (the parts overlapped and
     #: the provider answered timestamps): one label per person, not one per part.
     transcript_aligned: bool = False
+    #: A cut recording whose later parts were handed a sample of every voice the earlier parts
+    #: heard, so the speech model kept those labels by *voice* rather than the pipeline
+    #: inferring them from timing (OpenAI's diarize model; ``transcript_aligned`` still says
+    #: whether the overlap pairing ran for the rest).
+    transcript_voiced: bool = False
     #: Whether the transcript labels speakers at all. ``False`` with a transcript means the
     #: speech model answered text only (``gpt-4o-transcribe``, ``gpt-transcribe``, whisper), and
     #: the screen says so by name rather than drawing an empty speaker list.
     diarized: bool = False
+    #: Where the capture was lost and taken up again, in the recording's own clock. Empty for
+    #: a recording nothing interrupted.
+    recording_gaps: list[RecordingGap] = Field(default_factory=list)
     participants: list[MeetingParticipant] = Field(default_factory=list)
     #: Derived from ``participants``: label → name, for the transcript's lines.
     speakers: dict[str, str] = Field(default_factory=dict)

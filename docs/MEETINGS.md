@@ -51,20 +51,36 @@ reviewer to pair four labels with two people — which, on a twenty-three-minute
 speakers, was not feasible, and that meeting should never have been cut at all: the margin under
 the vendor's 1500 s was taken twice (1400 × 0.97 = 1358 s), so a meeting well inside what the
 model takes was split. One margin now, in one place (`_PART_MARGIN`). Where a recording really
-is longer than a request, **the parts overlap** (`OVERLAP_SECONDS`, 45): every part but the first
-starts before the previous one ended, both transcribe the same stretch, and a label in the new
-part is matched to the label in the old one that spoke during the same seconds
-(`pipeline.align_labels`) — by time, never by guessing at voices, greedily best pair first, and
+is longer than a request, two things keep a person one label across the cut, and they are used
+together. **The provider is handed the voices it has already heard** (`pipeline.reference_clips`):
+OpenAI's diarize model takes up to four *known speakers* per request — a 2–10 s sample each, as a
+data URL (`known_speaker_names[]` / `known_speaker_references[]`, `SpeechLimits.known_speakers`)
+— and answers those voices by the label given instead of a fresh letter. So every part after the
+first carries a sample of each voice the earlier parts labelled, cut from the recording itself
+(the longest stretch that label spoke alone, a quarter second inside its own ends, capped at
+eight seconds; the four who spoke most where there are more), and a label the model kept is that
+label before any pairing by time (`transcript_voiced`). **And the parts overlap**
+(`OVERLAP_SECONDS`, 90): every part but the first starts before the previous one ended, both
+transcribe the same stretch, and a label the model did *not* name is matched to the label in the
+old part that spoke during the same seconds (`pipeline.align_labels`) — greedily best pair first,
 only where the shared speaking time is at least two seconds and at least half of the new label's
-time in the window. A label the overlap cannot pair keeps a fresh number, so the failure direction
-is the old one (a speaker split in two, said on the screen with `transcript_aligned`), never two
-people merged into one; the duplicated stretch is dropped from the new part (a segment straddling
-the cut is kept once, by whichever part holds more of it) and the flat text is rebuilt from the
-rows. A provider that answers no timestamps gets edge-to-edge parts: there is nothing to align on.
-That is still the argument for Voxtral: an alignment is an inference and one request is a fact —
-a two-hour meeting is one request, one set of labels, in Dutch. The settings screen offers it as
-a speech provider (`SpeechProvider = "mistral"`); its chat API stays reachable as
-`openai_compatible`.
+time in the window. The overlap was the whole mechanism once, at forty-five seconds, and the
+hundred-and-eight-minute *Kennismaking* showed what it is worth on its own: five parts, three
+people, and at every cut it kept only the one who never stopped talking — the other two had said
+too little in the window, at boundaries two independent transcriptions did not draw in the same
+place, so thirteen labels came back for three people, numbered up to seventeen. A label neither
+mechanism pairs keeps a fresh number, so the failure direction stays the old one (a speaker split
+in two, said on the screen with `transcript_aligned` / `transcript_voiced`), never two people
+merged into one; the labels are renumbered densely at the end (`pipeline.compact_labels`, so a
+label whose every row fell inside an overlap leaves no hole to count); the duplicated stretch is
+dropped from the new part (a segment straddling the cut is kept once, by whichever part holds
+more of it) and the flat text is rebuilt from the rows. A provider that answers no timestamps
+gets edge-to-edge parts: there is nothing to align on. That is still the argument for Voxtral: an
+alignment is an inference and one request is a fact — a two-hour meeting is one request, one set
+of labels, in Dutch. The settings screen offers it as a speech provider
+(`SpeechProvider = "mistral"`); its chat API stays reachable as `openai_compatible`. A meeting
+already transcribed the old way is re-run with *Opnieuw verwerken*: the references are cut from
+the stored recording, so the second run costs the audio again and nothing else.
 
 **Every claim quotes its evidence, and the quote is checked.** The minutes schema asks for the
 transcript's own words under every decision and action item, with the second it was said at.
@@ -161,10 +177,36 @@ The person who would press the button is in the meeting. Four rules now hold.
 - **The screen wake lock is re-taken on every return to visibility.** The browser releases it
   the moment the page hides and hands it back to nobody, so asking once at the start bought
   exactly one screen-off; after that a phone slept on its own schedule, froze the tab, and
-  stopped the recording with nothing saying so. And a capture that did not survive being away is
-  *ended* rather than left to a timer that goes on ticking: a `MediaRecorder` the browser tore
-  down, or a microphone the OS took back for an incoming call, stops the recording, hands over
-  every piece that landed, and says why (`meetings.record.capture_lost`).
+  stopped the recording with nothing saying so. A capture that did not survive being away is
+  noticed the moment the page is back — a `MediaRecorder` the browser tore down, or a
+  microphone the OS took back for an incoming call — rather than left to a timer that goes on
+  ticking.
+- **And a capture that died is taken up again, not ended.** The first answer to noticing the
+  loss was to stop the recording, hand over what landed and say so in amber — right for the
+  bytes, wrong for the meeting. The hundred-and-eight-minute *Kennismaking* was that case
+  exactly: the trail shows the stop posted 109 minutes after the start, the audio is 108
+  minutes and ends mid-sentence, and the meeting went on for an hour in front of a phone that
+  had said *gestopt* and been put back in a pocket. So `#resume()` asks for the microphone
+  again — every five seconds, for up to ten minutes (`RESUME_BUDGET_MS`: a call lasts minutes;
+  a locked phone hands the tab back on unlock), the screen saying *hervatten… opgeslagen tot*
+  in amber meanwhile — and continues the recording on the same meeting as a new **session**.
+  A new `MediaRecorder` writes a container header of its own, so its pieces cannot be
+  byte-appended to the first session's: the chunk carries `session` and `head`, the head is
+  sniffed and held to the first session's container (`meetings.error.session_mismatch`), the
+  content id becomes `chunk:000013:s001` with the global `seq` still leading so the order is
+  unchanged, and the worker folds each session and joins them with ffmpeg's concat demuxer
+  (`pipeline.concat_with_ffmpeg`, a copy; refused in one sentence without ffmpeg,
+  `meetings.error.needs_join`, never the first half alone). The elapsed clock pauses for the
+  length of the loss — it counts recorded seconds — and only a budget spent ends the recording
+  the old way (`captureLost`, `meetings.record.capture_lost`). A tab-audio capture still ends:
+  `getDisplayMedia` cannot be asked for again without a click. **What the interruption cost is
+  measured, never reported**: the first piece of every session is cut the same five seconds
+  after that session began and uploaded at once, so the gap before a session is the two heads'
+  arrival times apart less the length the previous session actually stored — which is also the
+  minute the dying recorder never handed over — stated on the row as `recording_gaps` in the
+  joined recording's own clock, printed on the page (*1× onderbroken: 1 min 32 s niet
+  opgenomen vanaf 1:47:50*) and handed to the minutes model as a line of its own where it
+  falls, because a joined file has one continuous clock and the gap is invisible in it.
 - **A piece is retried for minutes, not seconds** (`upload.ts`): a capped backoff (1 s → 30 s)
   until `UPLOAD_RETRY_BUDGET_MS` (ten minutes) has been spent waiting, held in memory, in order.
   The screen says *"Verbinding herstellen… opgeslagen tot 12:03"* in amber while it retries — the

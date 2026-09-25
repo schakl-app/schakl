@@ -2340,6 +2340,32 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   while **a row the tab abandoned is finishable from its own page** (a `recording` row nothing has
   touched for two minutes, judged on `updated_at`, offers *Verwerk wat is opgeslagen*), because
   the pieces are stored and the only thing missing is the stop nobody sent.
+- **A capture the phone takes away is taken up again, and a voice the model has heard is handed
+  back to it** (the hundred-and-eight-minute meeting, `recorder.svelte.ts` §4, `pipeline.py`,
+  `docs/MEETINGS.md`). One real meeting, two faults, and the second was the first one's design
+  read too literally. **Noticing a loss is not the same as surviving it**: the rule above made a
+  frozen tab or a taken microphone *end* the recording and say so — right for the bytes, wrong
+  for the meeting, which went on for an hour in front of a phone put back in a pocket after it
+  had said "gestopt" in amber; the trail shows a stop pressed 109 minutes after the start over 108
+  minutes of audio that end mid-sentence. So a lost capture is asked for again for ten minutes (a
+  call lasts minutes, a locked phone hands the tab back on unlock), continues on the same meeting
+  as a new *session* — its first piece carries a container header of its own, so the chunk says
+  `session` + `head` and the worker folds each session and joins them with ffmpeg's concat
+  demuxer, never by appending bytes — and only a budget spent ends it. What the interruption cost
+  is **measured from the pieces, never reported by the phone's clock** (`recording_gaps`: the two
+  heads' arrival times less the first session's stored length, which is also the minute the dying
+  recorder never handed over) and said on the page and to the minutes model as a line of its own,
+  because a joined file has one continuous clock and the gap is invisible in it. **A match by time
+  cannot identify a voice, and the provider can**: the 45 s overlap kept the one person who never
+  stopped talking across each of four cuts and gave the other two a fresh label every time —
+  thirteen labels for three people, numbered to seventeen — so every part after the first now
+  carries a 2–10 s sample of each voice the earlier parts labelled (`known_speaker_references`,
+  OpenAI's diarize model, four of them, most-spoken first) and the model answers those voices by
+  the label given; the overlap (now 90 s) pairs only what the model did not name, and the labels
+  are renumbered densely at the end so a label that fell wholly inside an overlap leaves no hole.
+  The general lesson is the one from #396 and the time module: **a mechanism that exists is not a
+  fix until it is used for the failure it exists for** — the provider had offered voice references
+  all along, and "we cannot match voices" was true only of the code that had never asked.
 
 ## 11. Working agreement (for Claude Code)
 

@@ -31,8 +31,22 @@
  * until a piece lands there is no recording on the server at all. And **a capture that dies is
  * noticed**: the screen wake lock is re-taken on every return to visibility (the browser
  * releases it the moment the page is hidden, and hands it back to nobody), a `MediaRecorder`
- * the browser tore down while the tab was frozen ends the recording rather than letting a
- * timer go on lying, and a microphone the OS takes back does the same.
+ * the browser tore down while the tab was frozen is detected the moment the page is back, and
+ * so is a microphone the OS takes back.
+ *
+ * The fourth rule came out of a hundred-and-eight-minute meeting that ended mid-sentence: **a
+ * capture that dies is taken up again, not ended.** Noticing the loss used to stop the
+ * recording and hand over what had landed — right for the bytes, wrong for the meeting, which
+ * went on for another hour in front of a phone that had said "gestopt" in amber and been put
+ * back in a pocket. So `#resume()` asks for the microphone again, starts a new `MediaRecorder`
+ * on the same meeting as a new *session* (its first piece carries a container header of its
+ * own, which is why the API is told `session` and `head` and the worker joins the sessions
+ * rather than appending bytes), keeps asking for up to `RESUME_BUDGET_MS` while the OS still
+ * holds the microphone (a phone call lasts minutes), and only when that budget is spent does
+ * the recording end and say so. The elapsed clock pauses for the length of the loss — it counts
+ * recorded seconds — and what the interruption cost is measured by the worker from the pieces
+ * themselves, never reported from this clock. A tab-audio capture cannot be re-acquired without
+ * a click (`getDisplayMedia` wants a gesture), so that source still ends as before.
  *
  * Everything here is capability-detected after mount, never inferred from a user agent.
  */
@@ -68,6 +82,15 @@ export const CHUNK_MS = 60_000;
  * dead one within seconds of the start rather than within a minute of it.
  */
 export const FIRST_CHUNK_MS = 5_000;
+/**
+ * How long a lost capture is asked for again before the recording is ended. An incoming call
+ * holds the microphone for as long as the call lasts; a phone that was locked hands the tab
+ * back the moment it is unlocked. Ten minutes covers a call and is short enough that a phone
+ * left in a bag does not go on asking all afternoon.
+ */
+export const RESUME_BUDGET_MS = 10 * 60_000;
+/** How often the microphone is asked for again while the OS still holds it. */
+export const RESUME_RETRY_MS = 5_000;
 /** Opus at 32 kbit/s: transparent for speech, ~14 MB an hour, well inside every provider's cap. */
 const AUDIO_BITS_PER_SECOND = 32_000;
 /** The hard stop: a forgotten recording is a bill and a privacy problem, and four hours is not a meeting. */
@@ -104,10 +127,16 @@ function pickMimeType(): string | undefined {
   return undefined;
 }
 
+/** Which recorder session a piece belongs to, and whether it is the one carrying the header. */
+interface PieceOrigin {
+  session: number;
+  head: boolean;
+}
+
 export class MeetingRecorder {
   state = $state<MeetingRecorderState>("idle");
   error = $state<string | null>(null);
-  /** Seconds elapsed, shown beside the stop button. */
+  /** Seconds recorded, shown beside the stop button. Pauses while the capture is lost. */
   elapsed = $state(0);
   /** Pieces uploaded so far and pieces still in flight. */
   uploaded = $state(0);
@@ -129,9 +158,15 @@ export class MeetingRecorder {
    *  goes on and nothing is lost; the screen says "reconnecting" rather than "failed". */
   retrying = $state<{ since: number; attempts: number } | null>(null);
   stoppedAtLimit = $state(false);
-  /** The capture ended on its own — the tab was frozen and torn down, or the microphone was
-   *  taken away (an incoming call). What was uploaded is kept; the screen says why it stopped. */
+  /** The capture ended on its own and could not be taken up again within `RESUME_BUDGET_MS`
+   *  — the tab was frozen and torn down, or the microphone was taken away (an incoming call)
+   *  and not handed back. What was uploaded is kept; the screen says why it stopped. */
   captureLost = $state(false);
+  /** The capture is lost right now and being asked for again: since when, and how many times.
+   *  The recording is not over — the screen says "hervatten…" rather than "gestopt". */
+  suspended = $state<{ since: number; attempts: number } | null>(null);
+  /** How many times the capture was lost and taken up again during this recording. */
+  resumed = $state(0);
   source = $state<CaptureSource>("microphone");
 
   #meetingId: string | null = null;
@@ -141,8 +176,11 @@ export class MeetingRecorder {
   #timer: ReturnType<typeof setInterval> | null = null;
   #stopTimer: ReturnType<typeof setTimeout> | null = null;
   #seq = 0;
+  /** The recorder session the pieces being cut belong to; counts up on every resume. */
+  #session = 0;
+  #resuming = false;
   #queue: Promise<void> = Promise.resolve();
-  #failed: { seq: number; blob: Blob; covers: number }[] = [];
+  #failed: { seq: number; blob: Blob; covers: number; origin: PieceOrigin }[] = [];
   #wakeLock: { release: () => Promise<void> } | null = null;
   #unwatchScreen: (() => void) | null = null;
   #firstChunkTimer: ReturnType<typeof setTimeout> | null = null;
@@ -180,35 +218,24 @@ export class MeetingRecorder {
     this.retrying = null;
     this.stoppedAtLimit = false;
     this.captureLost = false;
+    this.suspended = null;
+    this.resumed = 0;
     this.state = "starting";
     this.#seq = 0;
+    this.#session = 0;
+    this.#resuming = false;
     this.uploaded = 0;
     this.pending = 0;
     this.savedSeconds = 0;
     this.elapsed = 0;
     this.#failed = [];
 
-    let stream: MediaStream;
-    try {
-      stream = await this.#acquire(source);
-    } catch (err) {
-      this.error = source === "tab" ? tabErrorKey(err) : micErrorKey(err);
-      this.#release();
+    const recorder = await this.#build(source);
+    if (!recorder) {
       this.state = "idle";
       return false;
     }
-    const mimeType = pickMimeType();
-    try {
-      this.#recorder = new MediaRecorder(stream, {
-        ...(mimeType ? { mimeType } : {}),
-        audioBitsPerSecond: AUDIO_BITS_PER_SECOND,
-      });
-    } catch {
-      this.error = "voice.error_failed";
-      this.#release();
-      this.state = "idle";
-      return false;
-    }
+    this.#recorder = recorder;
     this.state = "armed";
     return true;
   }
@@ -224,24 +251,13 @@ export class MeetingRecorder {
     if (this.state !== "armed" || !this.#recorder) return Promise.resolve(false);
     const recorder = this.#recorder;
     this.#meetingId = meetingId;
-    recorder.ondataavailable = (event) => {
-      if (event.data.size > 0) this.#enqueue(event.data);
-    };
     const finished = new Promise<boolean>((resolve) => (this.#finished = resolve));
-    recorder.onstop = () => void this.#finish();
+    this.#bind(recorder, 0);
     recorder.start(CHUNK_MS);
     this.state = "recording";
     this.elapsed = 0;
-    this.#timer = setInterval(() => (this.elapsed += 1), 1000);
-    this.#firstChunkTimer = setTimeout(() => {
-      this.#firstChunkTimer = null;
-      // Not an error if the browser declines: the timeslice still delivers a piece a minute.
-      try {
-        if (recorder.state === "recording") recorder.requestData();
-      } catch {
-        // the timeslice is the guarantee; this is the head start
-      }
-    }, FIRST_CHUNK_MS);
+    this.#startClock();
+    this.#askFirstPiece(recorder);
     this.#stopTimer = setTimeout(() => {
       this.stoppedAtLimit = true;
       this.stop();
@@ -257,10 +273,19 @@ export class MeetingRecorder {
   }
 
   stop(): void {
-    if (this.state !== "recording" || !this.#recorder) return;
+    if (this.state !== "recording") return;
     this.state = "stopping";
     this.#clearTimers();
-    this.#recorder.stop();
+    const recorder = this.#recorder;
+    if (recorder && recorder.state === "recording") {
+      recorder.stop();
+      return;
+    }
+    // Stopped while the capture was lost (or the recorder had already gone): there is no
+    // `onstop` coming, so the finish is ours to run.
+    this.#resuming = false;
+    this.suspended = null;
+    void this.#finish();
   }
 
   /** Stop and discard what has not been uploaded; the API row is the caller's to delete. */
@@ -270,13 +295,18 @@ export class MeetingRecorder {
       return;
     }
     this.#clearTimers();
-    if (this.#recorder) this.#recorder.ondataavailable = null;
+    if (this.#recorder) {
+      this.#recorder.ondataavailable = null;
+      this.#recorder.onstop = null;
+    }
     try {
       this.#recorder?.stop();
     } catch {
       // already stopped
     }
     this.state = "idle";
+    this.#resuming = false;
+    this.suspended = null;
     this.#release();
     this.#finished?.(false);
     this.#finished = null;
@@ -288,20 +318,43 @@ export class MeetingRecorder {
     const again = this.#failed;
     this.#failed = [];
     this.uploadError = null;
-    for (const piece of again) this.#enqueue(piece.blob, piece.seq, piece.covers);
+    for (const piece of again) this.#enqueue(piece.blob, piece.origin, piece.seq, piece.covers);
     await this.#queue;
     if (this.state === "finished" && !this.#failed.length) this.#finished?.(true);
+  }
+
+  /** The capture and a recorder over it, or `null` with `error` set. */
+  async #build(source: CaptureSource): Promise<MediaRecorder | null> {
+    let stream: MediaStream;
+    try {
+      stream = await this.#acquire(source);
+    } catch (err) {
+      this.error = source === "tab" ? tabErrorKey(err) : micErrorKey(err);
+      this.#dropCapture();
+      return null;
+    }
+    const mimeType = pickMimeType();
+    try {
+      return new MediaRecorder(stream, {
+        ...(mimeType ? { mimeType } : {}),
+        audioBitsPerSecond: AUDIO_BITS_PER_SECOND,
+      });
+    } catch {
+      this.error = "voice.error_failed";
+      this.#dropCapture();
+      return null;
+    }
   }
 
   async #acquire(source: CaptureSource): Promise<MediaStream> {
     const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
     this.#streams.push(mic);
     // The OS can take the microphone back — an incoming call, another app claiming it. The
-    // track ends, `MediaRecorder` goes on producing silence, and nothing would say so.
+    // track ends, `MediaRecorder` goes on producing silence, and nothing would say so. It is
+    // asked for again rather than the recording ended: the call ends, the meeting does not.
     mic.getAudioTracks()[0]?.addEventListener("ended", () => {
       if (this.state !== "recording") return;
-      this.captureLost = true;
-      this.stop();
+      void this.#resume();
     });
     if (source === "microphone") return mic;
     const display = await navigator.mediaDevices.getDisplayMedia({
@@ -325,7 +378,98 @@ export class MeetingRecorder {
     return destination.stream;
   }
 
-  #enqueue(blob: Blob, seq: number = this.#seq++, covers: number = this.elapsed): void {
+  /**
+   * Wire one `MediaRecorder` to this recording. Its pieces are stamped with the session they
+   * belong to, and the first piece of a later session is the one carrying the header. Its
+   * `onstop` ends the recording only while it is still *the* recorder: one that was replaced
+   * by a resume is let go without a word, or the resume itself would finish the meeting.
+   */
+  #bind(recorder: MediaRecorder, session: number): void {
+    let head = session > 0;
+    recorder.ondataavailable = (event) => {
+      if (event.data.size === 0) return;
+      this.#enqueue(event.data, { session, head });
+      head = false;
+    };
+    recorder.onstop = () => {
+      if (this.#recorder === recorder) void this.#finish();
+    };
+  }
+
+  #askFirstPiece(recorder: MediaRecorder): void {
+    this.#firstChunkTimer = setTimeout(() => {
+      this.#firstChunkTimer = null;
+      // Not an error if the browser declines: the timeslice still delivers a piece a minute.
+      try {
+        if (recorder.state === "recording") recorder.requestData();
+      } catch {
+        // the timeslice is the guarantee; this is the head start
+      }
+    }, FIRST_CHUNK_MS);
+  }
+
+  /**
+   * The capture is gone; take it up again on the same meeting.
+   *
+   * Runs once at a time. The dead recorder and its tracks are let go first (a torn-down
+   * recorder is inert; a track the OS ended is already over), the clock pauses, and the
+   * microphone is asked for until it is handed back or `RESUME_BUDGET_MS` is spent. A new
+   * `MediaRecorder` then continues the recording as the next session, and its first piece
+   * is asked for within seconds, exactly as at the start — so the server hears the recording
+   * is alive again before the reaper could conclude otherwise. Giving up is the old ending:
+   * `captureLost`, stop, hand over what landed.
+   */
+  async #resume(): Promise<void> {
+    if (this.state !== "recording" || this.#resuming) return;
+    if (this.source !== "microphone") {
+      // A display capture cannot be asked for again without a click.
+      this.captureLost = true;
+      this.stop();
+      return;
+    }
+    this.#resuming = true;
+    this.#pauseClock();
+    this.#dropCapture();
+    const since = Date.now();
+    this.suspended = { since, attempts: 0 };
+    let recorder: MediaRecorder | null = null;
+    while (this.state === "recording" && this.#resuming) {
+      this.suspended = { since, attempts: (this.suspended?.attempts ?? 0) + 1 };
+      recorder = await this.#build("microphone");
+      if (recorder) break;
+      if (Date.now() - since >= RESUME_BUDGET_MS) break;
+      await new Promise((resolve) => setTimeout(resolve, RESUME_RETRY_MS));
+    }
+    if (this.state !== "recording" || !this.#resuming) {
+      // Stopped or aborted while we were asking; that path has already released everything,
+      // and a microphone acquired after it must not be held.
+      if (recorder) this.#dropCapture();
+      return;
+    }
+    this.#resuming = false;
+    if (!recorder) {
+      this.suspended = null;
+      this.captureLost = true;
+      this.stop();
+      return;
+    }
+    this.#session += 1;
+    this.#recorder = recorder;
+    this.#bind(recorder, this.#session);
+    recorder.start(CHUNK_MS);
+    this.#askFirstPiece(recorder);
+    this.#startClock();
+    this.suspended = null;
+    this.resumed += 1;
+    void this.#holdScreen();
+  }
+
+  #enqueue(
+    blob: Blob,
+    origin: PieceOrigin,
+    seq: number = this.#seq++,
+    covers: number = this.elapsed,
+  ): void {
     const meetingId = this.#meetingId;
     if (!meetingId) return;
     this.pending += 1;
@@ -334,11 +478,12 @@ export class MeetingRecorder {
         onRetry: (attempt) => {
           this.retrying = { since: this.retrying?.since ?? Date.now(), attempts: attempt + 1 };
         },
+        origin,
       });
       this.retrying = null;
       this.pending -= 1;
       if (error) {
-        this.#failed.push({ seq, blob, covers });
+        this.#failed.push({ seq, blob, covers, origin });
         this.uploadError = error;
       } else {
         this.uploaded += 1;
@@ -372,12 +517,11 @@ export class MeetingRecorder {
       if (document.visibilityState !== "visible" || this.state !== "recording") return;
       // A capture that did not survive being away is over, whatever the timer says: a frozen
       // tab resumes with a `MediaRecorder` the browser has already torn down, and the elapsed
-      // count — which froze with it — would go on ticking as if nothing had happened. Ending
-      // it here is what turns "the recording silently stopped" into a recording that stops,
-      // says so, and hands over every piece that did land.
+      // count — which froze with it — would go on ticking as if nothing had happened. Taking
+      // the capture up again here is what turns "the recording silently stopped" into a
+      // recording that pauses, says so, and goes on.
       if (this.#recorder && this.#recorder.state !== "recording") {
-        this.captureLost = true;
-        this.stop();
+        void this.#resume();
         return;
       }
       void this.#holdScreen();
@@ -411,22 +555,47 @@ export class MeetingRecorder {
     }
   }
 
-  #clearTimers(): void {
+  #startClock(): void {
+    if (this.#timer !== null) return;
+    this.#timer = setInterval(() => (this.elapsed += 1), 1000);
+  }
+
+  #pauseClock(): void {
     if (this.#timer !== null) clearInterval(this.#timer);
+    this.#timer = null;
+  }
+
+  #clearTimers(): void {
+    this.#pauseClock();
     if (this.#stopTimer !== null) clearTimeout(this.#stopTimer);
     if (this.#firstChunkTimer !== null) clearTimeout(this.#firstChunkTimer);
-    this.#timer = null;
     this.#stopTimer = null;
     this.#firstChunkTimer = null;
   }
 
-  #release(): void {
-    this.#clearTimers();
+  /** Let the current capture go — tracks, mixer, recorder — and nothing else. */
+  #dropCapture(): void {
+    if (this.#firstChunkTimer !== null) clearTimeout(this.#firstChunkTimer);
+    this.#firstChunkTimer = null;
+    if (this.#recorder) {
+      this.#recorder.ondataavailable = null;
+      this.#recorder.onstop = null;
+      try {
+        if (this.#recorder.state !== "inactive") this.#recorder.stop();
+      } catch {
+        // already gone
+      }
+    }
     for (const stream of this.#streams) for (const track of stream.getTracks()) track.stop();
     this.#streams = [];
     void this.#audioContext?.close().catch(() => undefined);
     this.#audioContext = null;
     this.#recorder = null;
+  }
+
+  #release(): void {
+    this.#clearTimers();
+    this.#dropCapture();
     this.#unwatchScreen?.();
     this.#unwatchScreen = null;
     void this.#wakeLock?.release().catch(() => undefined);

@@ -130,11 +130,63 @@ describe("a capture that dies is noticed", () => {
     assert.match(recorder, /#holdScreen\(\)/);
   });
 
-  test("a torn-down recorder and a lost microphone both end the recording", () => {
-    assert.ok(
-      (recorder.match(/this\.captureLost = true;/g) ?? []).length >= 2,
-      "both the frozen-tab case and the microphone-taken-away case are detected",
+  test("a torn-down recorder and a lost microphone both take the capture up again", () => {
+    // The hundred-and-eight-minute meeting that ended mid-sentence: the loss was noticed and
+    // the recording *ended* — right for the bytes, wrong for the meeting, which went on for an
+    // hour in front of a phone that had said "gestopt". Both detections now resume.
+    const onVisible = recorder.slice(
+      recorder.indexOf("const onVisible = () =>"),
+      recorder.indexOf('document.addEventListener("visibilitychange"'),
     );
-    assert.match(recordPage, /meetings\.record\.capture_lost/, "and the screen says so");
+    assert.match(onVisible, /void this\.#resume\(\)/, "a frozen tab's dead recorder resumes");
+    const micEnded = recorder.slice(
+      recorder.indexOf('addEventListener("ended"'),
+      recorder.indexOf('if (source === "microphone") return mic;'),
+    );
+    assert.match(micEnded, /void this\.#resume\(\)/, "a microphone the OS took resumes");
+    assert.ok(
+      !/captureLost = true;\s*\n\s*this\.stop\(\);\s*\n\s*return;\s*\n\s*\}\s*\n\s*void this\.#holdScreen/.test(
+        recorder,
+      ),
+      "noticing the loss no longer ends the recording on the spot",
+    );
+  });
+
+  test("the recording ends only once the resume budget is spent", () => {
+    const budget = constant(recorder, "RESUME_BUDGET_MS");
+    const retry = constant(recorder, "RESUME_RETRY_MS");
+    assert.ok(budget >= 5 * 60_000, "a phone call lasts minutes, so the budget is minutes");
+    assert.ok(retry < budget, "and the microphone is asked for more than once inside it");
+    const resume = recorder.slice(
+      recorder.indexOf("async #resume(): Promise<void>"),
+      recorder.indexOf("\n  #enqueue("),
+    );
+    assert.match(resume, /RESUME_BUDGET_MS/, "the loop is bounded by the budget");
+    assert.match(resume, /this\.captureLost = true;/, "giving up is the old ending, said");
+    assert.match(resume, /this\.#session \+= 1;/, "a resumed capture is a new session");
+    assert.match(resume, /this\.#askFirstPiece\(recorder\)/, "and says it is alive within seconds");
+    assert.match(recordPage, /meetings\.record\.capture_lost/, "the screen says when it gave up");
+    assert.match(recordPage, /meetings\.record\.resuming/, "and while it is asking");
+  });
+
+  test("a later session's first piece tells the API it carries a header", () => {
+    assert.match(upload, /head: origin\?\.head/, "the head flag rides the chunk body");
+    assert.match(
+      upload,
+      /session > 0 \? \{ seq, audio, session, head/,
+      "and an uninterrupted recording's wire is unchanged: session 0 sends what it always sent",
+    );
+    assert.match(recorder, /let head = session > 0;/);
+    assert.match(recorder, /head = false;/, "only the first piece of the session is the head");
+  });
+
+  test("the clock counts recorded seconds: it pauses while the capture is lost", () => {
+    const resume = recorder.slice(
+      recorder.indexOf("async #resume(): Promise<void>"),
+      recorder.indexOf("\n  #enqueue("),
+    );
+    const paused = resume.indexOf("this.#pauseClock()");
+    const restarted = resume.indexOf("this.#startClock()");
+    assert.ok(paused !== -1 && restarted > paused, "paused on loss, restarted once captured");
   });
 });

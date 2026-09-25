@@ -57,7 +57,7 @@ TRANSCRIPT = (
 
 
 def _fake_transcribe(seconds: int = 900):
-    async def fake(config, clip, *, language, diarize=False, timestamps=False):  # noqa: ANN001
+    async def fake(config, clip, *, language, diarize=False, timestamps=False, known=()):  # noqa: ANN001
         assert clip.extension == "webm"
         return Transcript(
             text=TRANSCRIPT,
@@ -328,9 +328,7 @@ async def test_the_minutes_are_filed_as_a_contact_moment_and_follow_every_edit(
         assert interaction["company_id"] == other["id"]
 
         # The moment deleted by hand: the next edit files the meeting again.
-        gone = await c.delete(
-            f"/api/v1/interactions/{detail['interaction_id']}", headers=headers
-        )
+        gone = await c.delete(f"/api/v1/interactions/{detail['interaction_id']}", headers=headers)
         assert gone.status_code in (200, 204), gone.text
         unfiled = (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()
         assert unfiled["interaction_id"] is None
@@ -340,9 +338,9 @@ async def test_the_minutes_are_filed_as_a_contact_moment_and_follow_every_edit(
         assert saved.status_code == 200, saved.text
         refiled = saved.json()["interaction_id"]
         assert refiled and refiled != detail["interaction_id"]
-        assert (
-            await c.get(f"/api/v1/interactions/{refiled}", headers=headers)
-        ).json()["subject"] == "Kick-off homepage (definitief)"
+        assert (await c.get(f"/api/v1/interactions/{refiled}", headers=headers)).json()[
+            "subject"
+        ] == "Kick-off homepage (definitief)"
 
 
 async def test_a_refused_filing_leaves_the_meeting_unfiled_and_the_button_says_why(
@@ -1475,3 +1473,110 @@ async def test_an_action_item_becomes_a_task_with_schakls_draft(
         )
         assert saved.status_code == 200, saved.text
         assert saved.json()["minutes"]["action_items"][1]["task_id"] == task_id
+
+
+# --------------------------------------------------------------------------- #
+# A recording taken up again after the phone took the capture away.
+# --------------------------------------------------------------------------- #
+async def test_a_resumed_recording_is_joined_and_says_what_the_interruption_cost(
+    client_for, tmp_path, monkeypatch
+) -> None:
+    """The recorder lost the capture after two pieces and started a new session (its first piece
+    carries a header, ``head``). The worker folds each session, joins them, and measures the gap
+    from the pieces themselves: the second session's head arrived 100 s after the first's, and
+    the first session held 40 s of audio, so 60 s went unrecorded — stated on the row, in the
+    joined recording's clock, and handed to the minutes model as a line of its own."""
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+    monkeypatch.setattr("app.modules.meetings.pipeline.provider_transcribe", _fake_transcribe(900))
+    # ffmpeg is not on the test box: the join and the probe are faked at their seams.
+    monkeypatch.setattr(
+        "app.modules.meetings.jobs.concat_with_ffmpeg", lambda sessions, ext: b"".join(sessions)
+    )
+    monkeypatch.setattr(
+        "app.modules.meetings.jobs.probe_duration",
+        lambda data, ext: 40.0 if data.startswith(WEBM_HEADER + b"\x01") else 25.0,
+    )
+    t = await make_tenant("meet-resume")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await c.put("/api/v1/ai/settings", json=SETTINGS_BODY, headers=headers)
+        created = await c.post(
+            "/api/v1/meetings",
+            json={"title": "Onderbroken", "participants_informed": True},
+            headers=headers,
+        )
+        meeting = created.json()
+        pieces = [
+            (0, WEBM_HEADER, 0, False),
+            (1, b"\x01" * 300, 0, False),
+            (2, WEBM_HEADER + b"\x02" * 50, 1, True),
+            (3, b"\x03" * 300, 1, False),
+        ]
+        for seq, raw, session, head in pieces:
+            res = await c.post(
+                f"/api/v1/meetings/{meeting['id']}/chunks",
+                json={"seq": seq, "audio": _B64(raw), "session": session, "head": head},
+                headers=headers,
+            )
+            assert res.status_code == 200, res.text
+        # A head that sniffs as another container than the first session is refused: the
+        # worker joins sessions by copying packets and cannot copy one codec into another.
+        res = await c.post(
+            f"/api/v1/meetings/{meeting['id']}/chunks",
+            json={"seq": 4, "audio": _B64(b"OggS" + b"\x00" * 100), "session": 2, "head": True},
+            headers=headers,
+        )
+        assert res.status_code == 422, res.text
+        assert res.json()["error"]["fields"]["audio"] == "meetings.error.session_mismatch"
+        # ``head`` on the first session is a contradiction, refused before anything is stored.
+        res = await c.post(
+            f"/api/v1/meetings/{meeting['id']}/chunks",
+            json={"seq": 5, "audio": _B64(b"\x05" * 10), "session": 0, "head": True},
+            headers=headers,
+        )
+        assert res.status_code == 422, res.text
+        finished = await c.post(
+            f"/api/v1/meetings/{meeting['id']}/finish",
+            json={"duration_seconds": None},
+            headers=headers,
+        )
+        assert finished.status_code == 200, finished.text
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        rows = (
+            (
+                await session.execute(
+                    select(StoredFile)
+                    .where(StoredFile.org_id == t.org.id, StoredFile.content_id.like("chunk:%"))
+                    .order_by(StoredFile.content_id)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert [r.content_id for r in rows] == [
+            "chunk:000000",
+            "chunk:000001",
+            "chunk:000002:s001",
+            "chunk:000003:s001",
+        ]
+        # The second session's head landed 100 s after the first's.
+        rows[2].created_at = rows[0].created_at + timedelta(seconds=100)
+        await session.commit()
+
+    async with client_for(t.host) as c:
+        monkeypatch.setattr(
+            "app.core.ai.providers.stream_chat", _fake_stream(_submit(**_minutes(str(t.user.id))))
+        )
+        await _run(t.org.id, meeting["id"])
+        detail = (await c.get(f"/api/v1/meetings/{meeting['id']}", headers=headers)).json()
+        assert detail["status"] == "ready", detail
+        assert detail["recording_gaps"] == [{"at": 40.0, "seconds": 60.0}]
+        assert detail["chunks_received"] == 0 and detail["audio_file_id"]
+
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        stored = await session.get(StoredFile, uuid.UUID(detail["audio_file_id"]))
+        # The joined recording is both sessions, in order — never the first alone.
+        assert stored.size_bytes == len(WEBM_HEADER) + 300 + len(WEBM_HEADER) + 50 + 300
