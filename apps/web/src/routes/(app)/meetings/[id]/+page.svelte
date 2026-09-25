@@ -767,6 +767,23 @@
       {#if meeting.project_name}· {meeting.project_name}{/if}
       {#if meeting.owner_name}· {meeting.owner_name}{/if}
     </p>
+    {#if meeting.recording_gaps?.length}
+      <!-- The joined recording has one continuous clock, so where the capture was lost is
+           invisible in the player and the transcript; it is said here, in that clock, with what
+           each interruption cost — measured by the worker, not by the phone. -->
+      <p class="mt-1 text-sm text-amber-800 dark:text-amber-200">
+        {tn("meetings.review.recording_gaps", meeting.recording_gaps.length, {
+          detail: meeting.recording_gaps
+            .map((g) =>
+              t("meetings.review.recording_gap", {
+                clock: fmtClock(g.at),
+                length: fmtDuration(Math.max(1, Math.round(g.seconds))),
+              }),
+            )
+            .join(", "),
+        })}
+      </p>
+    {/if}
   </div>
   <div class="flex flex-wrap items-center gap-2">
     {#if exportable}
@@ -1311,9 +1328,11 @@
           )}
           {#if meeting.transcript_parts > 1}
             {t(
-              meeting.transcript_aligned
-                ? "meetings.review.speakers_aligned"
-                : "meetings.review.speakers_parts",
+              meeting.transcript_voiced
+                ? "meetings.review.speakers_voiced"
+                : meeting.transcript_aligned
+                  ? "meetings.review.speakers_aligned"
+                  : "meetings.review.speakers_parts",
               { parts: String(meeting.transcript_parts) },
             )}
           {/if}

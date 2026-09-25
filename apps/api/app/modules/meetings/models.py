@@ -179,6 +179,12 @@ class Meeting(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, AuditableMixi
     audio_file_id: Mapped[uuid.UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("files.id", ondelete="SET NULL"), nullable=True
     )
+    #: Where the recording was interrupted and taken up again — ``[{"at": <second of the
+    #: joined recording>, "seconds": <how long nothing was captured>}]`` — measured by the
+    #: worker from the pieces' own arrival times and lengths when it folds the sessions
+    #: (``jobs._fold``). ``NULL`` / empty for a recording nothing interrupted. Stated on the
+    #: row because a joined file has one continuous clock and the gap is invisible in it.
+    recording_gaps: Mapped[list[Any] | None] = mapped_column(JSONB, nullable=True)
 
     # The words. ``transcript`` is ``{"segments": [{start, end, speaker, text}], "model": …,
     # "parts": n}``; ``transcript_text`` the same words flat, for the search box and the prompt.

@@ -265,18 +265,44 @@ def transcript_document(
     kind: str,
     segments: list[dict[str, Any]],
     text: str | None,
+    gaps: list[dict[str, Any]] | None = None,
 ) -> tuple[str, bool]:
     """The transcript as data inside JSON — never as instructions (``_INJECTION_STANCE``).
+
+    A recording that was interrupted and taken up again (``Meeting.recording_gaps``) has one
+    continuous clock with minutes missing from it; each gap is a line of its own where it
+    falls, so the model reads "nothing was captured for 92 s here" rather than two sentences
+    that do not follow each other.
 
     Returns the document and whether it was cut to :data:`MAX_TRANSCRIPT_CHARS`.
     """
     lines: list[dict[str, Any]] = []
     used = 0
     cut = False
+    pending_gaps = sorted(
+        (
+            (float(g.get("at") or 0), float(g.get("seconds") or 0))
+            for g in (gaps or [])
+            if isinstance(g, dict) and float(g.get("seconds") or 0) > 0
+        ),
+        key=lambda g: g[0],
+    )
+
+    def gap_line(at: float, seconds: float) -> dict[str, Any]:
+        return {
+            "at": round(at, 1),
+            "speaker": None,
+            "text": "",
+            "recording_interrupted_seconds": round(seconds),
+        }
+
     if segments:
         for seg in segments:
+            at = float(seg.get("start") or 0)
+            while pending_gaps and pending_gaps[0][0] <= at:
+                lines.append(gap_line(*pending_gaps.pop(0)))
             entry = {
-                "at": round(float(seg.get("start") or 0), 1),
+                "at": round(at, 1),
                 "speaker": seg.get("speaker"),
                 "text": seg.get("text") or "",
             }
@@ -285,6 +311,8 @@ def transcript_document(
                 cut = True
                 break
             lines.append(entry)
+        if not cut:
+            lines.extend(gap_line(*g) for g in pending_gaps)
     else:
         flat = text or ""
         if len(flat) > MAX_TRANSCRIPT_CHARS:
@@ -295,6 +323,7 @@ def transcript_document(
         "meeting": {"title": title, "occurred_at": occurred_at.isoformat(), "kind": kind},
         "transcript": lines,
         "transcript_cut_short": cut,
+        "recording_interrupted": any("recording_interrupted_seconds" in line for line in lines),
     }
     return json.dumps(document, ensure_ascii=False), cut
 
@@ -494,6 +523,7 @@ async def draft_minutes(
     agency: str,
     duration: int | None,
     house_rules: str | None = None,
+    gaps: list[dict[str, Any]] | None = None,
 ) -> MinutesDraft:
     """One transcript into one draft. Raises ``AppError`` on a provider failure (the caller —
     the worker — turns it into the row's ``failed`` state)."""
@@ -509,7 +539,12 @@ async def draft_minutes(
         house_rules=house_rules,
     )
     document, cut = transcript_document(
-        title=title, occurred_at=occurred_at, kind=kind, segments=segments, text=transcript_text
+        title=title,
+        occurred_at=occurred_at,
+        kind=kind,
+        segments=segments,
+        text=transcript_text,
+        gaps=gaps,
     )
     submitted: dict[str, Any] = {}
     truncated = False

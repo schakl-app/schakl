@@ -71,6 +71,56 @@ async def test_the_probe_records_the_plugin_and_its_version(client_for, wp) -> N
         assert res.json()["bridge_version"] == "1.0.0"
 
 
+async def test_the_probe_records_whether_the_plugin_can_update_itself(client_for, wp) -> None:
+    t = await make_tenant("wp-bridge-updates")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, site = await _site(c, headers)
+        verify = f"/api/v1/wordpress/sites/{site['id']}/verify"
+        row_url = f"/api/v1/wordpress/sites/{site['id']}"
+
+        # A plugin older than 1.3.1 does not say: unknown, not "cannot".
+        res = await c.post(verify, headers=headers)
+        assert res.json()["bridge_updates"] is None
+
+        wp.bridge_version = "1.3.1"
+        wp.bridge_updates = {
+            "token": "none",
+            "installed": "1.3.1",
+            "latest": None,
+            "available": False,
+            "error": "No GitHub token configured.",
+            "auto_update": False,
+        }
+        res = await c.post(verify, headers=headers)
+        updates = res.json()["bridge_updates"]
+        assert updates["token"] == "none" and updates["can_update"] is False
+        assert updates["error"] == "No GitHub token configured."
+        assert (await c.get(row_url, headers=headers)).json()["bridge_updates"] == updates
+
+        # A token GitHub accepts: it can, and says what it found.
+        wp.bridge_updates = {
+            "token": "setting",
+            "installed": "1.3.1",
+            "latest": "1.4.0",
+            "available": True,
+            "error": None,
+            "auto_update": True,
+            "secret": "never stored",
+        }
+        info = (await c.get(_url(site), headers=headers)).json()
+        assert info["updates"]["token"] == "setting"
+        row = (await c.get(row_url, headers=headers)).json()["bridge_updates"]
+        assert row["can_update"] is True and row["latest"] == "1.4.0"
+        assert row["available"] is True and row["auto_update"] is True
+        assert "secret" not in row
+
+        # The plugin gone clears it with the version.
+        wp.has_bridge = False
+        res = await c.post(verify, headers=headers)
+        assert res.json()["bridge_updates"] is None
+
+
 async def test_a_site_without_the_plugin_answers_409_naming_it(client_for, wp) -> None:
     wp.has_bridge = False
     t = await make_tenant("wp-bridge-missing")
@@ -133,6 +183,21 @@ async def test_info_schema_and_records_read_through_the_plugin(client_for, wp) -
         res = await c.get(_url(site, "/records/424242"), headers=member_h)
         assert res.status_code == 404
         assert res.json()["error"]["message"] == "errors.wordpress_not_on_site"
+
+        # The text mode: what a chatbot reads — no tree, the words in order.
+        text = (await c.get(_url(site, "/records/8262?mode=text"), headers=member_h)).json()
+        assert text["fields_mode"] == "text" and text["fields"] is None
+        assert text["text"].startswith("Arbeidsongeschiktheidsverzekering")
+        assert "Eerst het risico begrijpen" in text["text"]
+        assert ("GET", "/content/8262", None) in wp.bridge_calls
+        rows = (
+            await c.get(_url(site, "/records?post_type=page&fields=text"), headers=member_h)
+        ).json()
+        assert rows["fields_mode"] == "text"
+        assert all("Eerst het risico" in r["text"] or r["text"] for r in rows["items"])
+        assert rows["items"][0]["fields"] is None
+        res = await c.get(_url(site, "/records/8262?mode=prose"), headers=member_h)
+        assert res.status_code == 422
 
         # An unknown post type is the plugin's 404 with its `known` list carried.
         res = await c.get(_url(site, "/records?post_type=nope"), headers=member_h)

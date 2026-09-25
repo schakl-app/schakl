@@ -34,7 +34,7 @@
   import { page } from "$app/state";
   import { aiEnabled } from "$lib/core/ai";
   import { fmtNumericDate } from "$lib/core/format";
-  import { t } from "$lib/core/i18n";
+  import { t, tn } from "$lib/core/i18n";
   import { can } from "$lib/core/permissions";
   import { orgToday } from "$lib/core/today";
   import Button from "$lib/core/ui/Button.svelte";
@@ -310,6 +310,12 @@
     <p class="mt-2 text-sm text-text-muted" aria-live="polite">
       {#if phase === "finishing"}
         {t("meetings.record.finishing")}
+      {:else if recorder.suspended}
+        <!-- The capture was lost and is being asked for again: the recording is paused, not
+             over, and what is safe stands beside the sentence. Amber, like reconnecting. -->
+        <span class="text-amber-800 dark:text-amber-200">
+          {t("meetings.record.resuming", { clock: formatClock(recorder.savedSeconds) })}
+        </span>
       {:else if recorder.uploadError}
         <span class="text-red-700 dark:text-red-300">{t(recorder.uploadError)}</span>
       {:else if recorder.retrying}
@@ -325,11 +331,17 @@
       {/if}
     </p>
     {#if recorder.captureLost}
-      <!-- The capture ended without anybody stopping it. What landed is being handed over; the
-           sentence is here because a recording that stops by itself must never look like one
-           that was stopped. -->
+      <!-- The capture ended without anybody stopping it and could not be taken up again. What
+           landed is being handed over; the sentence is here because a recording that stops by
+           itself must never look like one that was stopped. -->
       <p class="mt-2 text-sm text-amber-800 dark:text-amber-200" role="alert">
         {t("meetings.record.capture_lost")}
+      </p>
+    {:else if recorder.resumed > 0}
+      <!-- Lost and taken up again: said once, quietly, so the pause in the recording that the
+           minutes will mention is not a surprise. -->
+      <p class="mt-2 text-sm text-text-muted">
+        {tn("meetings.record.resumed", recorder.resumed)}
       </p>
     {/if}
     <div class="mt-6 flex flex-wrap items-center justify-center gap-3">

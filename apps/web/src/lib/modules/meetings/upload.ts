@@ -53,6 +53,12 @@ export interface UploadDeps {
   budgetMs: number;
   /** Told before every wait: which attempt just failed and how long the next wait is. */
   onRetry?: (attempt: number, waitMs: number) => void;
+  /**
+   * Which recorder session the piece belongs to and whether it opens that session (carries
+   * the container header). A recording that was never interrupted is session 0 throughout,
+   * and says nothing — the wire stays what it was.
+   */
+  origin?: { session: number; head: boolean };
 }
 
 const defaultDeps: UploadDeps = {
@@ -69,15 +75,19 @@ export async function uploadChunk(
   blob: Blob,
   deps: Partial<UploadDeps> = {},
 ): Promise<string | null> {
-  const { fetch, encode, sleep, budgetMs, onRetry } = { ...defaultDeps, ...deps };
+  const { fetch, encode, sleep, budgetMs, onRetry, origin } = { ...defaultDeps, ...deps };
   const audio = await encode(blob);
+  const session = origin?.session ?? 0;
+  const body = JSON.stringify(
+    session > 0 ? { seq, audio, session, head: origin?.head ?? false } : { seq, audio },
+  );
   let waited = 0;
   for (let attempt = 0; ; attempt++) {
     try {
       const res = await fetch(`/api/v1/meetings/${meetingId}/chunks`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ seq, audio }),
+        body,
       });
       if (res.ok) return null;
       if (!retryableStatus(res.status)) {

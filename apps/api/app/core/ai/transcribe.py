@@ -25,11 +25,18 @@ vendors' own and are worth stating with their source:
   diarization and segment timestamps, in Dutch — which is what makes it the provider this
   product recommends for meetings: a recording that fits one request keeps one set of speaker
   labels, and a split one cannot (see the pipeline).
+* OpenAI's diarize model takes **up to four known speakers** per request
+  (``known_speaker_names[]`` + ``known_speaker_references[]``: a 2–10 s sample each, as a data
+  URL) and then labels those voices *by the name given* instead of ``A``, ``B``… — which is the
+  one thing that lets a recording cut into parts keep one label per person: the pipeline hands
+  every later part a sample of each voice the earlier parts already heard.
 """
 
 from __future__ import annotations
 
+import base64
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -98,6 +105,16 @@ class SpeechLimits:
     diarize: bool
     #: Whether the answer carries segment timestamps at all.
     timestamps: bool
+    #: How many known speakers a request may carry a voice sample for, so the provider labels
+    #: them by the name given rather than afresh. ``0`` — the provider has no such thing.
+    known_speakers: int = 0
+    #: The sample the provider wants per known speaker, in seconds (the vendor's bounds).
+    reference_min_seconds: float = 2.0
+    reference_max_seconds: float = 10.0
+
+
+#: OpenAI's own bound: ``known_speaker_names[]`` takes at most four entries.
+_OPENAI_KNOWN_SPEAKERS = 4
 
 
 def speech_limits(config: ProviderConfig) -> SpeechLimits:
@@ -107,12 +124,14 @@ def speech_limits(config: ProviderConfig) -> SpeechLimits:
     answers."""
     model = (config.model or "").lower()
     if config.provider == "mistral":
-        return SpeechLimits(
-            _MISTRAL_MAX_BYTES, _MISTRAL_MAX_SECONDS, diarize=True, timestamps=True
-        )
+        return SpeechLimits(_MISTRAL_MAX_BYTES, _MISTRAL_MAX_SECONDS, diarize=True, timestamps=True)
     if "diarize" in model:
         return SpeechLimits(
-            _OPENAI_MAX_BYTES, _OPENAI_GPT_MAX_SECONDS, diarize=True, timestamps=True
+            _OPENAI_MAX_BYTES,
+            _OPENAI_GPT_MAX_SECONDS,
+            diarize=True,
+            timestamps=True,
+            known_speakers=_OPENAI_KNOWN_SPEAKERS,
         )
     if model.startswith("gpt"):
         # ``gpt-4o-transcribe`` and its mini: text only, no segments, a duration cap.
@@ -134,6 +153,20 @@ class Segment:
 
 
 @dataclass(frozen=True)
+class KnownSpeaker:
+    """A voice the provider has already heard, by the label it is to keep: a short sample of
+    that person speaking alone, cut from the recording itself (``pipeline.reference_clips``)."""
+
+    name: str
+    sample: AudioClip
+
+    @property
+    def data_url(self) -> str:
+        encoded = base64.b64encode(self.sample.data).decode()
+        return f"data:{self.sample.content_type};base64,{encoded}"
+
+
+@dataclass(frozen=True)
 class Transcript:
     text: str
     #: What the provider reported, when it reported anything. Used for metering; 0 means the
@@ -144,11 +177,21 @@ class Transcript:
 
 
 def _fields(
-    config: ProviderConfig, *, language: str | None, diarize: bool, timestamps: bool
-) -> dict[str, str]:
-    """The multipart fields per provider/model — the one place the three dialects meet."""
+    config: ProviderConfig,
+    *,
+    language: str | None,
+    diarize: bool,
+    timestamps: bool,
+    known: Sequence[KnownSpeaker] = (),
+) -> dict[str, str | list[str]]:
+    """The multipart fields per provider/model — the one place the three dialects meet.
+
+    A list value is a repeated field (``known_speaker_names[]`` once per speaker), which is how
+    httpx encodes it and how OpenAI reads it. Known speakers are only ever spelled for the one
+    dialect that takes them; a caller reads :func:`speech_limits` before offering any.
+    """
     model = config.model or DEFAULT_SPEECH_MODELS.get(config.provider, DEFAULT_SPEECH_MODEL)
-    data: dict[str, str] = {"model": model}
+    data: dict[str, str | list[str]] = {"model": model}
     if config.provider == "mistral":
         if diarize:
             data["diarize"] = "true"
@@ -168,6 +211,9 @@ def _fields(
         data["response_format"] = "diarized_json"
         # Required by the diarize model for anything longer than a breath.
         data["chunking_strategy"] = "auto"
+        if known:
+            data["known_speaker_names[]"] = [k.name for k in known]
+            data["known_speaker_references[]"] = [k.data_url for k in known]
     elif timestamps and not lowered.startswith("gpt"):
         data["response_format"] = "verbose_json"
         data["timestamp_granularities[]"] = "segment"
@@ -238,11 +284,15 @@ async def transcribe(
     language: str | None,
     diarize: bool = False,
     timestamps: bool = False,
+    known: Sequence[KnownSpeaker] = (),
 ) -> Transcript:
     """One transcription round trip. Raises :class:`AIProviderError` on any non-2xx.
 
     ``diarize`` / ``timestamps`` are *requests*: a provider that cannot label speakers answers
     without labels, and :func:`speech_limits` is what a caller reads to know in advance.
+    ``known`` are voices the provider is to label by the name given (OpenAI's diarize model,
+    at most ``SpeechLimits.known_speakers`` of them): a segment it recognises comes back with
+    that name in ``speaker``, every other voice with a fresh letter.
     """
     if not can_transcribe(config.provider):  # pragma: no cover - callers gate first
         raise AIProviderError(f"provider {config.provider!r} cannot transcribe")
@@ -250,7 +300,9 @@ async def transcribe(
         response = await client().post(
             f"{speech_base_url(config)}/audio/transcriptions",
             headers={"authorization": f"Bearer {config.api_key}"},
-            data=_fields(config, language=language, diarize=diarize, timestamps=timestamps),
+            data=_fields(
+                config, language=language, diarize=diarize, timestamps=timestamps, known=known
+            ),
             files={"file": (clip.filename, clip.data, clip.content_type)},
             timeout=_TRANSCRIBE_TIMEOUT,
         )
@@ -271,6 +323,7 @@ __all__ = [
     "DEFAULT_SPEECH_MODELS",
     "MISTRAL_BASE_URL",
     "TRANSCRIBING_PROVIDERS",
+    "KnownSpeaker",
     "Segment",
     "SpeechLimits",
     "Transcript",

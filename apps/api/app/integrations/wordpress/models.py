@@ -191,6 +191,13 @@ class WordPressSite(
     #: column, which may be stale by a deploy).
     bridge_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
+    #: Whether the plugin can update itself, as its ``info`` last reported (bridge 1.3.1+):
+    #: ``{token, installed, latest, available, error, auto_update}``, where ``token`` is only
+    #: where the GitHub token comes from (``constant`` / ``setting`` / ``none``), never the token.
+    #: NULL where no probe has seen a plugin that reports it — an older plugin, or none at all —
+    #: which the panel says as "not reported", not as "cannot update".
+    bridge_updates: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
     last_verified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

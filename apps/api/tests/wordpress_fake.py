@@ -146,6 +146,8 @@ class FakeWordPress:
         #: `rest_no_route` — the exact answer a site without the plugin gives.
         self.has_bridge = True
         self.bridge_version = "1.0.0"
+        #: `info.updates` (bridge 1.3.1+); `None` is an older plugin that does not send it.
+        self.bridge_updates: dict | None = None
         #: Records the plugin serves, keyed by id, in its own canonical shape: `fields` is the
         #: name-keyed ACF tree (compact), `references` what the ids resolve to. One page in the
         #: shape of the themes' page builder (a `blokken_blokken` repeater of typed rows).
@@ -549,9 +551,30 @@ class FakeWordPress:
             ],
         }]
 
+    def _bridge_text(self, row: dict) -> str:
+        """The plugin's text mode, roughly: title, then every string value in the tree."""
+        words: list[str] = [row["title"]]
+
+        def walk(value: Any) -> None:
+            if isinstance(value, str) and value:
+                words.append(value)
+            elif isinstance(value, dict):
+                for v in value.values():
+                    walk(v)
+            elif isinstance(value, list):
+                for v in value:
+                    walk(v)
+
+        walk(row.get("fields", {}))
+        return "\n\n".join(words)
+
     def _bridge_record(self, row: dict, mode: str, include_schema: bool = False) -> dict:
         out = {k: v for k, v in row.items() if k not in ("fields", "references", "trid")}
-        if mode != "none":
+        if mode == "text":
+            out.pop("content", None)
+            out["text"] = self._bridge_text(row)
+            out["fields_mode"] = "text"
+        elif mode != "none":
             out["fields"] = row["fields"]
             out["fields_mode"] = mode
             out["references"] = row.get("references", {})
@@ -600,6 +623,7 @@ class FakeWordPress:
                 "options_pages": [{"slug": "bedrijfsinformatie", "title": "Bedrijfsinformatie"}],
                 "menus": [{"id": 1, "name": "Hoofdmenu", "slug": "hoofdmenu"}],
                 "user": {"id": 1, "login": self.username, "capabilities": {"manage_options": True}},
+                **({"updates": self.bridge_updates} if self.bridge_updates is not None else {}),
             })
 
         if sub == "/schema":
@@ -630,9 +654,20 @@ class FakeWordPress:
             ]
             per_page, page = int(q.get("per_page", "20")), int(q.get("page", "1"))
             chunk = rows[(page - 1) * per_page: page * per_page]
-            return _json({"items": [self._bridge_row(r) for r in chunk], "total": len(rows),
-                          "page": page, "per_page": per_page,
-                          "pages": -(-len(rows) // per_page), "post_type": post_type})
+            mode = q.get("fields") or "none"
+            items = []
+            for r in chunk:
+                item = self._bridge_row(r)
+                if mode == "text":
+                    item["text"] = self._bridge_text(r)
+                elif mode != "none":
+                    item["fields"], item["references"] = r["fields"], r.get("references", {})
+                items.append(item)
+            out = {"items": items, "total": len(rows), "page": page, "per_page": per_page,
+                   "pages": -(-len(rows) // per_page), "post_type": post_type}
+            if mode != "none":
+                out["fields_mode"] = mode
+            return _json(out)
 
         if sub == "/content" and request.method == "POST":
             if not body.get("title"):
