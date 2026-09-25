@@ -15532,7 +15532,12 @@ export interface paths {
          */
         get: operations["bridge_menus_api_v1_wordpress_sites__site_id__bridge_menus_get"];
         put?: never;
-        post?: never;
+        /**
+         * Bridge Create Menu
+         * @description Create an empty navigation menu, optionally placed in theme locations (a location it
+         *     takes over is live at once, hence `publish`). Add items with `bridge_menu_add_item`.
+         */
+        post: operations["bridge_create_menu_api_v1_wordpress_sites__site_id__bridge_menus_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -15553,10 +15558,20 @@ export interface paths {
         get: operations["bridge_menu_api_v1_wordpress_sites__site_id__bridge_menus__menu__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Bridge Delete Menu
+         * @description Delete a menu and every item in it, permanently; the theme locations it filled go
+         *     empty. `content.delete`, the key a drafting assistant does not hold.
+         */
+        delete: operations["bridge_delete_menu_api_v1_wordpress_sites__site_id__bridge_menus__menu__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Bridge Update Menu
+         * @description Rename a menu and/or make `locations` exactly the set of theme locations it fills: it
+         *     takes over each one named and is released from the rest. Live at once, hence `publish`.
+         */
+        patch: operations["bridge_update_menu_api_v1_wordpress_sites__site_id__bridge_menus__menu__patch"];
         trace?: never;
     };
     "/api/v1/wordpress/sites/{site_id}/bridge/menus/{menu}/items": {
@@ -15594,6 +15609,33 @@ export interface paths {
          * @description Remove one item from a menu.
          */
         delete: operations["bridge_menu_remove_item_api_v1_wordpress_sites__site_id__bridge_menus__menu__items__item_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Bridge Menu Update Item
+         * @description Edit a menu item in place — rename it, re-point it, move it under another parent
+         *     (`parent: 0` for the top level), set its position among its siblings, target, classes,
+         *     description or title attribute. What you leave out is kept. Live at once, hence `publish`.
+         */
+        patch: operations["bridge_menu_update_item_api_v1_wordpress_sites__site_id__bridge_menus__menu__items__item_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}/bridge/menus/{menu}/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Bridge Menu Reorder
+         * @description Put one parent's children (the top level by default) in the given order; siblings left
+         *     out follow in their current order. Live at once, hence `publish`.
+         */
+        put: operations["bridge_menu_reorder_api_v1_wordpress_sites__site_id__bridge_menus__menu__order_put"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -39619,10 +39661,58 @@ export interface components {
             [key: string]: unknown;
         };
         /**
+         * WordPressMenuCreate
+         * @description Create an empty navigation menu, optionally placed in theme locations.
+         */
+        WordPressMenuCreate: {
+            /**
+             * Locations
+             * @description Theme location slugs this menu should fill (see the menus list).
+             */
+            locations?: string[] | null;
+            /** Name */
+            name: string;
+        };
+        /** WordPressMenuDeleted */
+        WordPressMenuDeleted: {
+            /**
+             * Deleted
+             * @default true
+             */
+            deleted: boolean;
+            /** Id */
+            id: number;
+            /**
+             * Items Removed
+             * @default 0
+             */
+            items_removed: number;
+            /** Locations */
+            locations?: string[];
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
          * WordPressMenuItemAdd
          * @description Add a record, a term or a custom link to a menu. Live at once.
          */
         WordPressMenuItemAdd: {
+            /**
+             * Attr Title
+             * @description The link's title attribute.
+             */
+            attr_title?: string | null;
+            /**
+             * Classes
+             * @description CSS classes on the item.
+             */
+            classes?: string[] | null;
+            /** Description */
+            description?: string | null;
             /**
              * Object Id
              * @description A record id to link.
@@ -39633,7 +39723,10 @@ export interface components {
              * @description Parent menu item id.
              */
             parent?: number | null;
-            /** Position */
+            /**
+             * Position
+             * @description 1-based place among its siblings; left out, the item goes last.
+             */
             position?: number | null;
             /**
              * Target
@@ -39644,11 +39737,61 @@ export interface components {
             taxonomy?: string | null;
             /** Term Id */
             term_id?: number | null;
-            /** Title */
+            /**
+             * Title
+             * @description Label; defaults to the record's or term's title.
+             */
             title?: string | null;
             /**
              * Url
              * @description A custom link (needs a title).
+             */
+            url?: string | null;
+        };
+        /**
+         * WordPressMenuItemUpdate
+         * @description Edit a menu item in place; what you leave out is kept. Live at once.
+         *
+         *     Re-point it with ``object_id``, ``term_id`` + ``taxonomy``, or ``url`` (a custom link only —
+         *     a url alone on a record item is refused). ``parent: 0`` lifts it to the top level; moved
+         *     under another parent without ``position`` it lands last among its new siblings.
+         */
+        WordPressMenuItemUpdate: {
+            /** Attr Title */
+            attr_title?: string | null;
+            /** Classes */
+            classes?: string[] | null;
+            /** Description */
+            description?: string | null;
+            /**
+             * Object Id
+             * @description A record id to link instead.
+             */
+            object_id?: number | null;
+            /**
+             * Parent
+             * @description Parent menu item id; 0 for the top level.
+             */
+            parent?: number | null;
+            /**
+             * Position
+             * @description 1-based place among its siblings.
+             */
+            position?: number | null;
+            /**
+             * Target
+             * @description Open in a new tab.
+             */
+            target?: boolean | null;
+            /** Taxonomy */
+            taxonomy?: string | null;
+            /** Term Id */
+            term_id?: number | null;
+            /** Title */
+            title?: string | null;
+            /**
+             * Url
+             * @description A new url, on a custom link.
              */
             url?: string | null;
         };
@@ -39658,10 +39801,43 @@ export interface components {
             items?: {
                 [key: string]: unknown;
             }[];
-            /** Locations */
-            locations?: string[];
+            /**
+             * Locations
+             * @description The theme's menu locations: `{slug, label, menu}` from plugin 1.3.0 on, bare slugs from older plugins.
+             */
+            locations?: ({
+                [key: string]: unknown;
+            } | string)[];
         } & {
             [key: string]: unknown;
+        };
+        /**
+         * WordPressMenuReorder
+         * @description Put one parent's children in this order. Live at once.
+         */
+        WordPressMenuReorder: {
+            /**
+             * Order
+             * @description Item ids, first to last; siblings left out follow in their current order.
+             */
+            order: number[];
+            /**
+             * Parent
+             * @description The parent whose children to order; left out or 0, the top level.
+             */
+            parent?: number | null;
+        };
+        /**
+         * WordPressMenuUpdate
+         * @description Rename a menu and/or make ``locations`` exactly the set of theme locations it fills: it
+         *     takes over each one named and is released from any other it filled. ``[]`` releases it
+         *     from every location. Live at once.
+         */
+        WordPressMenuUpdate: {
+            /** Locations */
+            locations?: string[] | null;
+            /** Name */
+            name?: string | null;
         };
         /** WordPressOptionsPages */
         WordPressOptionsPages: {
@@ -71377,6 +71553,41 @@ export interface operations {
             };
         };
     };
+    bridge_create_menu_api_v1_wordpress_sites__site_id__bridge_menus_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WordPressMenuCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressMenu"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     bridge_menu_api_v1_wordpress_sites__site_id__bridge_menus__menu__get: {
         parameters: {
             query?: never;
@@ -71388,6 +71599,74 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressMenu"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_delete_menu_api_v1_wordpress_sites__site_id__bridge_menus__menu__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+                menu: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressMenuDeleted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_update_menu_api_v1_wordpress_sites__site_id__bridge_menus__menu__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+                menu: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WordPressMenuUpdate"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -71457,6 +71736,79 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressMenu"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_menu_update_item_api_v1_wordpress_sites__site_id__bridge_menus__menu__items__item_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+                menu: string;
+                item_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WordPressMenuItemUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressMenu"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_menu_reorder_api_v1_wordpress_sites__site_id__bridge_menus__menu__order_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+                menu: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WordPressMenuReorder"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

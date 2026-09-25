@@ -7180,6 +7180,8 @@
   "activity.action.term_created": "created the term “{title}” on the WordPress site",
   "activity.action.options_updated": "changed the options page “{title}” on the WordPress site ({fields})",
   "activity.action.menu_updated": "changed the menu “{title}” on the WordPress site",
+  "activity.action.menu_created": "created the menu “{title}” on the WordPress site",
+  "activity.action.menu_deleted": "deleted the menu “{title}” from the WordPress site",
   "activity.action.translation_created": "created the {lang} translation of “{title}” on the WordPress site",
   "activity.action.string_translated": "translated the string “{title}” ({lang}) on the WordPress site",
   "wordpress.mcp_hint": "Reachable for agents through the wordpress section of this workspace's MCP server.",

@@ -7180,6 +7180,8 @@
   "activity.action.term_created": "maakte de term “{title}” aan op de WordPress-site",
   "activity.action.options_updated": "wijzigde de optiepagina “{title}” op de WordPress-site ({fields})",
   "activity.action.menu_updated": "wijzigde het menu “{title}” op de WordPress-site",
+  "activity.action.menu_created": "maakte het menu “{title}” aan op de WordPress-site",
+  "activity.action.menu_deleted": "verwijderde het menu “{title}” van de WordPress-site",
   "activity.action.translation_created": "maakte de {lang}-vertaling van “{title}” aan op de WordPress-site",
   "activity.action.string_translated": "vertaalde de tekst “{title}” ({lang}) op de WordPress-site",
   "wordpress.mcp_hint": "Voor agents bereikbaar via de sectie wordpress van de MCP-server van deze werkruimte.",

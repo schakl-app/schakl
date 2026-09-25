@@ -200,6 +200,10 @@ class FakeWordPress:
         self.bridge_options: dict[str, dict] = {
             "bedrijfsinformatie": {"telefoon": "0113-123456", "partners": []},
         }
+        self.bridge_menus: dict[int, dict] = {
+            1: {"id": 1, "name": "Hoofdmenu", "slug": "hoofdmenu", "locations": ["primary"]},
+        }
+        #: The items of menu 1; a menu created through the fake starts and stays empty.
         self.bridge_menu_items: list[dict] = [
             {"id": 501, "title": "Home", "url": "https://klant.nl/", "type": "post_type",
              "object": "page", "object_id": 1, "parent": None, "order": 1, "children": []},
@@ -383,6 +387,123 @@ class FakeWordPress:
             status,
             json={"code": code, "message": message, "status": status, "details": details or {}},
         )
+
+    def _bridge_menus_route(self, request: httpx.Request, parts: list[str], body: dict):
+        """``menus.*`` as plugin 1.3.0 answers them: one theme location (``primary``), menu 1
+        with its items, menus made here empty; positions are places among siblings."""
+        known = ["primary"]
+
+        def place(menu: dict, wanted: list[str]):
+            unknown = [loc for loc in wanted if loc not in known]
+            if unknown:
+                return self._bridge_error(
+                    "invalid_input", "The theme registers no such location: " + ", ".join(unknown),
+                    400, {"field": "locations", "unknown": unknown, "known": known})
+            for other in self.bridge_menus.values():
+                other["locations"] = [loc for loc in other["locations"] if loc not in wanted]
+            menu["locations"] = list(wanted)
+            return None
+
+        def slug(name: str) -> str:
+            return name.lower().replace(" ", "-")
+
+        if len(parts) == 1 and request.method == "GET":
+            filled = {loc: m["id"] for m in self.bridge_menus.values() for loc in m["locations"]}
+            return _json({
+                "items": [{**m, "count": len(self.bridge_menu_items) if m["id"] == 1 else 0}
+                          for m in self.bridge_menus.values()],
+                "locations": [{"slug": loc, "label": loc.title(), "menu": filled.get(loc)}
+                              for loc in known],
+            })
+        if len(parts) == 1 and request.method == "POST":
+            if not (body.get("name") or "").strip():
+                return self._bridge_error("invalid_input", "A menu needs a name.", 400,
+                                          {"field": "name"})
+            wp_id = max(self.bridge_menus) + 1
+            menu = {"id": wp_id, "name": body["name"], "slug": slug(body["name"]), "locations": []}
+            refused = place(menu, body.get("locations") or [])
+            if refused is not None:
+                return refused
+            self.bridge_menus[wp_id] = menu
+            self.writes.append(("/menus", body))
+            return _json({**menu, "items": [], "created": True})
+        menu = next((m for m in self.bridge_menus.values()
+                     if parts[1] in (str(m["id"]), m["slug"])), None)
+        if menu is None:
+            return self._bridge_error("not_found", "That menu was not found.", 404, {
+                "menu": parts[1], "known": [m["slug"] for m in self.bridge_menus.values()]})
+        items = self.bridge_menu_items if menu["id"] == 1 else []
+        if len(parts) == 2 and request.method == "PATCH":
+            if "name" not in body and "locations" not in body:
+                return self._bridge_error("invalid_input", "Send a name and/or locations.", 400)
+            if "locations" in body:
+                refused = place(menu, body["locations"])
+                if refused is not None:
+                    return refused
+            if "name" in body:
+                menu["name"], menu["slug"] = body["name"], slug(body["name"])
+            self.writes.append((f"/menus/{parts[1]}", body))
+            return _json({**menu, "items": items})
+        if len(parts) == 2 and request.method == "DELETE":
+            del self.bridge_menus[menu["id"]]
+            if menu["id"] == 1:
+                self.bridge_menu_items = []
+            return _json({"id": menu["id"], "name": menu["name"], "slug": menu["slug"],
+                          "deleted": True, "items_removed": len(items),
+                          "locations": menu["locations"]})
+        if len(parts) == 3 and parts[2] == "items" and request.method == "POST":
+            item_id = max([i["id"] for i in items] + [500]) + 1
+            items.append({
+                "id": item_id, "title": body.get("title") or "Nieuw", "url": body.get("url"),
+                "type": "custom" if body.get("url") else "post_type", "object": "page",
+                "object_id": body.get("object_id"), "parent": body.get("parent"),
+                "order": len(items) + 1, "children": []})
+            return _json({**menu, "items": items, "added": item_id})
+        if len(parts) == 3 and parts[2] == "order" and request.method == "PUT":
+            parent = body.get("parent") or None
+            order = [int(i) for i in body.get("order") or []]
+            siblings = [i["id"] for i in items if i.get("parent") == parent]
+            if not order:
+                return self._bridge_error("invalid_input", "order must be a non-empty list.",
+                                          400, {"field": "order"})
+            strangers = [i for i in order if i not in siblings]
+            if strangers:
+                return self._bridge_error(
+                    "invalid_input", "Not children of that parent: " + str(strangers), 400,
+                    {"field": "order", "unknown": strangers, "siblings": siblings})
+            final = order + [i for i in siblings if i not in order]
+            rank = {wp_id: n for n, wp_id in enumerate(final)}
+            items.sort(key=lambda i: rank.get(i["id"], len(final)))
+            for n, item in enumerate((i for i in items if i.get("parent") == parent), start=1):
+                item["order"] = n
+            self.writes.append((f"/menus/{parts[1]}/order", body))
+            return _json({**menu, "items": items, "reordered": final})
+        if len(parts) == 4 and parts[2] == "items":
+            item_id = int(parts[3])
+            item = next((i for i in items if i["id"] == item_id), None)
+            if item is None:
+                return self._bridge_error("not_found", "That menu item was not found.", 404)
+            if request.method == "PATCH":
+                editable = {"title", "url", "object_id", "term_id", "taxonomy", "parent",
+                            "position", "target", "classes", "description", "attr_title"}
+                sent = editable & set(body)
+                if not sent:
+                    return self._bridge_error(
+                        "invalid_input", "Send at least one of: " + str(sorted(editable)), 400)
+                if "url" in body and item["type"] != "custom" and not (
+                    {"object_id", "term_id"} & set(body)
+                ):
+                    return self._bridge_error(
+                        "invalid_input", "This item links a post_type; send object_id.", 400,
+                        {"field": "url", "type": item["type"]})
+                for key in sent:
+                    item[key] = "_blank" if key == "target" and body[key] else body[key]
+                self.writes.append((f"/menus/{parts[1]}/items/{item_id}", body))
+                return _json({**menu, "items": items, "updated": item_id})
+            if request.method == "DELETE":
+                items[:] = [i for i in items if i["id"] != item_id]
+                return _json({**menu, "items": items, "removed": item_id})
+        return _json({**menu, "items": items})
 
     def _bridge_validate(self, fields: dict) -> list[dict]:
         """A sliver of the plugin's writer: choices on `kleur`, a required title on a type-10
@@ -628,32 +749,8 @@ class FakeWordPress:
                           "fields": self.bridge_options[page], "fields_mode": "compact",
                           "references": {}})
 
-        if sub == "/menus" and request.method == "GET":
-            return _json({
-                "items": [{"id": 1, "name": "Hoofdmenu", "slug": "hoofdmenu",
-                           "count": len(self.bridge_menu_items), "locations": ["primary"]}],
-                "locations": ["primary"],
-            })
-        if len(parts) >= 2 and parts[0] == "menus":
-            if parts[1] not in ("1", "hoofdmenu"):
-                return self._bridge_error("not_found", "That menu was not found.", 404)
-            menu = {"id": 1, "name": "Hoofdmenu", "slug": "hoofdmenu"}
-            if len(parts) == 3 and request.method == "POST":
-                item_id = max([i["id"] for i in self.bridge_menu_items] + [500]) + 1
-                self.bridge_menu_items.append({
-                    "id": item_id, "title": body.get("title") or "Nieuw", "url": body.get("url"),
-                    "type": "custom" if body.get("url") else "post_type", "object": "page",
-                    "object_id": body.get("object_id"), "parent": body.get("parent"),
-                    "order": len(self.bridge_menu_items) + 1, "children": []})
-                return _json({**menu, "items": self.bridge_menu_items, "added": item_id})
-            if len(parts) == 4 and request.method == "DELETE":
-                item_id = int(parts[3])
-                before = len(self.bridge_menu_items)
-                self.bridge_menu_items = [i for i in self.bridge_menu_items if i["id"] != item_id]
-                if len(self.bridge_menu_items) == before:
-                    return self._bridge_error("not_found", "That menu item was not found.", 404)
-                return _json({**menu, "items": self.bridge_menu_items, "removed": item_id})
-            return _json({**menu, "items": self.bridge_menu_items})
+        if parts and parts[0] == "menus":
+            return self._bridge_menus_route(request, parts, body)
 
         if parts and parts[0] == "forms":
             return self._bridge_forms_route(request, parts, body, q)

@@ -725,7 +725,11 @@ class WordPressOptionsWrite(BaseModel):
 
 class WordPressMenuList(_BridgeOpen):
     items: list[dict[str, Any]] = Field(default_factory=list)
-    locations: list[str] = Field(default_factory=list)
+    locations: list[dict[str, Any] | str] = Field(
+        default_factory=list,
+        description="The theme's menu locations: `{slug, label, menu}` from plugin 1.3.0 on, "
+        "bare slugs from older plugins.",
+    )
 
 
 class WordPressMenu(_BridgeOpen):
@@ -742,10 +746,76 @@ class WordPressMenuItemAdd(BaseModel):
     term_id: int | None = None
     taxonomy: str | None = None
     url: str | None = Field(None, description="A custom link (needs a title).")
-    title: str | None = None
+    title: str | None = Field(None, description="Label; defaults to the record's or term's title.")
     parent: int | None = Field(None, description="Parent menu item id.")
-    position: int | None = None
+    position: int | None = Field(
+        None, description="1-based place among its siblings; left out, the item goes last."
+    )
     target: bool = False
+    classes: list[str] | None = Field(None, description="CSS classes on the item.")
+    description: str | None = None
+    attr_title: str | None = Field(None, description="The link's title attribute.")
+
+
+class WordPressMenuItemUpdate(BaseModel):
+    """Edit a menu item in place; what you leave out is kept. Live at once.
+
+    Re-point it with ``object_id``, ``term_id`` + ``taxonomy``, or ``url`` (a custom link only —
+    a url alone on a record item is refused). ``parent: 0`` lifts it to the top level; moved
+    under another parent without ``position`` it lands last among its new siblings.
+    """
+
+    object_id: int | None = Field(None, description="A record id to link instead.")
+    term_id: int | None = None
+    taxonomy: str | None = None
+    url: str | None = Field(None, description="A new url, on a custom link.")
+    title: str | None = Field(None, min_length=1)
+    parent: int | None = Field(None, description="Parent menu item id; 0 for the top level.")
+    position: int | None = Field(None, description="1-based place among its siblings.")
+    target: bool | None = Field(None, description="Open in a new tab.")
+    classes: list[str] | None = None
+    description: str | None = None
+    attr_title: str | None = None
+
+
+class WordPressMenuReorder(BaseModel):
+    """Put one parent's children in this order. Live at once."""
+
+    parent: int | None = Field(
+        None, description="The parent whose children to order; left out or 0, the top level."
+    )
+    order: list[int] = Field(
+        ...,
+        min_length=1,
+        description="Item ids, first to last; siblings left out follow in their current order.",
+    )
+
+
+class WordPressMenuCreate(BaseModel):
+    """Create an empty navigation menu, optionally placed in theme locations."""
+
+    name: str = Field(..., min_length=1, max_length=200)
+    locations: list[str] | None = Field(
+        None, description="Theme location slugs this menu should fill (see the menus list)."
+    )
+
+
+class WordPressMenuUpdate(BaseModel):
+    """Rename a menu and/or make ``locations`` exactly the set of theme locations it fills: it
+    takes over each one named and is released from any other it filled. ``[]`` releases it
+    from every location. Live at once."""
+
+    name: str | None = Field(None, min_length=1, max_length=200)
+    locations: list[str] | None = None
+
+
+class WordPressMenuDeleted(_BridgeOpen):
+    id: int
+    name: str
+    slug: str
+    deleted: bool = True
+    items_removed: int = 0
+    locations: list[str] = Field(default_factory=list)
 
 
 class WordPressLanguages(_BridgeOpen):

@@ -52,8 +52,13 @@ from app.integrations.wordpress.schemas import (
     WordPressMediaRow,
     WordPressMediaUpload,
     WordPressMenu,
+    WordPressMenuCreate,
+    WordPressMenuDeleted,
     WordPressMenuItemAdd,
+    WordPressMenuItemUpdate,
     WordPressMenuList,
+    WordPressMenuReorder,
+    WordPressMenuUpdate,
     WordPressOptionsPages,
     WordPressOptionsRead,
     WordPressOptionsWrite,
@@ -749,6 +754,87 @@ async def bridge_menu_remove_item(
 ) -> WordPressMenu:
     """Remove one item from a menu."""
     return await WordPressBridgeService(ctx).menu_remove_item(site_id, menu, item_id)
+
+
+@router.patch(
+    "/sites/{site_id}/bridge/menus/{menu}/items/{item_id}",
+    response_model=WordPressMenu,
+    dependencies=[require_permission("wordpress.content.publish")],
+)
+async def bridge_menu_update_item(
+    site_id: uuid.UUID,
+    menu: str,
+    item_id: int,
+    payload: WordPressMenuItemUpdate,
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressMenu:
+    """Edit a menu item in place — rename it, re-point it, move it under another parent
+    (`parent: 0` for the top level), set its position among its siblings, target, classes,
+    description or title attribute. What you leave out is kept. Live at once, hence `publish`."""
+    return await WordPressBridgeService(ctx).menu_update_item(site_id, menu, item_id, payload)
+
+
+@router.put(
+    "/sites/{site_id}/bridge/menus/{menu}/order",
+    response_model=WordPressMenu,
+    dependencies=[require_permission("wordpress.content.publish")],
+)
+async def bridge_menu_reorder(
+    site_id: uuid.UUID,
+    menu: str,
+    payload: WordPressMenuReorder,
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressMenu:
+    """Put one parent's children (the top level by default) in the given order; siblings left
+    out follow in their current order. Live at once, hence `publish`."""
+    return await WordPressBridgeService(ctx).menu_reorder(site_id, menu, payload)
+
+
+@router.post(
+    "/sites/{site_id}/bridge/menus",
+    response_model=WordPressMenu,
+    status_code=201,
+    dependencies=[require_permission("wordpress.content.publish")],
+)
+async def bridge_create_menu(
+    site_id: uuid.UUID,
+    payload: WordPressMenuCreate,
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressMenu:
+    """Create an empty navigation menu, optionally placed in theme locations (a location it
+    takes over is live at once, hence `publish`). Add items with `bridge_menu_add_item`."""
+    return await WordPressBridgeService(ctx).menu_create(site_id, payload)
+
+
+@router.patch(
+    "/sites/{site_id}/bridge/menus/{menu}",
+    response_model=WordPressMenu,
+    dependencies=[require_permission("wordpress.content.publish")],
+)
+async def bridge_update_menu(
+    site_id: uuid.UUID,
+    menu: str,
+    payload: WordPressMenuUpdate,
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressMenu:
+    """Rename a menu and/or make `locations` exactly the set of theme locations it fills: it
+    takes over each one named and is released from the rest. Live at once, hence `publish`."""
+    return await WordPressBridgeService(ctx).menu_update(site_id, menu, payload)
+
+
+@router.delete(
+    "/sites/{site_id}/bridge/menus/{menu}",
+    response_model=WordPressMenuDeleted,
+    dependencies=[require_permission("wordpress.content.delete")],
+)
+async def bridge_delete_menu(
+    site_id: uuid.UUID,
+    menu: str,
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressMenuDeleted:
+    """Delete a menu and every item in it, permanently; the theme locations it filled go
+    empty. `content.delete`, the key a drafting assistant does not hold."""
+    return await WordPressBridgeService(ctx).menu_delete(site_id, menu)
 
 
 @router.get(
