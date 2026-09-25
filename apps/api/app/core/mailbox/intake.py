@@ -102,7 +102,8 @@ class IntakeMessage:
 class IntakeOutcome:
     """What the handler did. ``links`` are mapping columns the feed may copy onto the
     interaction half of the same mail (``task_id``, ``company_id`` — the interactions module's
-    ``MAPPING_FIELDS`` vocabulary), so a contact moment lands filed on the task the mail made."""
+    ``MAPPING_FIELDS`` vocabulary — plus ``task_ids`` where one mail became several tasks), so
+    a contact moment lands filed on the task, or every task, the mail made."""
 
     #: ``created`` | ``parked`` | ``duplicate`` | ``refused``
     status: str
@@ -191,7 +192,10 @@ def merge_links(mappings: dict[str, Any], outcome: IntakeOutcome | None) -> dict
     merged = dict(mappings)
     task_id = outcome.links.get("task_id")
     if task_id is not None:
-        roster = [task_id, *(merged.get("task_ids") or [])]
+        # The intake's whole roster leads (a split mail made several), then whatever the
+        # thread already named — the lead of the intake is the lead of the moment.
+        made = [task_id, *(outcome.links.get("task_ids") or [])]
+        roster = [*made, *(merged.get("task_ids") or [])]
         if merged.get("task_id") and merged["task_id"] not in roster:
             roster.append(merged["task_id"])
         merged["task_id"] = task_id

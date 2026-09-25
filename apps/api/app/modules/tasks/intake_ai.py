@@ -28,6 +28,19 @@ project, labels, steps, links), with three bounds that make it safe to apply unw
 And the confirmation is the sender's own notification: it names the client, the assignee and
 the deadline the task landed with, and says which of them the model chose — a wrong pick is
 visible within the minute, on the phone the mail was sent from.
+
+**One mail may be several tasks, and the model decides how many.** A colleague dumps a call
+into one mail — "de DNS voor Nova, de nieuwsbrief voor Klokuus, en Jan moet het contract nog
+nakijken" — and a single task titled after the subject line is three jobs for three people on
+one card that nobody can finish. So the model submits a *list* (``tasks``, one to
+:data:`MAX_TASKS`), with the rule stated in the prompt rather than left to taste: one task per
+piece of work that can be assigned, dated and finished on its own; different clients are always
+separate; the steps of one job are one task with a checklist; when in doubt, one. The three
+bounds above hold per task — the sender's directive still decides its field for **every** task
+(a ``klant:`` line is a statement about the mail), every id is grounded per task, and a task the
+model names a client for gets that client only where the sender named none. A mail is one act
+either way: it becomes all of its tasks, or — when any of them has no client — parks whole for
+its sender with the split on the card.
 """
 
 from __future__ import annotations
@@ -57,6 +70,10 @@ FEATURE = "task_intake"
 
 MAX_BODY_CHARS = 12_000
 MAX_LINKS = 4
+#: The most tasks one mail may become. A mail that genuinely lists more is a project plan, and
+#: the ninth item is better parked in the notes of the eighth than lost to a cap nobody stated.
+MAX_TASKS = 8
+_MAX_ATTACHMENTS = 20
 MAX_SUMMARY_CHARS = 4_000
 _MAX_LABELS = 10
 _DUE_PAST_DAYS = 3
@@ -64,107 +81,139 @@ _DUE_FUTURE_DAYS = 730
 
 _URL_RE = re.compile(r"https?://[^\s<>\"'\)\]]+", re.IGNORECASE)
 
+_TASK_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "title": {
+            "type": "string",
+            "description": (
+                "What this task is, in a handful of words. For a mail that is ONE task, the "
+                "subject line is used instead whenever it is usable (not empty, not just "
+                "'Fwd:'/'RE:'), so write the title as if it might be needed. For a mail that "
+                "becomes several tasks, each title is what its card says."
+            ),
+        },
+        "summary": {
+            "type": ["string", "null"],
+            "description": (
+                "Short notes for whoever picks the task up: what has to happen and any "
+                "constraint that changes how — every fact, name, address and condition "
+                "the colleague stated about THIS task, in your own words. At most three "
+                "sentences or three short bullets. Always written: the colleague's words are "
+                "NOT copied onto the task, so this is the only way what they asked reaches "
+                "it. Never retell the forwarded mail — it is attached to the task."
+            ),
+        },
+        "company_id": {
+            "type": ["string", "null"],
+            "description": (
+                "The client from the CLIENTS list, only when the colleague names one for "
+                "this task or the forwarded mail makes it unambiguous. Null when unsure."
+            ),
+        },
+        "project_id": {"type": ["string", "null"]},
+        "assignee_user_id": {
+            "type": ["string", "null"],
+            "description": (
+                "The colleague the sender names as the one to do THIS task, from COLLEAGUES. "
+                "Null when the sender names nobody — never the sender themselves."
+            ),
+        },
+        "due_date": {
+            "type": ["string", "null"],
+            "description": "YYYY-MM-DD, only when the mail states or clearly implies one.",
+        },
+        "priority": {
+            "type": ["string", "null"],
+            "enum": [*(p.value for p in TaskPriority), None],
+        },
+        "label_ids": {"type": "array", "maxItems": _MAX_LABELS, "items": {"type": "string"}},
+        "checklist_title": {"type": ["string", "null"]},
+        "checklist_items": {
+            "type": "array",
+            "maxItems": MAX_CHECKLIST_ITEMS,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string"},
+                    "description": {"type": ["string", "null"]},
+                },
+                "required": ["title"],
+                "additionalProperties": False,
+            },
+            "description": (
+                "The concrete steps this task asks for, in order. Omit entirely when it "
+                "describes no separable steps."
+            ),
+        },
+        "links": {
+            "type": "array",
+            "maxItems": MAX_LINKS,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string"},
+                    "title": {"type": ["string", "null"]},
+                },
+                "required": ["url"],
+                "additionalProperties": False,
+            },
+            "description": (
+                "Only URLs that appear verbatim in the mail, and only the ones someone "
+                "has to open to do this work. Never signature or footer links."
+            ),
+        },
+        "attachments": {
+            "type": "array",
+            "maxItems": _MAX_ATTACHMENTS,
+            "items": {"type": "string"},
+            "description": (
+                "File names from 'attachments' that belong with THIS task, verbatim. Only "
+                "needed when the mail becomes several tasks; a file no task claims goes with "
+                "the first one."
+            ),
+        },
+        "requires_interaction": {
+            "type": ["boolean", "null"],
+            "description": (
+                "True only when finishing means answering the client — a question asked, "
+                "a confirmation awaited."
+            ),
+        },
+    },
+    "required": ["title"],
+    "additionalProperties": False,
+}
+
 SUBMIT_INTAKE = ToolDef(
-    name="submit_intake_task",
-    description="Submit what the task should look like. Call exactly once, as your final act.",
+    name="submit_intake_plan",
+    description=(
+        "Submit the task or tasks this e-mail should become. Call exactly once, as your final act."
+    ),
     input_schema={
         "type": "object",
         "properties": {
-            "title": {
-                "type": ["string", "null"],
-                "description": (
-                    "What the task is, in a handful of words, only when the subject line is "
-                    "not already a usable title (empty, or just 'Fwd:'/'RE:' with nothing "
-                    "behind it). Null otherwise — the subject stays."
-                ),
-            },
-            "summary": {
-                "type": ["string", "null"],
-                "description": (
-                    "Short notes for whoever picks the task up: what has to happen and any "
-                    "constraint that changes how — every fact, name, address and condition "
-                    "the colleague stated, in your own words. At most three sentences or "
-                    "three short bullets. Always written: the colleague's words are NOT "
-                    "copied onto the task, so this is the only way what they asked reaches "
-                    "it. Never retell the forwarded mail — it is attached to the task."
-                ),
-            },
-            "company_id": {
-                "type": ["string", "null"],
-                "description": (
-                    "The client from the CLIENTS list, only when the colleague names one or "
-                    "the forwarded mail makes it unambiguous. Null when unsure."
-                ),
-            },
-            "project_id": {"type": ["string", "null"]},
-            "assignee_user_id": {
-                "type": ["string", "null"],
-                "description": (
-                    "The colleague the sender names as the one to do it, from COLLEAGUES. "
-                    "Null when the sender names nobody — never the sender themselves."
-                ),
-            },
-            "due_date": {
-                "type": ["string", "null"],
-                "description": "YYYY-MM-DD, only when the mail states or clearly implies one.",
-            },
-            "priority": {
-                "type": ["string", "null"],
-                "enum": [*(p.value for p in TaskPriority), None],
-            },
-            "label_ids": {"type": "array", "maxItems": _MAX_LABELS, "items": {"type": "string"}},
-            "checklist_title": {"type": ["string", "null"]},
-            "checklist_items": {
+            "tasks": {
                 "type": "array",
-                "maxItems": MAX_CHECKLIST_ITEMS,
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "title": {"type": "string"},
-                        "description": {"type": ["string", "null"]},
-                    },
-                    "required": ["title"],
-                    "additionalProperties": False,
-                },
+                "minItems": 1,
+                "maxItems": MAX_TASKS,
+                "items": _TASK_SCHEMA,
                 "description": (
-                    "The concrete steps the mail asks for, in order. Omit entirely when it "
-                    "describes no separable steps."
-                ),
-            },
-            "links": {
-                "type": "array",
-                "maxItems": MAX_LINKS,
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "url": {"type": "string"},
-                        "title": {"type": ["string", "null"]},
-                    },
-                    "required": ["url"],
-                    "additionalProperties": False,
-                },
-                "description": (
-                    "Only URLs that appear verbatim in the mail, and only the ones someone "
-                    "has to open to do this work. Never signature or footer links."
-                ),
-            },
-            "requires_interaction": {
-                "type": ["boolean", "null"],
-                "description": (
-                    "True only when finishing means answering the client — a question asked, "
-                    "a confirmation awaited."
+                    "One entry per task. One entry is the ordinary answer; several only when "
+                    "the mail asks for separately finishable pieces of work (see the rules)."
                 ),
             },
         },
-        "required": [],
+        "required": ["tasks"],
         "additionalProperties": False,
     },
 )
 
 
 @dataclass
-class IntakePlan:
-    """What the model proposed, already grounded. Every field ``None``/empty is *no opinion*."""
+class PlannedTask:
+    """One task the model proposed, already grounded. Every field ``None``/empty is *no
+    opinion* — the handler fills it from the sender's own words or the org's defaults."""
 
     title: str | None = None
     summary: str | None = None
@@ -177,8 +226,22 @@ class IntakePlan:
     checklist_title: str | None = None
     checklist_items: list[tuple[str, str | None]] = field(default_factory=list)
     links: list[tuple[str, str | None]] = field(default_factory=list)
+    #: File names (of the mail's own attachments) this task claims.
+    attachments: list[str] = field(default_factory=list)
     requires_interaction: bool | None = None
+
+
+@dataclass
+class IntakePlan:
+    """What the model proposed for the whole mail: its tasks, in the order they were named.
+    Never empty — a call that grounds to no task at all is *no plan* (``None``)."""
+
+    tasks: list[PlannedTask] = field(default_factory=list)
     truncated: bool = False
+
+    @property
+    def split(self) -> bool:
+        return len(self.tasks) > 1
 
 
 def _text(value: Any, limit: int) -> str | None:
@@ -230,53 +293,99 @@ def _grounded_links(raw: Any, *, body: str) -> list[tuple[str, str | None]]:
     return links
 
 
-def plan_from_call(
-    submitted: dict[str, Any],
+def _task_from_entry(
+    entry: dict[str, Any],
     *,
-    candidates,
+    candidates,  # noqa: ANN001
     body: str,
-    today: date,  # noqa: ANN001
-) -> IntakePlan:
-    """The model's one call into a grounded plan. Every field is re-derived, never passed
-    through: the schema says what shape to answer in and guarantees nothing about what arrives."""
+    today: date,
+    attachment_names: set[str],
+) -> PlannedTask:
     seen = candidates.ids()
-    priority = submitted.get("priority")
+    priority = entry.get("priority")
     items: list[tuple[str, str | None]] = []
-    raw_items = submitted.get("checklist_items")
+    raw_items = entry.get("checklist_items")
     if isinstance(raw_items, list):
-        for entry in raw_items[:MAX_CHECKLIST_ITEMS]:
-            if not isinstance(entry, dict):
+        for item in raw_items[:MAX_CHECKLIST_ITEMS]:
+            if not isinstance(item, dict):
                 continue
-            title = _text(entry.get("title"), 512)
+            title = _text(item.get("title"), 512)
             if title:
-                items.append((title, _text(entry.get("description"), 2000)))
+                items.append((title, _text(item.get("description"), 2000)))
     label_ids: list[uuid.UUID] = []
-    raw_labels = submitted.get("label_ids")
+    raw_labels = entry.get("label_ids")
     if isinstance(raw_labels, list):
         allowed = candidates.label_ids()
-        for entry in raw_labels[:_MAX_LABELS]:
-            found = _uuid_in(entry, allowed)
+        for raw in raw_labels[:_MAX_LABELS]:
+            found = _uuid_in(raw, allowed)
             if found is not None and found not in label_ids:
                 label_ids.append(found)
-    requires = submitted.get("requires_interaction")
-    return IntakePlan(
-        title=_text(submitted.get("title"), 512),
-        summary=_text(submitted.get("summary"), MAX_SUMMARY_CHARS),
-        company_id=_uuid_in(submitted.get("company_id"), seen),
-        project_id=_uuid_in(submitted.get("project_id"), seen),
+    attachments: list[str] = []
+    raw_files = entry.get("attachments")
+    if isinstance(raw_files, list):
+        # Grounded like a link: a name the mail did not carry is dropped, never invented.
+        for raw in raw_files[:_MAX_ATTACHMENTS]:
+            name = _text(raw, 255)
+            if name and name in attachment_names and name not in attachments:
+                attachments.append(name)
+    requires = entry.get("requires_interaction")
+    return PlannedTask(
+        title=_text(entry.get("title"), 512),
+        summary=_text(entry.get("summary"), MAX_SUMMARY_CHARS),
+        company_id=_uuid_in(entry.get("company_id"), seen),
+        project_id=_uuid_in(entry.get("project_id"), seen),
         # Its own evidence set (#382): a member id is a real user id in the same space, and a
         # misheard name must come back as nobody rather than as a plausible somebody.
-        assignee_user_id=_uuid_in(submitted.get("assignee_user_id"), candidates.member_ids()),
-        due_date=_due(submitted.get("due_date"), today=today),
+        assignee_user_id=_uuid_in(entry.get("assignee_user_id"), candidates.member_ids()),
+        due_date=_due(entry.get("due_date"), today=today),
         priority=priority
         if isinstance(priority, str) and priority in {p.value for p in TaskPriority}
         else None,
         label_ids=label_ids,
-        checklist_title=_text(submitted.get("checklist_title"), 255),
+        checklist_title=_text(entry.get("checklist_title"), 255),
         checklist_items=items,
-        links=_grounded_links(submitted.get("links"), body=body),
+        links=_grounded_links(entry.get("links"), body=body),
+        attachments=attachments,
         requires_interaction=requires if isinstance(requires, bool) else None,
     )
+
+
+def plan_from_call(
+    submitted: dict[str, Any],
+    *,
+    candidates,  # noqa: ANN001
+    body: str,
+    today: date,
+    attachment_names: set[str] | None = None,
+) -> IntakePlan | None:
+    """The model's one call into a grounded plan. Every field is re-derived, never passed
+    through: the schema says what shape to answer in and guarantees nothing about what arrives.
+
+    A task with no title is dropped from a split rather than titled after its neighbour — in
+    a split each title *is* the card — and a call that grounds to nothing is ``None``, so the
+    handler makes the one task the words alone support instead of an empty list of them.
+    """
+    raw_tasks = submitted.get("tasks")
+    if not isinstance(raw_tasks, list):
+        return None
+    tasks: list[PlannedTask] = []
+    for entry in raw_tasks[:MAX_TASKS]:
+        if not isinstance(entry, dict):
+            continue
+        task = _task_from_entry(
+            entry,
+            candidates=candidates,
+            body=body,
+            today=today,
+            attachment_names=attachment_names or set(),
+        )
+        if task.title or task.summary or task.checklist_items:
+            tasks.append(task)
+    if len(tasks) > 1:
+        tasks = [t for t in tasks if t.title]
+    if not tasks:
+        return None
+    return IntakePlan(tasks=tasks)
 
 
 def _system_prompt(
@@ -310,8 +419,18 @@ def _system_prompt(
             "attachment, set the deadline, use the forwarded mail for context — is not a "
             "step and not a note: the application does that itself. A step is work the "
             "agency does for the client.",
+            "How many tasks: one is the ordinary answer. Submit several ONLY when the mail "
+            "asks for pieces of work that can each be assigned, dated and finished on their "
+            "own — work for different clients is always separate tasks; work the sender "
+            "hands to different colleagues, or with different deadlines, usually is. A list "
+            "of steps one person does as one job is ONE task with checklist_items, not "
+            "several tasks. Never split to look thorough, and never split what the sender "
+            "describes as one thing. When you split, every task gets its own title, its own "
+            "summary of only what concerns it, and — when the mail has attachments — the "
+            "file names that belong with it. Fields the sender settled for the whole mail "
+            "('already_decided') apply to every task; leave them null everywhere.",
             candidates,
-            "Call submit_intake_task exactly once.",
+            f"Call {SUBMIT_INTAKE.name} exactly once.",
         ]
     )
 
@@ -364,11 +483,13 @@ async def plan_intake(
     body: str,
     today: date,
     now: datetime | None = None,
+    attachment_names: set[str] | None = None,
 ) -> IntakePlan | None:
     """One model call as the **sender** (their horizon bounds the shortlist), or ``None`` when
     the answer could not be read. Raises nothing the caller has to catch: an intake mail is
     created without the model's help rather than parked behind a provider outage. ``now`` is
-    the org's wall clock at the moment the mail arrived, for the prompt's calendar line."""
+    the org's wall clock at the moment the mail arrived, for the prompt's calendar line;
+    ``attachment_names`` the mail's own files, which a task may claim by name."""
     # Imported here: ``candidates`` reads the tasks models, and this module is imported by the
     # tasks package at registration time — a module-level import is a cycle.
     from app.core.ai.candidates import TASK_BLOCKS
@@ -407,7 +528,16 @@ async def plan_intake(
     if call is None or call.incomplete:
         logger.info("task intake: no readable plan from the model")
         return None
-    plan = plan_from_call(call.input, candidates=candidates, body=body, today=today)
+    plan = plan_from_call(
+        call.input,
+        candidates=candidates,
+        body=body,
+        today=today,
+        attachment_names=attachment_names,
+    )
+    if plan is None:
+        logger.info("task intake: the model's plan grounded to no task")
+        return None
     plan.truncated = service.truncated
     return plan
 
@@ -415,7 +545,9 @@ async def plan_intake(
 __all__ = [
     "FEATURE",
     "MAX_BODY_CHARS",
+    "MAX_TASKS",
     "IntakePlan",
+    "PlannedTask",
     "available",
     "calendar_line",
     "plan_from_call",

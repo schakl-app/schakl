@@ -223,6 +223,16 @@ def test_merge_links_files_the_interaction_onto_the_task() -> None:
     assert merged["task_id"] == task_id and merged["task_ids"] == [task_id]
     assert merged["company_id"] == company_id
     assert merge_links({"company_id": company_id}, None) == {"company_id": company_id}
+    # A mail that became three tasks puts the contact moment on all three, lead first, ahead
+    # of whatever the thread had already named.
+    second, third, thread_task = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    split = IntakeOutcome(
+        status="created",
+        links={"task_id": task_id, "task_ids": [task_id, second, third], "company_id": company_id},
+    )
+    merged = merge_links({"task_id": thread_task, "task_ids": [thread_task]}, split)
+    assert merged["task_id"] == task_id
+    assert merged["task_ids"] == [task_id, second, third, thread_task]
 
 
 # --------------------------------------------------------------------------- #
@@ -794,17 +804,22 @@ async def test_the_model_fills_only_what_the_words_left_blank(client_for, monkey
         return "", [
             ToolCall(
                 id="c1",
-                name="submit_intake_task",
+                name="submit_intake_plan",
                 input={
-                    "company_id": company["id"],
-                    "assignee_user_id": str(uuid.uuid4()),  # not on the shortlist: dropped
-                    "due_date": "2027-01-15",  # the sender said nothing: filled
-                    "summary": "Nieuwsbrief-template bouwen in Mailchimp.",
-                    "checklist_items": [{"title": "Template"}, {"title": "Testmail"}],
-                    "links": [
-                        {"url": "https://nova.nl/huisstijl"},
-                        {"url": "https://invented.example"},  # not in the mail: dropped
-                    ],
+                    "tasks": [
+                        {
+                            "title": "Nieuwsbrief opzetten",  # one task: the subject wins
+                            "company_id": company["id"],
+                            "assignee_user_id": str(uuid.uuid4()),  # not on the shortlist
+                            "due_date": "2027-01-15",  # the sender said nothing: filled
+                            "summary": "Nieuwsbrief-template bouwen in Mailchimp.",
+                            "checklist_items": [{"title": "Template"}, {"title": "Testmail"}],
+                            "links": [
+                                {"url": "https://nova.nl/huisstijl"},
+                                {"url": "https://invented.example"},  # not in the mail
+                            ],
+                        }
+                    ]
                 },
             )
         ]
@@ -815,9 +830,7 @@ async def test_the_model_fills_only_what_the_words_left_blank(client_for, monkey
     monkeypatch.setattr("app.modules.tasks.intake_ai.available", _available)
     monkeypatch.setattr("app.core.ai.service.AIService.complete", _complete)
     monkeypatch.setattr("app.core.ai.service.AIService.flush_usage", _flush)
-    monkeypatch.setattr(
-        "app.core.ai.service.AIService.truncated", property(lambda self: False)
-    )
+    monkeypatch.setattr("app.core.ai.service.AIService.truncated", property(lambda self: False))
 
     message = _sent(
         "msg-ai",
@@ -831,6 +844,7 @@ async def test_the_model_fills_only_what_the_words_left_blank(client_for, monkey
     tasks = await _rows(t.org.id, Task)
     assert len(tasks) == 1
     task = tasks[0]
+    assert task.title == "Nieuwsbrief voor Nova"
     assert task.company_id == uuid.UUID(company["id"])
     assert task.assignee_user_id == t.user.id  # the invented id was dropped; the sender holds it
     assert task.due_date == date(2027, 1, 15)
@@ -843,6 +857,376 @@ async def test_the_model_fills_only_what_the_words_left_blank(client_for, monkey
         detail = (await c.get(f"/api/v1/tasks/{task.id}", headers=headers)).json()
         assert [i["title"] for i in detail["checklists"][0]["items"]] == ["Template", "Testmail"]
         assert [link["url"] for link in detail["links"]] == ["https://nova.nl/huisstijl"]
+
+
+def _model(monkeypatch, tasks: list[dict], *, captured: dict | None = None) -> None:
+    """The model half scripted: ``task_intake`` on, one call answering ``tasks``."""
+
+    async def _available(ctx):  # noqa: ANN001
+        return True
+
+    async def _complete(  # noqa: ANN001
+        self, feature, *, system, messages, tools, force_tool=None, **kw
+    ):
+        from app.core.ai.providers import ToolCall
+
+        if captured is not None:
+            captured["system"] = system
+            captured["document"] = messages[0].content
+        return "", [ToolCall(id="c1", name="submit_intake_plan", input={"tasks": tasks})]
+
+    async def _flush(self, feature):  # noqa: ANN001
+        return None
+
+    monkeypatch.setattr("app.modules.tasks.intake_ai.available", _available)
+    monkeypatch.setattr("app.core.ai.service.AIService.complete", _complete)
+    monkeypatch.setattr("app.core.ai.service.AIService.flush_usage", _flush)
+    monkeypatch.setattr("app.core.ai.service.AIService.truncated", property(lambda self: False))
+
+
+async def _colleague(t, email: str, name: str) -> uuid.UUID:  # noqa: ANN001
+    """An active colleague the model may name — on the shortlist and on the roster."""
+    from pwdlib import PasswordHash
+
+    from app.core.auth.models import User
+    from tests.conftest import add_membership
+
+    async with async_session_maker() as session:
+        user = User(
+            id=uuid.uuid4(),
+            email=email,
+            full_name=name,
+            hashed_password=PasswordHash.recommended().hash("secret1234"),
+            is_active=True,
+            is_verified=True,
+        )
+        session.add(user)
+        await session.flush()
+        await set_current_org(session, t.org.id)
+        await add_membership(session, t.org.id, user.id)
+        await session.commit()
+        return user.id
+
+
+async def test_one_mail_becomes_the_tasks_the_model_reads_in_it(
+    client_for, monkeypatch, tmp_path
+) -> None:
+    """A colleague empties a phone call into one mail: two clients, two colleagues, two
+    deadlines, two attachments. Every rule holds per task, the forwarded mail is filed once on
+    both, each file follows the task that claimed it, and the sender hears about it once."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+    t = await make_tenant("intake-split")
+    connection_id = await _seed(t)
+    headers = await auth_cookie(t.user)
+    lotte = await _colleague(t, "lotte@agency.nl", "Lotte de Vries")
+    async with client_for(t.host) as c:
+        await _configure(c, headers)
+        nova = (
+            await c.post("/api/v1/companies", json={"name": "Nova Fietsen"}, headers=headers)
+        ).json()
+        klok = (await c.post("/api/v1/companies", json={"name": "Klokuus"}, headers=headers)).json()
+    captured: dict = {}
+    _model(
+        monkeypatch,
+        [
+            {
+                "title": "DNS voor Nova omzetten",
+                "summary": "DNS van nova.nl naar Cloudflare.",
+                "company_id": nova["id"],
+                "due_date": "2027-02-01",
+                "checklist_items": [{"title": "Records exporteren"}, {"title": "NS wijzigen"}],
+                "attachments": ["dns.txt"],
+            },
+            {
+                "title": "Nieuwsbrief voor Klokuus",
+                "summary": "Template in Mailchimp.",
+                "company_id": klok["id"],
+                "assignee_user_id": str(lotte),
+                "due_date": "2027-02-10",
+                "attachments": ["huisstijl.pdf", "verzonnen.pdf"],  # the second is not in the mail
+            },
+        ],
+        captured=captured,
+    )
+    message = _sent(
+        "msg-split",
+        subject="Fwd: Twee dingen na het belletje",
+        body=(
+            "Sander van Nova wil de DNS omgezet hebben en Lotte moet de nieuwsbrief voor "
+            "Klokuus doen.\n\n"
+            "---------- Forwarded message ---------\nFrom: Sander <sander@nova.nl>\n\n"
+            "Kunnen jullie de DNS omzetten?"
+        ),
+    )
+    message["payload"] = {
+        "headers": message["payload"]["headers"],
+        "mimeType": "multipart/mixed",
+        "parts": [
+            {"mimeType": "text/plain", "body": {"data": message["payload"]["body"]["data"]}},
+            {
+                "filename": "dns.txt",
+                "mimeType": "text/plain",
+                "body": {"attachmentId": "a-dns", "size": 3},
+            },
+            {
+                "filename": "huisstijl.pdf",
+                "mimeType": "application/pdf",
+                "body": {"attachmentId": "a-pdf", "size": 9},
+            },
+            {
+                "filename": "los.png",
+                "mimeType": "image/png",
+                "body": {"attachmentId": "a-png", "size": 8},
+            },
+        ],
+    }
+    stub = _StubGmail(history=["msg-split"], messages={"msg-split": message}, history_id="9800")
+    stub.messages["a-dns"] = {"data": base64.urlsafe_b64encode(b"ns1").decode()}
+    stub.messages["a-pdf"] = {"data": base64.urlsafe_b64encode(b"%PDF-fake").decode()}
+    stub.messages["a-png"] = {"data": base64.urlsafe_b64encode(b"\x89PNG\r\n\x1a\n").decode()}
+    assert await _poll(t, connection_id, stub, monkeypatch) == 1
+    # The prompt states the splitting rule, and the document names the files a task may claim.
+    assert "Submit several ONLY when" in captured["system"]
+    assert "huisstijl.pdf" in captured["document"]
+
+    tasks = sorted(await _rows(t.org.id, Task), key=lambda x: x.created_at)
+    assert [x.title for x in tasks] == ["DNS voor Nova omzetten", "Nieuwsbrief voor Klokuus"]
+    dns, news = tasks
+    assert dns.company_id == uuid.UUID(nova["id"]) and news.company_id == uuid.UUID(klok["id"])
+    assert dns.assignee_user_id == t.user.id and news.assignee_user_id == lotte
+    assert (dns.due_date, news.due_date) == (date(2027, 2, 1), date(2027, 2, 10))
+    assert dns.description == "DNS van nova.nl naar Cloudflare."
+    assert news.description == "Template in Mailchimp."
+    async with client_for(t.host) as c:
+        detail = (await c.get(f"/api/v1/tasks/{dns.id}", headers=headers)).json()
+        assert [i["title"] for i in detail["checklists"][0]["items"]] == [
+            "Records exporteren",
+            "NS wijzigen",
+        ]
+    # One forwarded mail, one contact moment, on both rosters — the lead is chip 0.
+    mails = await _rows(t.org.id, Interaction)
+    assert len(mails) == 1 and mails[0].task_id == dns.id
+    roster = sorted(await _rows(t.org.id, InteractionTask), key=lambda r: r.position)
+    assert [r.task_id for r in roster] == [dns.id, news.id]
+    # Each file with the task that claimed it; the one nobody claimed with the lead.
+    stored = await _rows(t.org.id, StoredFile)
+    assert sorted((f.filename, f.entity_id) for f in stored) == sorted(
+        [("dns.txt", dns.id), ("huisstijl.pdf", news.id), ("los.png", dns.id)]
+    )
+    # The receipt names every task; the sender heard once, in the split's own sentence.
+    receipt = (await _rows(t.org.id, TaskIntakeMessage))[0]
+    assert receipt.status == "created" and receipt.task_id == dns.id
+    assert receipt.hints["task_ids"] == [str(dns.id), str(news.id)]
+    assert [d["title"] for d in receipt.hints["tasks"]] == [dns.title, news.title]
+    assert receipt.hints["tasks"][1]["by_model"] == ["company", "assignee", "due_date"]
+    events = await _rows(t.org.id, NotificationEvent)
+    intake_events = [e for e in events if e.event_type.startswith("task.intake")]
+    assert [e.event_type for e in intake_events] == ["task.intake_split"]
+    assert intake_events[0].payload["count"] == 2 and intake_events[0].entity_id == dns.id
+    assert "Nieuwsbrief voor Klokuus" in intake_events[0].payload["titles"]
+    # Lotte was handed a task by the sender's mail and hears that as usual; the sender is
+    # excluded from "assigned" for their own mail and hears the split's sentence instead.
+    inbox = await _rows(t.org.id, Notification)
+    by_event = {e.id: e for e in events}
+    assert sorted(by_event[n.event_id].event_type for n in inbox if n.user_id == t.user.id) == [
+        "task.intake_split"
+    ]
+    assert [by_event[n.event_id].event_type for n in inbox if n.user_id == lotte] == [
+        "task.assigned"
+    ]
+    trail = [a.action for a in await _rows(t.org.id, TaskActivity) if a.task_id == news.id]
+    assert "ai_intake_split" in trail
+    async with client_for(t.host) as c:
+        listed = (await c.get("/api/v1/tasks/intake", headers=headers)).json()
+        assert listed[0]["task_ids"] == [str(dns.id), str(news.id)]
+
+
+async def test_the_senders_own_words_hold_for_every_task_of_a_split(
+    client_for, monkeypatch
+) -> None:
+    """``klant:`` and ``deadline:`` are statements about the mail: the model may split it but
+    not move a task to another client or another day."""
+    t = await make_tenant("intake-split-words")
+    connection_id = await _seed(t)
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await _configure(c, headers)
+        nova = (
+            await c.post("/api/v1/companies", json={"name": "Nova Fietsen"}, headers=headers)
+        ).json()
+        other = (
+            await c.post("/api/v1/companies", json={"name": "Andere Klant"}, headers=headers)
+        ).json()
+    _model(
+        monkeypatch,
+        [
+            {"title": "Banner", "company_id": other["id"], "due_date": "2027-03-03"},
+            {"title": "Landingspagina", "company_id": other["id"], "due_date": "2027-03-04"},
+        ],
+    )
+    message = _sent(
+        "msg-words",
+        subject="Campagne",
+        body="klant: Nova Fietsen\ndeadline: 2027-01-20\n\nBanner en landingspagina maken.",
+    )
+    stub = _StubGmail(history=["msg-words"], messages={"msg-words": message}, history_id="9810")
+    assert await _poll(t, connection_id, stub, monkeypatch) == 1
+    tasks = await _rows(t.org.id, Task)
+    assert sorted(x.title for x in tasks) == ["Banner", "Landingspagina"]
+    assert {x.company_id for x in tasks} == {uuid.UUID(nova["id"])}
+    assert {x.due_date for x in tasks} == {date(2027, 1, 20)}
+    receipt = (await _rows(t.org.id, TaskIntakeMessage))[0]
+    assert all(d["by_model"] == [] for d in receipt.hints["tasks"])
+
+
+async def test_a_split_with_a_task_that_has_no_client_parks_whole_and_finishes_whole(
+    client_for, monkeypatch
+) -> None:
+    """A mail is one act: one task without a client parks the whole mail, the card carries the
+    split, and finishing it makes every task — or, by choice, one."""
+    t = await make_tenant("intake-split-park")
+    connection_id = await _seed(t)
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        await _configure(c, headers, intake_default_due_days=2)
+        nova = (
+            await c.post("/api/v1/companies", json={"name": "Nova Fietsen"}, headers=headers)
+        ).json()
+        later = (
+            await c.post("/api/v1/companies", json={"name": "Later Gekozen"}, headers=headers)
+        ).json()
+    plan = [
+        {"title": "Offerte nasturen", "company_id": nova["id"], "summary": "Offerte v2 mailen."},
+        {
+            "title": "Intake nieuwe klant",
+            "checklist_items": [{"title": "Bellen"}, {"title": "Voorstel"}],
+        },
+    ]
+    _model(monkeypatch, plan)
+    message = _sent(
+        "msg-sp",
+        subject="Na de meeting",
+        body="Offerte voor Nova Fietsen nasturen, en de intake van de nieuwe klant plannen.",
+    )
+    stub = _StubGmail(history=["msg-sp"], messages={"msg-sp": message}, history_id="9820")
+    assert await _poll(t, connection_id, stub, monkeypatch) == 0
+    assert await _rows(t.org.id, Task) == []
+    row = (await _rows(t.org.id, TaskIntakeMessage))[0]
+    assert row.status == "needs_client" and row.reason == "no_client"
+    assert [d["title"] for d in row.hints["tasks"]] == ["Offerte nasturen", "Intake nieuwe klant"]
+    assert row.hints["tasks"][0]["company_name"] == "Nova Fietsen"
+    assert row.hints["tasks"][1]["company_id"] is None
+
+    async with client_for(t.host) as c:
+        # Finished whole: the picked client fills only the task that had none.
+        res = await c.post(
+            f"/api/v1/tasks/intake/{row.id}/create",
+            json={"company_id": later["id"]},
+            headers=headers,
+        )
+        assert res.status_code == 200, res.text
+        lead = res.json()
+        tasks = {x.title: x for x in await _rows(t.org.id, Task)}
+        assert set(tasks) == {"Offerte nasturen", "Intake nieuwe klant"}
+        assert lead["id"] == str(tasks["Offerte nasturen"].id)
+        assert tasks["Offerte nasturen"].company_id == uuid.UUID(nova["id"])
+        assert tasks["Intake nieuwe klant"].company_id == uuid.UUID(later["id"])
+        assert tasks["Intake nieuwe klant"].due_date == org_today() + timedelta(days=2)
+        detail = (
+            await c.get(f"/api/v1/tasks/{tasks['Intake nieuwe klant'].id}", headers=headers)
+        ).json()
+        assert [i["title"] for i in detail["checklists"][0]["items"]] == ["Bellen", "Voorstel"]
+        listed = (await c.get("/api/v1/tasks/intake", headers=headers)).json()
+        assert len(listed[0]["task_ids"]) == 2 and listed[0]["task_id"] == lead["id"]
+
+    # The same plan, folded by choice: one task, each planned task a step.
+    t2 = await make_tenant("intake-split-fold")
+    connection_id = await _seed(t2)
+    headers = await auth_cookie(t2.user)
+    async with client_for(t2.host) as c:
+        await _configure(c, headers)
+        nova2 = (
+            await c.post("/api/v1/companies", json={"name": "Nova Fietsen"}, headers=headers)
+        ).json()
+    _model(monkeypatch, [{**plan[0], "company_id": nova2["id"]}, plan[1]])
+    stub = _StubGmail(history=["msg-sp"], messages={"msg-sp": message}, history_id="9830")
+    assert await _poll(t2, connection_id, stub, monkeypatch) == 0
+    row = (await _rows(t2.org.id, TaskIntakeMessage))[0]
+    async with client_for(t2.host) as c:
+        res = await c.post(
+            f"/api/v1/tasks/intake/{row.id}/create",
+            json={"company_id": nova2["id"], "as_one": True},
+            headers=headers,
+        )
+        assert res.status_code == 200, res.text
+        assert len(await _rows(t2.org.id, Task)) == 1
+        task = res.json()
+        assert task["title"] == "Na de meeting"
+        assert (
+            "**Offerte nasturen**" in task["description"]
+            and "Offerte v2 mailen." in task["description"]
+        )
+        detail = (await c.get(f"/api/v1/tasks/{task['id']}", headers=headers)).json()
+        items = detail["checklists"][0]["items"]
+        assert [i["title"] for i in items] == ["Offerte nasturen", "Intake nieuwe klant"]
+        assert "- Bellen" in (items[1]["description"] or "")
+
+
+def test_a_plan_is_grounded_per_task_and_an_empty_one_is_no_plan() -> None:
+    from app.modules.tasks.intake_ai import MAX_TASKS, plan_from_call
+
+    class _Candidates:
+        def __init__(self, ids, members, labels):  # noqa: ANN001
+            self._ids, self._members, self._labels = ids, members, labels
+
+        def ids(self):  # noqa: ANN202
+            return self._ids
+
+        def member_ids(self):  # noqa: ANN202
+            return self._members
+
+        def label_ids(self):  # noqa: ANN202
+            return self._labels
+
+    company, member = uuid.uuid4(), uuid.uuid4()
+    candidates = _Candidates({str(company)}, {str(member)}, set())
+    today = date(2026, 9, 25)
+    plan = plan_from_call(
+        {
+            "tasks": [
+                {"title": "A", "company_id": str(company), "attachments": ["a.pdf", "nope.pdf"]},
+                {"title": "", "summary": "no title in a split: dropped"},
+                {"title": "B", "assignee_user_id": str(company)},  # a client id is not a member
+                "not a dict",
+            ]
+        },
+        candidates=candidates,
+        body="",
+        today=today,
+        attachment_names={"a.pdf"},
+    )
+    assert plan is not None and plan.split
+    assert [x.title for x in plan.tasks] == ["A", "B"]
+    assert plan.tasks[0].company_id == company and plan.tasks[0].attachments == ["a.pdf"]
+    assert plan.tasks[1].assignee_user_id is None
+    # One untitled task is still a plan (the subject names it); nothing at all is none.
+    alone = plan_from_call(
+        {"tasks": [{"title": "", "summary": "s"}]}, candidates=candidates, body="", today=today
+    )
+    assert alone is not None and not alone.split and alone.tasks[0].summary == "s"
+    assert plan_from_call({"tasks": []}, candidates=candidates, body="", today=today) is None
+    assert (
+        plan_from_call({"title": "old shape"}, candidates=candidates, body="", today=today) is None
+    )
+    many = plan_from_call(
+        {"tasks": [{"title": f"T{i}"} for i in range(MAX_TASKS + 3)]},
+        candidates=candidates,
+        body="",
+        today=today,
+    )
+    assert many is not None and len(many.tasks) == MAX_TASKS
 
 
 async def test_settings_validate_and_switch_off(client_for) -> None:
@@ -862,7 +1246,5 @@ async def test_settings_validate_and_switch_off(client_for) -> None:
         saved = (await c.get("/api/v1/tasks/settings", headers=headers)).json()
         assert saved["intake_address"] == INTAKE
         # An explicit null switches it off; an absent field leaves the days alone.
-        res = await c.put(
-            "/api/v1/tasks/settings", json={"intake_address": None}, headers=headers
-        )
+        res = await c.put("/api/v1/tasks/settings", json={"intake_address": None}, headers=headers)
         assert res.json()["intake_address"] is None and res.json()["intake_default_due_days"] == 2

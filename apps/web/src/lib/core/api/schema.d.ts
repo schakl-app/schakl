@@ -35333,6 +35333,11 @@ export interface components {
          *     to correct while they are here. Everything else comes off the row.
          */
         TaskIntakeComplete: {
+            /**
+             * As One
+             * @default false
+             */
+            as_one: boolean;
             /** Assignee User Id */
             assignee_user_id?: string | null;
             /** Assignees */
@@ -35387,6 +35392,8 @@ export interface components {
             subject?: string | null;
             /** Task Id */
             task_id?: string | null;
+            /** Task Ids */
+            task_ids?: string[];
         };
         /**
          * TaskIntakeSummary

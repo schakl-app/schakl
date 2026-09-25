@@ -54,6 +54,8 @@ export const actions: Actions = {
   createFromIntake: async (event) => {
     const intakeId = event.url.searchParams.get("id");
     if (!intakeId) return fail(400, { qcError: "errors.validation" });
+    // A mail the model split is finished as every planned task unless the sender folded it.
+    const asOne = event.url.searchParams.get("as_one") === "1";
     const form = await event.request.formData();
     const body = taskCreateBody(form, { fallbackAssigneeUserId: event.locals.user?.id ?? null });
     if (!body) return fail(400, { qcError: "errors.required" });
@@ -67,6 +69,7 @@ export const actions: Actions = {
         ...(body.assignees !== undefined
           ? { assignees: body.assignees }
           : { assignee_user_id: body.assignee_user_id ?? null }),
+        as_one: asOne,
       },
     });
     if (error || !data) return fail(400, { qcError: apiErrorKey(error).key });

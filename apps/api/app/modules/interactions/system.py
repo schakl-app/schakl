@@ -166,7 +166,9 @@ async def record_forwarded_email(
     the same shape a ``.eml`` upload produces (#262), and like an upload the row lands
     ``logged`` — the person forwarded it on purpose, so there is nothing to review. The body
     arrives *now* (unlike a mailbox row's, which waits for approval) because the intake had the
-    whole message in hand.
+    whole message in hand. ``mappings`` may carry ``task_ids`` beside ``task_id`` exactly as
+    :func:`record_email` reads them: one forward that became three tasks is one row on three
+    rosters.
     """
     row = Interaction(
         org_id=ctx.org.id,
@@ -184,12 +186,17 @@ async def record_forwarded_email(
         source=InteractionSource.FORWARDED.value,
         **{field: mappings.get(field) for field in MAPPING_FIELDS},
     )
+    task_ids = list(dict.fromkeys(mappings.get("task_ids") or ()))
+    if task_ids:
+        row.task_id = task_ids[0]
+    elif row.task_id is not None:
+        task_ids = [row.task_id]
     ctx.session.add(row)
     await ctx.session.flush()
-    if row.task_id is not None:
+    for position, task_id in enumerate(task_ids):
         ctx.session.add(
             InteractionTask(
-                org_id=ctx.org.id, interaction_id=row.id, task_id=row.task_id, position=0
+                org_id=ctx.org.id, interaction_id=row.id, task_id=task_id, position=position
             )
         )
     if row.contact_id is not None:
