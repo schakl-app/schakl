@@ -27,6 +27,25 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from app.integrations.wordpress.client import normalise_base_url
 
 
+class WordPressBridgeUpdates(BaseModel):
+    """Whether the bridge plugin can update itself from its GitHub releases (bridge 1.3.1+).
+
+    ``can_update`` is resolved server-side, like ``rankmath_ai_visibility``: a token is set and
+    the site's last check with GitHub succeeded. The token itself never leaves the site."""
+
+    #: ``constant`` (wp-config.php), ``setting`` (the plugin's screen) or ``none``.
+    token: str
+    installed: str | None = None
+    #: The newest release GitHub gave the site; ``None`` where the check failed or never ran.
+    latest: str | None = None
+    available: bool = False
+    #: Why the site cannot check: no token, a token GitHub refuses, GitHub unreachable.
+    error: str | None = None
+    #: Whether WordPress installs new releases on its own.
+    auto_update: bool = False
+    can_update: bool = False
+
+
 class WordPressSiteRead(BaseModel):
     """A connected WordPress. Never carries the application password."""
 
@@ -66,6 +85,9 @@ class WordPressSiteRead(BaseModel):
     #: The schakl WordPress MCP Bridge plugin's version where the last probe found it;
     #: ``None`` where not.
     bridge_version: str | None = None
+    #: Whether that plugin can update itself; ``None`` where the plugin did not report it
+    #: (not installed, or older than 1.3.1).
+    bridge_updates: WordPressBridgeUpdates | None = None
 
     last_verified_at: datetime | None = None
     #: Whether a password is stored at all. The password itself never leaves the server.
@@ -132,6 +154,7 @@ class WordPressVerifyResult(BaseModel):
     rankmath_ai_visibility: bool = False
     mcp_server_path: str | None = None
     bridge_version: str | None = None
+    bridge_updates: WordPressBridgeUpdates | None = None
     #: How many Rank Math brands this site tracks, where AI Visibility answered. ``None`` where
     #: it did not — zero brands and no Rank Math are different sentences.
     brand_count: int | None = None

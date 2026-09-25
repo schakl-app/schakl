@@ -146,6 +146,8 @@ class FakeWordPress:
         #: `rest_no_route` — the exact answer a site without the plugin gives.
         self.has_bridge = True
         self.bridge_version = "1.0.0"
+        #: `info.updates` (bridge 1.3.1+); `None` is an older plugin that does not send it.
+        self.bridge_updates: dict | None = None
         #: Records the plugin serves, keyed by id, in its own canonical shape: `fields` is the
         #: name-keyed ACF tree (compact), `references` what the ids resolve to. One page in the
         #: shape of the themes' page builder (a `blokken_blokken` repeater of typed rows).
@@ -600,6 +602,7 @@ class FakeWordPress:
                 "options_pages": [{"slug": "bedrijfsinformatie", "title": "Bedrijfsinformatie"}],
                 "menus": [{"id": 1, "name": "Hoofdmenu", "slug": "hoofdmenu"}],
                 "user": {"id": 1, "login": self.username, "capabilities": {"manage_options": True}},
+                **({"updates": self.bridge_updates} if self.bridge_updates is not None else {}),
             })
 
         if sub == "/schema":

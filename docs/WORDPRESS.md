@@ -614,6 +614,12 @@ Four rules, three of them §7's restated because they were easy to lose one name
   capability (`bridge`) and `wordpress_sites.bridge_version` (migration `c7e2a9b4d6f1`,
   additive) for the panel to print — an observation like `rankmath_version`, cleared by a probe
   that reached the site and found no plugin, left alone by one that could not reach it.
+  Beside it, `wordpress_sites.bridge_updates` (migration `a3d7f2c9e5b8`, additive) keeps the
+  plugin's `info.updates` (plugin 1.3.1): where its GitHub token comes from (`constant` /
+  `setting` / `none`, never the token), the latest release it saw, why its check failed, and
+  whether WordPress auto-updates it. The API resolves `can_update`; the panel prints it beside
+  the version and links a site that cannot to the plugin's settings screen. NULL is "not
+  reported" (an older plugin), never "cannot update".
 - **The plugin's refusal is carried, not translated.** `WordPressError` grew `details`, and a
   422 from the plugin lands as `errors.wordpress_bridge_rejected` with `details.problems`
   untouched — `{path: "blokken_blokken[2].titel_0_1_2", code: "required"}`, `{path: "kleur",

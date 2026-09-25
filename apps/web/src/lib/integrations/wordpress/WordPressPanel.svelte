@@ -42,6 +42,14 @@
     mcp_server_path: string | null;
     rankmath_version: string | null;
     bridge_version?: string | null;
+    bridge_updates?: {
+      token: string;
+      latest: string | null;
+      available: boolean;
+      error: string | null;
+      auto_update: boolean;
+      can_update: boolean;
+    } | null;
     rankmath_ai_visibility: boolean;
     last_verified_at: string | null;
   };
@@ -234,6 +242,41 @@
             {site.bridge_version}
           {:else}
             <span class="text-amber-700">{t("wordpress.bridge_absent")}</span>
+          {/if}
+        </dd>
+      </div>
+    {/if}
+    <!-- Whether the plugin updates itself from its GitHub releases: it needs a per-site token,
+         which only the site's own settings screen (or wp-config.php) can hold — so a site that
+         cannot says why and links there. Not reported is "older than 1.3.1", never "cannot". -->
+    {#if site.bridge_version}
+      {@const u = site.bridge_updates}
+      <div class="flex justify-between gap-4">
+        <dt class="text-muted">{t("wordpress.field.bridge_updates")}</dt>
+        <dd class="text-right text-text">
+          {#if !u}
+            <span class="text-muted">○ {t("wordpress.bridge_updates.unknown")}</span>
+          {:else if u.can_update}
+            <span class="text-emerald-600">✓</span>
+            {t(u.auto_update ? "wordpress.bridge_updates.auto" : "wordpress.bridge_updates.ok")}
+            {#if u.available && u.latest}
+              <span class="text-amber-700">
+                · {t("wordpress.bridge_updates.available", { version: u.latest })}</span
+              >
+            {/if}
+          {:else}
+            <span class="text-amber-700">
+              ✗ {u.token === "none"
+                ? t("wordpress.bridge_updates.no_token")
+                : t("wordpress.bridge_updates.failed", { error: u.error ?? "" })}
+            </span>
+            ·
+            <a
+              href={`${site.base_url.replace(/\/$/, "")}/wp-admin/options-general.php?page=schakl-bridge`}
+              target="_blank"
+              rel="noreferrer"
+              class="text-brand hover:underline">{t("wordpress.bridge_updates.settings")}</a
+            >
           {/if}
         </dd>
       </div>

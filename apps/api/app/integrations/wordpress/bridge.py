@@ -38,6 +38,7 @@ from app.integrations.wordpress.client import (
     WordPressClient,
     WordPressError,
     WordPressUnreachable,
+    bridge_updates,
     describe_failure,
 )
 from app.integrations.wordpress.models import WordPressSite
@@ -183,9 +184,12 @@ class WordPressBridgeService(WordPressSurfaceService):
         version = plugin.get("version")
         # The call is the observation: a site that just answered has the plugin at *this*
         # version, whatever the last probe recorded.
-        if isinstance(version, str) and version != site.bridge_version:
-            site.bridge_version = version
-            await self.ctx.session.flush()
+        if isinstance(version, str):
+            updates = bridge_updates(body.get("updates"))
+            if version != site.bridge_version or updates != site.bridge_updates:
+                site.bridge_version = version
+                site.bridge_updates = updates
+                await self.ctx.session.flush()
         return WordPressBridgeInfo(
             site_id=site.id,
             base_url=site.base_url,

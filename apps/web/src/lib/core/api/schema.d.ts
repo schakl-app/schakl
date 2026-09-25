@@ -39244,6 +39244,38 @@ export interface components {
             [key: string]: unknown;
         };
         /**
+         * WordPressBridgeUpdates
+         * @description Whether the bridge plugin can update itself from its GitHub releases (bridge 1.3.1+).
+         *
+         *     ``can_update`` is resolved server-side, like ``rankmath_ai_visibility``: a token is set and
+         *     the site's last check with GitHub succeeded. The token itself never leaves the site.
+         */
+        WordPressBridgeUpdates: {
+            /**
+             * Auto Update
+             * @default false
+             */
+            auto_update: boolean;
+            /**
+             * Available
+             * @default false
+             */
+            available: boolean;
+            /**
+             * Can Update
+             * @default false
+             */
+            can_update: boolean;
+            /** Error */
+            error?: string | null;
+            /** Installed */
+            installed?: string | null;
+            /** Latest */
+            latest?: string | null;
+            /** Token */
+            token: string;
+        };
+        /**
          * WordPressContentCreate
          * @description A new record. ``draft`` unless told otherwise, because a create that publishes by
          *     default is a create nobody reviews.
@@ -40217,6 +40249,7 @@ export interface components {
             active: boolean;
             /** Base Url */
             base_url: string;
+            bridge_updates?: components["schemas"]["WordPressBridgeUpdates"] | null;
             /** Bridge Version */
             bridge_version?: string | null;
             /** Capabilities */
@@ -40475,6 +40508,7 @@ export interface components {
         WordPressVerifyResult: {
             /** Brand Count */
             brand_count?: number | null;
+            bridge_updates?: components["schemas"]["WordPressBridgeUpdates"] | null;
             /** Bridge Version */
             bridge_version?: string | null;
             /** Capabilities */

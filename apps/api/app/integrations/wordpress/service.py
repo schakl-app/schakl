@@ -55,12 +55,26 @@ from app.integrations.wordpress.client import (
 from app.integrations.wordpress.models import WordPressSite, WordPressStatus
 from app.integrations.wordpress.schemas import (
     WordPressBrand,
+    WordPressBridgeUpdates,
     WordPressSiteCreate,
     WordPressSiteRead,
     WordPressSiteUpdate,
     WordPressVerifyResult,
     brand_from_payload,
 )
+
+
+def bridge_updates_read(stored: dict | None) -> WordPressBridgeUpdates | None:
+    """The stored ``bridge_updates`` as the API prints it, with ``can_update`` resolved here:
+    a token is set and the site's last check with GitHub got an answer."""
+    if not isinstance(stored, dict) or not stored.get("token"):
+        return None
+    updates = WordPressBridgeUpdates.model_validate(stored)
+    updates.can_update = (
+        updates.token != "none" and updates.error is None and updates.latest is not None
+    )
+    return updates
+
 
 #: ``websites`` belongs to another module; referenced as a bare table rather than imported
 #: (§6), the same bridge :mod:`app.integrations.wordpress.models` uses for the horizon clause.
@@ -157,6 +171,7 @@ def _read(site: WordPressSite, labels: Labels | None = None) -> WordPressSiteRea
         rankmath_version=site.rankmath_version,
         rankmath_ai_visibility=supports_ai_visibility(site.rankmath_version),
         bridge_version=site.bridge_version,
+        bridge_updates=bridge_updates_read(site.bridge_updates),
         last_verified_at=site.last_verified_at,
         password_configured=bool(site.app_password_encrypted),
         created_at=site.created_at,
@@ -544,8 +559,10 @@ class WordPressService:
             site.rankmath_version = None
         if isinstance(observed.get("bridge_version"), str):
             site.bridge_version = observed["bridge_version"]
+            site.bridge_updates = observed.get("bridge_updates")
         elif observed.get("bridge_absent"):
             site.bridge_version = None
+            site.bridge_updates = None
 
         await self.ctx.session.flush()
         await self.ctx.session.refresh(site)  # server-side ``updated_at`` — see ``update``
@@ -559,6 +576,7 @@ class WordPressService:
             rankmath_ai_visibility=supports_ai_visibility(site.rankmath_version),
             mcp_server_path=site.mcp_server_path,
             bridge_version=site.bridge_version,
+            bridge_updates=bridge_updates_read(site.bridge_updates),
             brand_count=brand_count if isinstance(brand_count, int) else None,
             error=issue,
         )

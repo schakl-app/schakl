@@ -218,6 +218,32 @@ def supports_ai_visibility(rankmath_version: str | None) -> bool:
     return bool(version) and version >= RANKMATH_AIV_MIN_VERSION
 
 
+_BRIDGE_TOKEN_SOURCES = ("constant", "setting", "none")
+
+
+def bridge_updates(block: Any) -> dict[str, Any] | None:
+    """The plugin's ``info.updates`` (bridge 1.3.1+) reduced to the keys this side stores.
+
+    ``None`` where the plugin sent none — an older plugin — so the row says "not reported"
+    rather than guessing "cannot update". Only typed values survive: the block is the site's
+    own words, and a column is not the place to keep whatever else it chose to send."""
+    if not isinstance(block, dict) or block.get("token") not in _BRIDGE_TOKEN_SOURCES:
+        return None
+
+    def text(key: str) -> str | None:
+        value = block.get(key)
+        return value[:500] if isinstance(value, str) and value else None
+
+    return {
+        "token": block["token"],
+        "installed": text("installed"),
+        "latest": text("latest"),
+        "available": block.get("available") is True,
+        "error": text("error"),
+        "auto_update": block.get("auto_update") is True,
+    }
+
+
 #: Test seam — an ``httpx`` transport used instead of the network. Never set in production.
 _transport: httpx.AsyncBaseTransport | None = None
 
@@ -697,6 +723,9 @@ class WordPressClient:
                 errors.pop("bridge", None)
                 version = plugin.get("version")
                 observed["bridge_version"] = version if isinstance(version, str) else ""
+                # Always set once the plugin answered: an older plugin's missing block clears
+                # a status a newer one reported before a downgrade.
+                observed["bridge_updates"] = bridge_updates(info.get("updates"))
             elif caps.get("rest"):
                 observed["bridge_absent"] = True
 
