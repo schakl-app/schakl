@@ -1,7 +1,7 @@
 {
   "name": "Klantportaal",
   "slug": "portal",
-  "order": 160,
+  "order": 170,
   "icon": "🚪",
   "lucide": "portal",
   "title": {
@@ -22,8 +22,8 @@
       "en": "The client signs in to your app"
     },
     "lead": {
-      "nl": "Een contactpersoon van je klant krijgt een login in jouw eigen, gemerkte app. Hij ziet het marketingoverzicht dat je voor hem hebt samengesteld, zijn gepubliceerde rapportages, zijn eigen verstuurde facturen en de taken waarop hij mag reageren. Al het andere is onzichtbaar omdat het nooit bij hem langskomt, niet omdat iemand een vinkje heeft onthouden.",
-      "en": "A contact person at your client gets a login into your own branded app. They see the marketing overview you composed for them, their published reports, their own issued invoices and the tasks they may comment on. Everything else is invisible because it never reaches them, not because somebody remembered a checkbox."
+      "nl": "Een contactpersoon van je klant krijgt een login in jouw eigen, gemerkte app. Hij ziet wat er van hem gevraagd wordt en wat jullie voor hem doen, het marketingoverzicht dat je voor hem hebt samengesteld, zijn gepubliceerde rapportages, zijn abonnementen, domeinnamen en verstuurde facturen. Al het andere is onzichtbaar omdat het nooit bij hem langskomt, niet omdat iemand een vinkje heeft onthouden.",
+      "en": "A contact person at your client gets a login into your own branded app. They see what is being asked of them and what you are doing for them, the marketing overview you composed for them, their published reports, their subscriptions, domain names and issued invoices. Everything else is invisible because it never reaches them, not because somebody remembered a checkbox."
     },
     "sections": [
       {
@@ -32,8 +32,8 @@
           "en": "Invite from the person's own page"
         },
         "body": {
-          "nl": "Het portaal heeft geen eigen instellingenscherm en geen menu-item: je geeft toegang op de pagina van de contactpersoon zelf, op de kaart \"Klantportaal\". Eén knop maakt het account aan, geeft het de rol Klant en stuurt een uitnodiging in jouw huisstijl met een link om een wachtwoord te kiezen. De kaart toont daarna de status (Geen toegang, Uitgenodigd, Actief of Uitgeschakeld) en zolang de uitnodiging nog niet gebruikt is, staat er een knop om hem opnieuw te versturen. Twee dingen moeten kloppen voordat het kan: de contactpersoon heeft een e-mailadres en hangt aan minstens één klant, want juist die koppeling bepaalt wat hij straks ziet.",
-          "en": "The portal has no settings screen of its own and no nav item: you grant access on the contact person's own page, on the card \"Klantportaal\". One button creates the account, gives it the Klant role and sends a set-password invitation in your own branding. The card then shows a status (Geen toegang, Uitgenodigd, Actief or Uitgeschakeld), and while the invitation is still unused a button appears to send it again. Two things have to be true first: the contact needs an email address, and they must be linked to at least one client, because that link is exactly what decides what they will see."
+          "nl": "Je geeft toegang op de pagina van de contactpersoon zelf, op de kaart \"Klantportaal\", want je geeft een login aan een bepaalde persoon. Wie er over al je klanten heen kan inloggen, zie je onder Instellingen → Team & gebruikers, in de sectie Klantlogins onder je team: per login de klanten waar hij bij hoort en of de toegang nog leeft, met dezelfde acties als op de kaart en een link naar de persoon zelf. Eén knop maakt het account aan, geeft het de rol Klant en stuurt een uitnodiging in jouw huisstijl met een link om een wachtwoord te kiezen. De kaart toont daarna de status (Geen toegang, Uitgenodigd, Actief of Uitgeschakeld) en zolang de uitnodiging nog niet gebruikt is, staat er een knop om hem opnieuw te versturen. Twee dingen moeten kloppen voordat het kan: de contactpersoon heeft een e-mailadres en hangt aan minstens één klant, want juist die koppeling bepaalt wat hij straks ziet.",
+          "en": "You grant access on the contact person's own page, on the card \"Klantportaal\", because a login is given to a particular person. Who can sign in across all your clients is under Instellingen → Team & gebruikers, in the Klantlogins section below your team: per login the clients it belongs to and whether the access is still live, with the same actions as the card and a link to the person themselves. One button creates the account, gives it the Klant role and sends a set-password invitation in your own branding. The card then shows a status (Geen toegang, Uitgenodigd, Actief or Uitgeschakeld), and while the invitation is still unused a button appears to send it again. Two things have to be true first: the contact needs an email address, and they must be linked to at least one client, because that link is exactly what decides what they will see."
         },
         "bullets": {
           "nl": [
@@ -54,19 +54,23 @@
           "en": "What the client sees"
         },
         "body": {
-          "nl": "De klant logt in op dezelfde host, in dezelfde gemerkte schil, en landt op \"Jouw dashboard\": een widgetbord met het marketingoverzicht dat jij voor dat bedrijf hebt samengesteld en zijn laatst gepubliceerde rapportage. Hangt de contactpersoon aan meerdere bedrijven, dan staat er een bedrijfswisselaar boven; het logo van het bedrijf staat op het dashboard, terwijl jouw merk de schil blijft. Daarnaast opent hij zijn eigen verstuurde facturen, inclusief of ze te laat zijn, en downloadt hij dezelfde pdf die jij zou versturen. Wat er in het marketingoverzicht staat blijft jouw keuze: verborgen tegels verlaten de API niet, dus de klant herschikt alleen binnen wat je hebt vrijgegeven.",
-          "en": "The client signs in on the same host, in the same branded shell, and lands on \"Jouw dashboard\": a widget board carrying the marketing overview you composed for that company and their most recent published report. When the contact belongs to more than one company, a company switcher sits above it; the company's own logo appears on the dashboard while your brand stays in the shell. They can also open their own issued invoices, overdue status included, and download the same PDF you would send. What goes into the marketing overview stays your call — hidden tiles never leave the API, so the client only rearranges within what you exposed."
+          "nl": "De klant logt in op dezelfde host, in dezelfde gemerkte schil, en landt op \"Jouw dashboard\": één kolom, van boven naar beneden. Eerst \"Jullie taken\", de open taken die bij een van zijn eigen contactpersonen liggen, met wie het is; daaronder \"Werkzaamheden\", het open werk dat jullie op zijn account doen, op urgentie. Een taak staat altijd in precies één van de twee. Dan zijn laatste rapportage als voorblad met openen en downloaden, het marketingoverzicht dat jij voor dat bedrijf hebt samengesteld, en daarna Mijn abonnementen, Mijn facturen (openstaand eerst) en Mijn domeinnamen. Hangt de contactpersoon aan meerdere bedrijven, dan staat er een bedrijfswisselaar boven en toont het hele dashboard één bedrijf tegelijk, elke tegel mee. Wat er in het marketingoverzicht staat blijft jouw keuze: verborgen tegels verlaten de API niet, dus de klant herschikt alleen binnen wat je hebt vrijgegeven.",
+          "en": "The client signs in on the same host, in the same branded shell, and lands on \"Jouw dashboard\": one column, top to bottom. First \"Jullie taken\", the open tasks assigned to one of their own contact people, naming who; below it \"Werkzaamheden\", the open work you are doing on their account, by urgency. A task is always in exactly one of the two. Then their latest report as a cover with open and download, the marketing overview you composed for that company, and after that Mijn abonnementen, Mijn facturen (open ones first) and Mijn domeinnamen. If the contact belongs to several companies a company switcher sits on top and the whole dashboard shows one company at a time, every tile along with it. What the marketing overview holds stays your call: hidden tiles never leave the API, so the client only rearranges within what you released."
         },
         "bullets": {
           "nl": [
             "Nooit een conceptfactuur, nooit een factuur van een ander bedrijf.",
             "Nooit een rapportage die nog niet gepubliceerd is.",
-            "Geen teamagenda, geen instellingen, geen taaksjablonen of checklistbibliotheek van het bureau."
+            "Geen teamagenda, geen instellingen, geen taaksjablonen of checklistbibliotheek van het bureau.",
+            "Nooit het activiteitenspoor, de labels van een taak, het budget of de verbranding van een project, of de herhaalregel achter een ingeplande taak.",
+            "Geen kolommen die alleen voor het bureau zijn, zoals de registrar van een domein of de hosting van een website."
           ],
           "en": [
             "Never a draft invoice, never another company's invoice.",
             "Never a report that has not been published.",
-            "No team calendar, no settings, no task templates or checklist library belonging to the agency."
+            "No team calendar, no settings, no task templates or checklist library belonging to the agency.",
+            "Never the activity trail, a task's labels, a project's budget or burn, or the repeat rule behind a planned task.",
+            "No columns meant for the agency only, such as a domain's registrar or a website's hosting."
           ]
         }
       },
@@ -76,8 +80,8 @@
           "en": "The write surface is deliberately small"
         },
         "body": {
-          "nl": "Alles wat een klantlogin mag schrijven past in één zin: reacties op zijn eigen taken, de indeling van zijn eigen dashboard en menu, en zijn eigen berichtenbox. Verder niets. Dat komt niet doordat dit \"portaalschermen\" zijn, want het zijn dezelfde schermen die jouw team gebruikt. Elke knop die schrijft toetst zijn eigen recht bij de API, niet de vraag of de bezoeker toevallig een klant is; zo kan een detailpagina panelen en gedeelde rijen samenstellen zoals altijd, zonder dat er ergens een filter vergeten kan worden.",
-          "en": "Everything a client login may write fits in one sentence: comments on their own tasks, the layout of their own dashboard and menu, and their own notification inbox. Nothing else. That isn't because these are \"portal screens\" — they are the very screens your team uses. Every control that writes checks its own permission against the API rather than asking whether the visitor happens to be a client, so a detail page can compose panels and shared rows exactly as it always did, with no filter left to forget."
+          "nl": "Alles wat een klantlogin mag schrijven past in één zin: reacties op zijn eigen taken, de indeling van zijn eigen dashboard en menu, en zijn eigen berichtenbox. Verder niets. Wordt een contactpersoon in een reactie genoemd, of komt er een reactie op een taak die bij hem ligt, dan krijgt hij daar bericht van, standaard meteen per e-mail, want de bel is niet waar een klant woont. Dat komt niet doordat dit \"portaalschermen\" zijn, want het zijn dezelfde schermen die jouw team gebruikt. Elke knop die schrijft toetst zijn eigen recht bij de API, niet de vraag of de bezoeker toevallig een klant is; zo kan een detailpagina panelen en gedeelde rijen samenstellen zoals altijd, zonder dat er ergens een filter vergeten kan worden.",
+          "en": "Everything a client login may write fits in one sentence: comments on their own tasks, the layout of their own dashboard and menu, and their own notification inbox. Nothing else. When a contact person is named in a comment, or a task assigned to them gets a comment, they are told, by default straight away by email, because the bell is not where a client lives. That isn't because these are \"portal screens\" — they are the very screens your team uses. Every control that writes checks its own permission against the API rather than asking whether the visitor happens to be a client, so a detail page can compose panels and shared rows exactly as it always did, with no filter left to forget."
         }
       },
       {

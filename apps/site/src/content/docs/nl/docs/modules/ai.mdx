@@ -1,8 +1,8 @@
 ---
 title: AI-assistentie
-description: "Eén AI-account voor het hele platform: je eigen provider en sleutel, vier functies die je los aanzet, een maandbudget met een meter, en spraak naar tekst."
+description: "Eén AI-account voor het hele platform: je eigen provider en sleutel, acht functies die je los aanzet, een assistent die je hele werkruimte leest en een vaste lijst kan vastleggen, een maandbudget met een meter, en spraak naar tekst."
 sidebar:
-  order: 28
+  order: 29
 ---
 
 import { Aside, Steps } from '@astrojs/starlight/components';
@@ -20,6 +20,9 @@ dan zie je nergens in de app een AI-knop.
 - De **Schrijfhulp**: het sterretje in de werkbalk van elk tekstveld met opmaak.
 - De **Urenhulp**: het veld **Snel toevoegen** boven het urenformulier op *Uren*.
 - **Brief me** en **AI-rapport**: twee knoppen op de klantpagina.
+- Op *Taken*: **Inspreken** naast **Nieuwe taak**, en op elke taak het vak **Aanpassen met
+  schakl** en de knop **Stappen schrijven met schakl**.
+- *Instellingen → Taken*: het taakadres, waarvan de AI de open plekken invult.
 
 AI valt onder de commerciële licentie; zie [Licenties](/nl/docs/admin/licenses/).
 
@@ -50,17 +53,37 @@ AI valt onder de commerciële licentie; zie [Licenties](/nl/docs/admin/licenses/
    mislukt hij, dan staat de foutmelding van de provider er letterlijk bij.
 </Steps>
 
-## De vier functies
+## De functies
 
 Elke functie is een eigen vinkje met daarnaast **Eigen model (optioneel)**. Zo kun je een snel
-model op de urenhulp zetten en het uitgebreidere model laten staan voor schrijfwerk.
+model op de urenhulp zetten en het uitgebreidere model laten staan voor schrijfwerk. Functies die
+iets lezen wat een ander schreef (een e-mail, een vergadering) hebben met opzet een eigen
+vinkje: een bureau dat AI een alinea van een collega laat oppoetsen, heeft daarmee nog niet
+ingestemd dat hij de mailbox van een klant leest.
 
-**Assistent.** Het sterretje in de bovenbalk opent het zijpaneel **Assistent**, waar je vragen
-stelt over je eigen klanten, projecten, taken en uren ("Hoeveel uur schreef ik deze week?"). Op
-een klant-, project- of taakpagina neemt hij die pagina mee, dus "deze klant" klopt. Onder het
-antwoord staan bronchips die doorlinken naar de records waar het vandaan komt. De assistent is
-met opzet alleen-lezen: hij zoekt op en antwoordt, hij maakt en wijzigt nooit iets. En hij ziet
-alleen wat jij zelf mag zien.
+| Functie | Wat hij doet |
+| --- | --- |
+| **Assistent** | Het chatpaneel: vragen over je hele werkruimte, en een vaste lijst dingen vastleggen |
+| **Schrijfhulp** | Herschrijven, inkorten, vertalen en uitschrijven in elk tekstveld met opmaak |
+| **Urenhulp** | Snel toevoegen en Vul mijn dag aan op *Uren* |
+| **Briefing & rapporten** | Brief me en het AI-rapport op de klantpagina |
+| **E-mail in taak** | Een taak die je maakt bij het goedkeuren van een e-mail, aanvullen uit die e-mail |
+| **Taak inspreken, aanpassen en plannen** | Een taak inspreken, een taak in woorden aanpassen, stappen schrijven |
+| **E-mail naar taakadres** | Invullen wat een naar het taakadres gemailde taak openliet |
+| **Vergadertranscripten en verslagen** | Een opgenomen vergadering uitschrijven en er een verslag van maken ([Vergaderingen](/nl/docs/modules/meetings/)) |
+
+**Assistent.** Het sterretje in de bovenbalk opent het zijpaneel **Assistent**. Je vraagt naar
+alles in je werkruimte (klanten, projecten, taken, uren, domeinen, facturen, marketingcijfers):
+de assistent zoekt in dezelfde API die ook een externe AI-koppeling via MCP krijgt, en ziet dus
+precies wat jij mag zien, niets meer. Op een klant-, project- of taakpagina neemt hij die pagina
+mee, dus "deze klant" klopt. Onder het antwoord staan bronchips die doorlinken naar de records
+waar het vandaan komt, en terwijl hij werkt zie je wat hij leest ("Leest domeinen…").
+
+Schrijven doet hij alleen van een vaste lijst: **een taak aanmaken of wijzigen**, **een reactie
+plaatsen**, **uren registreren** en **de timer starten of stoppen**. Elke schrijfactie gaat als jou
+door dezelfde controles als wanneer je het zelf in het scherm deed, met jouw rechten en in jouw
+activiteitenspoor ("Opslaan…"). Iets instellen, een factuur versturen of een rapport publiceren
+kan hij niet; die lijst uitbreiden is een bewuste keuze in de code, geen zoekresultaat.
 
 **Schrijfhulp.** In elk tekstveld met opmaak (klant, contactpersoon, project, taak, contactmoment,
 factuur- en offerteteksten, taak- en abonnementssjablonen, en eigen velden van het type lange
@@ -72,10 +95,12 @@ zinnen kort") gaat bij elke schrijfopdracht mee.
 
 **Urenhulp.** Op *Uren* typ je één regel in **Snel toevoegen**, bijvoorbeeld "gisteren
 14:00-16:30 website Jansen, homepage overleg". De server zoekt je eigen klanten, projecten en
-taken erbij en vult daarmee het formulier in; opslaan doe jij. **Vul mijn dag aan** vergelijkt je
-rooster met je goedgekeurde verlof en wat je al schreef, en stelt voor het gat conceptregels voor
-op basis van taken waar je die dag aantoonbaar aan werkte. Ook daar wordt zonder jouw klik niets
-opgeslagen.
+taken erbij en vult daarmee het formulier in; opslaan doe jij. Wat de regel zelf ondubbelzinnig
+zegt ("gisteren", "afgelopen vrijdag", 14:00-16:30, "2 uur", "90 min") wordt ook zonder model
+ingevuld, dus een halve herkenning levert nog steeds een halve regel op. **Vul mijn dag aan**
+vergelijkt je rooster met je goedgekeurde verlof en wat je al schreef, en stelt voor het gat
+conceptregels voor op basis van taken waar je die dag aantoonbaar aan werkte. Ook daar wordt
+zonder jouw klik niets opgeslagen.
 
 **Briefing & rapporten.** Op een klantpagina vat **Brief me** de recente activiteit rond die
 klant samen, met bronchips. **AI-rapport** schrijft een maandrapport als concept dat je in de
@@ -83,27 +108,53 @@ editor bijwerkt en als record bewaart. Dit is de lichte variant in de kern; de v
 rapportage met huisstijl-pdf, planning en verzending is de
 [rapportagemodule](/nl/docs/modules/reporting/).
 
+**Taken.** Drie functies werken op [Taken](/nl/docs/modules/tasks/):
+
+- **Taak inspreken, aanpassen en plannen.** Met **Inspreken** zeg je een taak in één keer in en
+  krijg je een concept dat je in zijn geheel naleest voordat er iets wordt opgeslagen. Op een
+  bestaande taak typ of spreek je in het vak **Aanpassen met schakl** wat er anders moet;
+  schakl. voert het uit als jou, onder jouw naam in de activiteit. **Stappen schrijven met
+  schakl** maakt een checklist uit de titel en de omschrijving.
+- **E-mail in taak.** Maak je bij het goedkeuren van een e-mail meteen een taak, dan leest
+  schakl. die e-mail en vult de taak aan: omschrijving, stappen, een deadline als die er nog niet
+  is, de links uit de mail. Het schrijft vanuit jouw bureau: een mail die jij aan de klant stuurde,
+  wordt een taak voor jou, niet voor de klant. Wie de taak krijgt, voor welke klant en of de
+  klant hem ziet, kan de e-mail nooit bepalen, hoe die ook geformuleerd is.
+- **E-mail naar taakadres.** Een mail aan het taakadres wordt een taak; de AI vult alleen in wat
+  je eigen woorden openlieten en overschrijft nooit wat jij schreef.
+
 ## Inspreken in plaats van typen
 
 Spraak naar tekst vraagt een eigen sleutel, want Anthropic (de standaardprovider) heeft geen
 transcriptiedienst. In *Instellingen → AI* staat daarvoor het blok **Spraak naar tekst**:
 
-- **Spraakaanbieder**: *Uit*, OpenAI of OpenAI-compatibel (eigen server). Anthropic staat er met
-  opzet niet tussen, want die instelling zou nooit kunnen werken. Op *Uit* wordt je chatprovider
-  gebruikt, wat alleen lukt als dat OpenAI of een compatibele server is.
+- **Spraakaanbieder**: *Uit*, OpenAI, OpenAI-compatibel (eigen server) of Mistral (Voxtral).
+  Anthropic staat er met opzet niet tussen, want die instelling zou nooit kunnen werken. Op *Uit*
+  wordt je chatprovider gebruikt, wat alleen lukt als dat OpenAI of een compatibele server is.
 - **API-sleutel voor spraak**, **Basis-URL** (alleen bij compatibel), **Spraakmodel** (leeg is
-  `whisper-1`) en **Maandbudget audio (seconden)**. Audio wordt in seconden geteld en niet in
-  tokens, en heeft daarom een eigen budget.
+  bij OpenAI `whisper-1`) en **Maandbudget audio (seconden)**. Audio wordt in seconden geteld en
+  niet in tokens, en heeft daarom een eigen budget. Voor vergaderingen kies je een model dat
+  aangeeft wie er sprak; het scherm noemt welke dat doen.
 
-Daarna verschijnt op *Uren* naast **Snel toevoegen** een microfoon: **Inspreken**, spreken,
-**Opname stoppen**, en de uitgeschreven tekst komt in het veld te staan. Dat nakijken is het hele
+Er zijn vier plekken met een microfoon, en elk volgt het vinkje van zijn eigen functie:
+
+| Waar | Functie | Maximaal |
+| --- | --- | --- |
+| **Snel toevoegen** op *Uren* | Urenhulp | 2 minuten |
+| **Inspreken** op *Taken*, en het vak **Aanpassen met schakl** op een taak | Taak inspreken, aanpassen en plannen | 5 minuten |
+| Het invoervak van de **Assistent** | Assistent | 5 minuten |
+| Een vergadering opnemen | Vergadertranscripten en verslagen | zo lang als de vergadering |
+
+Wat je inspreekt, komt altijd eerst als tekst in het veld te staan. Dat nakijken is het hele
 punt: Nederlandse eigennamen zijn precies wat een spraakherkenner verkeerd verstaat, en "Janssen"
-in plaats van "Jansen" levert stilletjes geen klant op.
+in plaats van "Jansen" levert stilletjes geen klant op. Bij de assistent verstuur jij het bericht
+zelf; bij een ingesproken taak lees je het concept na voordat er iets wordt aangemaakt.
 
-De microfoon wordt alleen getekend als alle vier waar zijn: er is een spraakdienst ingesteld,
-**Urenhulp** staat aan, jij mag uren schrijven, en de browser mag opnemen. Dat laatste kan alleen
-op `https://`. Een opname duurt maximaal 60 seconden; te lang of een niet-ondersteund formaat is
-een nette foutmelding en nooit een half uitgeschreven regel.
+De microfoon wordt alleen getekend als er een spraakdienst is ingesteld, de functie van die plek
+aan staat, jij de handeling mag doen (uren schrijven, taken aanmaken) en de browser mag opnemen.
+Dat laatste kan alleen op `https://`. Tijdens het opnemen loopt de teller met de grens erbij
+(`0:42 / 5:00`), en wordt de grens bereikt, dan stopt de opname en zegt het scherm dat. Te lang
+of een niet-ondersteund formaat is een nette foutmelding en nooit een half uitgeschreven regel.
 
 ## Budget en verbruik
 
@@ -120,12 +171,14 @@ antwoord wordt nergens in schakl. bewaard.
 
 | Recht | Wat het opent | Standaard bij |
 | --- | --- | --- |
-| `ai.use` | AI-functies gebruiken: assistent, schrijfhulp, urenhulp, briefings en inspreken | Beheerder, Medewerker |
+| `ai.use` | AI-functies gebruiken: assistent, schrijfhulp, urenhulp, briefings, taken en inspreken | Beheerder, Medewerker |
 | `ai.settings.manage` | *Instellingen → AI*: provider, sleutel, functies, budget, test en verbruik | Beheerder |
-| `time.entry.write` | Extra vereist om te kunnen inspreken, want de tekst wordt een urenregistratie | Beheerder, Medewerker (eigen registraties) |
+| `time.entry.write` | Extra vereist om uren in te spreken, want de tekst wordt een urenregistratie | Beheerder, Medewerker (eigen registraties) |
+| `tasks.task.create` / `tasks.task.write` | Extra vereist om een taak in te spreken of met schakl aan te passen | Beheerder, Medewerker |
 
 Klanten met een portaallogin krijgen `ai.use` niet, en dat is opzettelijk: AI leest juist over de
-records heen waar een klantrol van weggehouden wordt.
+records heen waar een klantrol van weggehouden wordt. Wat de assistent vastlegt, vraagt daarnaast
+precies het recht dat het scherm ervoor zou vragen.
 
 ## Goed om te weten
 
@@ -139,7 +192,9 @@ records heen waar een klantrol van weggehouden wordt.
   project. Er wordt nooit stilzwijgend "niet facturabel" ingevuld.
 - **Namen worden letterlijk gezocht.** "Jansn" vindt niets. Wat je de afgelopen dertig dagen zelf
   boekte weegt mee, dus de klant van dinsdag wordt meestal wél herkend.
-- **Inspreken werkt nu alleen in het veld Snel toevoegen** op *Uren*, nergens anders.
+- **Een mail kan de AI niets laten doen wat hij niet mag.** Bij *E-mail in taak* staan
+  toegewezene, klant, project, status en klantzichtbaarheid simpelweg niet in wat het model mag
+  invullen, en een link komt alleen mee als hij letterlijk in de mail staat.
 - **AI-configuratie verwijderen** onderaan de pagina haalt elke AI-functie weg tot er een nieuwe
   sleutel staat. De verbruikshistorie blijft bewaard.
 - **Bij een verlopen licentie stopt het genereren**, terwijl het instellingenscherm en de

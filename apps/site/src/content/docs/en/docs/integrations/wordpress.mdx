@@ -1,6 +1,6 @@
 ---
 title: WordPress
-description: "One Application Password per website opens four surfaces on the same host, and supplies Rank Math's AI Visibility figures as a marketing source."
+description: "One Application Password per website: Rank Math's AI Visibility as a marketing source, and every client site's content reachable by agents through MCP."
 sidebar:
   order: 11
 ---
@@ -8,8 +8,9 @@ sidebar:
 import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
 
 Most of the sites an agency looks after run WordPress. One **Application Password** per website
-opens four surfaces on the same host at once — and one of them supplies a marketing source nobody
-else has: how often a client's brand turns up, and gets linked, in AI answers.
+opens the same host several ways at once. One of them supplies a marketing source nobody else
+has: how often a client's brand turns up, and gets linked, in AI answers. And under the same login
+an agent reads and edits that site's pages, forms and media.
 
 ## Where to find it
 
@@ -44,7 +45,7 @@ a log line or the activity trail. The trail records *that* it changed, never wha
 
 ## What Verify actually checks
 
-Five independent probes run, and **none of them gates another**, because in reality those states
+Six independent probes run, and **none of them gates another**, because in reality those states
 are independent: Rank Math is routinely absent from a site whose posts API is perfectly healthy,
 and the MCP plugin from a site where Rank Math works fine.
 
@@ -55,9 +56,10 @@ and the MCP plugin from a site where Rank Math works fine.
 | `abilities` | WordPress 6.9's Abilities API is present | WordPress is older than 6.9 |
 | `rankmath_aiv` | Rank Math answers on AI Visibility | Plugin absent, or no Content AI subscription |
 | `mcp` | The MCP Adapter plugin is installed | It is not |
+| `bridge` | The breik. Bridge plugin is installed, with its version | It is not |
 
 Two rules follow from that. **A read that succeeds outranks a probe that refuses**: a credential
-that reached the ordinary REST API is *active* even if the other four failed, and only one refused
+that reached the ordinary REST API is *active* even if the others failed, and only one refused
 by every probe is called refused. And **unreachable** and **not WordPress** are kept separate from
 **refused**, because neither says anything about the password — reporting them as an auth failure
 sends somebody off to re-mint a credential that was never wrong.
@@ -118,12 +120,115 @@ Analyses also run on the cadence of your Rank Math plan — weekly by default �
 snapshots may legitimately carry the same number. When it was last analysed travels with the
 figures, so a report can say what it is actually comparing rather than announcing a 0% week.
 
+## The site as an MCP surface
+
+The same login is how an agent reads and edits a client site's content, from schakl.'s
+[MCP server](/en/docs/integrations/mcp/), including on sites that register no abilities of their
+own. **A site is a parameter, never a tool**: the `/mcp/wordpress` section is the same set of
+tools whether your agency looks after four sites or four hundred. A tool per site would be a list
+that differs per client, and a chat client puts every tool in the model's context on every turn.
+What differs per site, which plugins, which post types and which abilities, is answered by that
+site's summary.
+
+| What | Permission |
+| --- | --- |
+| Which site is this client's, and a summary: WordPress and PHP version, post types, plugin namespaces, forms, abilities, multilingual or not | `wordpress.site.read` |
+| Read pages, posts and any custom post type, with drafts, ACF fields and the WPML language; look up media | `wordpress.content.read` |
+| Create a draft or edit something that is not live yet | `wordpress.content.write` |
+| Edit something a visitor sees, or set it live | `wordpress.content.publish` |
+| Read / edit Contact Form 7: template, field names, both mails, messages | `wordpress.forms.read` / `wordpress.forms.write` |
+| List abilities and run the ones that mark themselves read-only | `wordpress.ability.read` |
+| Run any ability | `wordpress.ability.run` |
+
+### The audience decides the permission
+
+WordPress has no staging: an edit to a published page *is* the broadcast. So the permissions are
+not split by which field you touch but by **who sees the result**. A member writes drafts; anything
+a visitor can see is `wordpress.content.publish`, admin only by default. That is decided by reading
+the record before the write, and the refusal comes before the site is asked anything. Editing a
+form sits with publish, because it is live the moment it saves and decides where a client's leads
+land. An ability that does not mark itself read-only is treated as a write: better to refuse
+something harmless than to let something writing through.
+
+Every write is a line in the site's activity trail in schakl., naming the fields it touched. The
+client's WordPress records nothing about us.
+
+### The passthrough to the whole REST API
+
+Whatever has no fixed route goes through one bounded passthrough: any call the site's REST API
+takes, under the stored password. It exists because real client sites run WPML, LiteSpeed,
+FileBird and Link Genius, and a route per plugin is a list that rots. It is also the route that
+hands an agent a WordPress administrator, so its bounds are the design:
+
+- `wordpress.rest.read` for `GET` (member), `wordpress.rest.write` for anything else (admin only,
+  never on a default key).
+- Writes to users, plugins, themes and settings are refused for **everybody**, before the site is
+  asked. Those changes are made by a person in the site's own admin. Reading the same routes is
+  allowed.
+- Paths are relative to `/wp-json/` and cannot climb out of it.
+- Every write is a trail line, and every answer is capped at 256 KB with what was left out named.
+
+<Aside type="caution" title="A key with write access can deface a site">
+A key holding `wordpress.rest.write` can deface a client's site in one call, and a prompt
+injection in a page the agent is reading is how that happens. The defence is not in the route:
+mint read-only keys by default, and give write access to a key somebody uses deliberately.
+</Aside>
+
+## breik. Bridge: page builders, hidden post types, uploads and WPML
+
+Many agency sites build a page out of an ACF **repeater** of typed blocks, each block type showing
+a handful of fields out of thirty. That cannot be edited through ACF's REST integration, and none
+of it is fixable from the password's side:
+
+- ACF's validation ignores conditional logic, so a hidden required field blocks every write;
+- a repeater has to go back whole and saves by position, so changing one block means resending
+  every block;
+- a post type not shown in REST does not exist there;
+- `wp/v2/media` only takes multipart, which no MCP tool can send.
+
+So a WordPress plugin does it on the site itself: **breik. Bridge** (its own repository, PHP 7.4+,
+GPL). It knows the field groups' **schema** including when the editor hides a field, **reads** per
+block only the fields the editor shows, **writes** with conditional logic evaluated the way the
+editor does, reports every problem with its full path (`blokken[2].titel`) instead of stopping at
+the first, edits one block without touching the others, takes an image as a URL or base64, and
+handles **WPML**: languages, a linked translation with every reference swapped for its
+translation, and String Translation.
+
+schakl. reaches the plugin through **22 bridge routes** under the same login, and so through the
+same 22 tools in `/mcp/wordpress` however many sites there are:
+
+| What | Permission |
+| --- | --- |
+| Versions, post types (including ones not shown in REST), taxonomies, options pages, menus, languages | `wordpress.site.read` |
+| The field schema; read records and terms | `wordpress.content.read` |
+| Create or edit records and terms, upload media, create a translation | `wordpress.content.write` (+ `publish` for what is live) |
+| Change ACF options pages, menus and translated strings: live the moment they save | `wordpress.content.publish` |
+| Trash or delete a record | `wordpress.content.delete` |
+
+Where the plugin is not installed the call says so itself, naming the plugin; on the **WordPress**
+card the verify shows which version is there. A refusal from the plugin comes through unchanged,
+with the path to the field and the row, because a translated sentence without the row index sends
+an agent hunting.
+
+<Aside type="note" title="What has been proven">
+The plugin has run end to end on a test container with WordPress and ACF PRO, including a post
+type not shown in REST. It has not yet run on a client's production site, and its WPML half is
+written from WPML's documentation: plan a rehearsal.
+</Aside>
+
 ## Permissions
 
 | Permission | What it opens | Default |
 | --- | --- | --- |
 | `wordpress.site.manage` | Connect, change the password, verify, disconnect | Administrator |
-| `wordpress.site.read` | See whether this client's site is connected and what the last verify found | Administrator, Member |
+| `wordpress.site.read` | See whether this client's site is connected, what the last verify found, and the summary | Administrator, Member |
+| `wordpress.content.read` | Read pages, posts, media and bridge records | Administrator, Member |
+| `wordpress.content.write` | Write drafts, edit what is not live, upload media | Administrator, Member |
+| `wordpress.content.publish` | Edit anything a visitor sees, set something live, options pages, menus and strings | Administrator |
+| `wordpress.content.delete` | Trash or delete records | Administrator |
+| `wordpress.forms.read` / `wordpress.forms.write` | Read / edit Contact Form 7 | Member / Administrator |
+| `wordpress.ability.read` / `wordpress.ability.run` | Read-only abilities / any ability | Member / Administrator |
+| `wordpress.rest.read` / `wordpress.rest.write` | The REST passthrough: read / write | Member / Administrator |
 
 The read goes to members because "is this client's site connected?" is a question an account
 manager asks while doing ordinary work. The manage permission stays admin-only and is deliberately
@@ -139,7 +244,8 @@ manager asks while doing ordinary work. The manage permission stays admin-only a
   behind a firewall or gone. Going and looking is what the Verify button is for.
 - **A verify that succeeds clears the error a previous one set.** A status flag that only ever
   turns on is a bug with a long tail.
-- **Reading only, for now.** No creating a brand, no editing prompts, no publishing posts.
+- **Rank Math is read only.** No creating a brand and no editing prompts. Writing to the site
+  itself goes through the MCP routes above, under their own permissions.
 - **Restricted colleagues see only their own clients' sites.** A website belongs to its domain's
   client, which is two joins away — and it is enforced, not assumed.
 
@@ -147,6 +253,6 @@ manager asks while doing ordinary work. The manage permission stays admin-only a
 
 <CardGrid>
   <LinkCard title="Websites" href="/en/docs/modules/websites/" description="The record this credential hangs off." />
-  <LinkCard title="Marketing sources" href="/en/docs/integrations/marketing-sources/" description="The other four sources, and how a client's figures are put together." />
+  <LinkCard title="Marketing sources" href="/en/docs/integrations/marketing-sources/" description="The other sources, and how a client's figures are put together." />
   <LinkCard title="Uptime Kuma" href="/en/docs/integrations/uptime-kuma/" description="The other thing a website has." />
 </CardGrid>

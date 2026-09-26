@@ -2,7 +2,7 @@
 title: Reporting
 description: "The periodic client report as a document: the period's numbers frozen into a snapshot, prose in your own voice, a branded PDF, and a human between it and the client."
 sidebar:
-  order: 17
+  order: 18
 ---
 
 import { Aside, Steps } from '@astrojs/starlight/components';
@@ -54,6 +54,41 @@ and in which sections run: the site audit, **Wat we deze maand oppakken** (What 
 up this month) and **Open vragen** (Open questions) appear in the internal analysis alone. That
 one is never sent to a client and never published to the portal.
 
+## What a report contains
+
+The chapters come from the modules that are switched on. The marketing module contributes traffic
+channels, search engines, keyword positions, Search Console, referral traffic, social traffic,
+conversions, **Leads en formulierinzendingen** (leads and form submissions), visibility in AI
+search results, **Zichtbaarheid in AI-zoekmachines** (visibility in AI search engines),
+**Zichtbaarheid in AI-overzichten en AI-modus** (visibility in AI Overviews and AI Mode) and,
+in the internal analysis only, the site audit. A chapter this client has nothing for prints
+nothing rather than an empty table:
+
+- **Leads and form submissions** reads the client's measurement profile, just like the leads
+  dashboard in [Marketing](/en/docs/modules/marketing/). No profile, no chapter.
+- **Visibility in AI search engines** is SE Ranking's AI Search figures, last month against the
+  month before, only for a client you switched it on for.
+- **Visibility in AI Overviews and AI Mode** comes from the uploaded export of Search Console's
+  Generative AI report, only when there is one.
+- **Keyword positions** come from SE Ranking or from Search Console, chosen per organisation and
+  per client (**Automatisch**, **SE Ranking**, **Search Console** or **Geen zoekwoordsectie**).
+
+Under **Wat het rapport bevat** (what the report contains) in a client's profile you switch a
+chapter on or off for that one client (**Altijd opnemen**, **Nooit opnemen**) without a template
+of their own; whatever stays on **Volg sjabloon** follows the template.
+
+## How the tables read
+
+- **A change sits beside the number it is about**: `1,240 ▲ +26.5%` in one cell, not a separate
+  CHANGE column at the far end. The arrow is the direction the number moved, the colour is the
+  verdict, so an average position that fell gets a down arrow in green.
+- **Positions compare with the month before**, not with last year: where a term stood a year ago
+  says nothing about this month's work. The chapter names that span itself under its tiles, and
+  the columns carry the day each position was read (**1 aug**, **31 aug**).
+- **The channel table has a goals column**: the key events each channel produced, with their own
+  change.
+- This happens at print time, so reports produced earlier read this way too.
+
 ## Schedule, voice and template
 
 *Instellingen → Rapportage → Planning* holds the defaults every client inherits: **Hoe vaak**
@@ -98,7 +133,8 @@ kijken** (Ready to review), **Verstuurd** (Sent) or **Mislukt** (Failed).
 
 On the review screen you read the summary and every section paragraph. You can edit the text by
 hand (that section is then marked **met de hand aangepast**, edited by hand, and survives a
-regenerate) or press **Opnieuw schrijven** (Rewrite) to have one section written again. **Het
+regenerate) or press **Opnieuw schrijven** (Rewrite) to have one section written again. The tables already carry the figures,
+so the prose names at most a few per paragraph and tells the rest in words. **Het
 document** (The document) previews exactly what the PDF prints, **Pdf** downloads it, and at the
 top sits **Goed om te weten voordat je verstuurt** (Worth knowing before you send): this run's
 warnings, which the client never sees.
@@ -109,6 +145,9 @@ of mailing and reversible. The covering mail is reworded under *Instellingen →
 → E-mail), template **Maandrapportage**, with the variables `{brand}`, `{client}`, `{contact}`,
 `{period}`, `{sender_name}` and `{link}`. The sender name resolves from the client's responsible
 employee.
+
+A client opening their report in the portal gets the document: no status, no warnings, no
+warning count and no review link. Only published client reports ever land there.
 
 ## Permissions
 
@@ -141,11 +180,6 @@ stays with whoever owns the relationship.
   numbers, no prose, and a warning that says so.
 - **An expired licence makes the module read-only** and stands the schedule down; every report
   already produced still opens and downloads.
-
-<Aside type="caution" title="Not in a released version yet">
-The reporting module is new and is not in a released version yet: it lands after v0.21.0. On an
-installation running that version, the *Rapportages* nav item is not there.
-</Aside>
 
 ## Read next
 

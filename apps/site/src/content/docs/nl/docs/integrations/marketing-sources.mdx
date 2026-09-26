@@ -1,6 +1,6 @@
 ---
 title: Marketingbronnen
-description: "Wat Google Analytics, Search Console, Google Ads, SE Ranking en Rank Math elk nodig hebben, en wat elke bron aan het klantdashboard bijdraagt."
+description: "Wat Google Analytics, Search Console, Google Ads, SE Ranking en Rank Math elk nodig hebben, wat elke bron aan het klantdashboard bijdraagt, en waar Tag Manager naast ze staat."
 sidebar:
   order: 5
 ---
@@ -8,16 +8,21 @@ sidebar:
 import { Aside, Steps } from '@astrojs/starlight/components';
 
 De marketingmodule leest vijf bronnen, en die stellen elk hun eigen eisen: drie rijden op de
-Google-koppeling van een medewerker, één op één API-sleutel van het hele bureau, en één op een
-inlog die bij één website hoort. Deze pagina gaat over het koppelen zelf. Wat je vervolgens op het dashboard ziet, staat bij
-[Marketing](/nl/docs/modules/marketing/).
+Google-koppeling van een medewerker, één op een API-sleutel van het hele bureau, en één op een
+inlog die bij één website hoort. Daarnaast staat Google Tag Manager in dezelfde kiezer, als
+verbinding zonder eigen cijfers. Deze pagina gaat over het koppelen zelf. Wat je vervolgens op het
+dashboard ziet, staat bij [Marketing](/nl/docs/modules/marketing/).
 
 ## Waar je het vindt
 
-- Het paneel **Marketing** op de klantpagina, via ⋯ → **Bewerken**: hier leg je de koppelingen per
-  klant.
-- *Instellingen → Marketing*: het **Google Ads-ontwikkelaarstoken** en de **SE Ranking
-  API-sleutel**.
+- Het paneel **Marketing** op de klantpagina, via ⋯ → **Bewerken**, of de ＋ op het tabblad
+  Marketing van de klant: hier leg je de koppelingen per klant, voor alle vijf bronnen en Tag
+  Manager.
+- *Instellingen → Marketing*: de **SE Ranking API-sleutel**, de optionele **SE Ranking Data
+  API-sleutel**, de huisstandaard voor de vergelijking en het AI-zoekoverzicht, en de namen
+  waaronder een klant de bronnen leest.
+- *Instellingen → Google Ads*: het **ontwikkelaarstoken**. Zie
+  [Google Ads](/nl/docs/integrations/google-ads/).
 - *Instellingen → Google Workspace*: de OAuth-client waar drie van de vijf bronnen op rijden. Zie
   [Google Workspace](/nl/docs/integrations/google-workspace/).
 - De kaart **WordPress** op een website: het applicatiewachtwoord waar de Rank Math-bron op rijdt.
@@ -28,9 +33,9 @@ inlog die bij één website hoort. Deze pagina gaat over het koppelen zelf. Wat 
 | Bron | Wat je koppelt | Wat je vooraf klaarzet | Wat het oplevert |
 | --- | --- | --- | --- |
 | Google Analytics | een GA4-property | Analytics Admin API **én** Analytics Data API | Sessies, Gebruikers, Nieuwe gebruikers, Belangrijke gebeurtenissen, Conversies, Betrokkenheid, Omzet |
-| Search Console | een geverifieerde site (domein of URL-prefix) | Search Console API | Kliks, Vertoningen, CTR, Gem. positie |
+| Search Console | een geverifieerde site (domein of URL-prefix) | Search Console API | Kliks, Vertoningen, CTR, Gem. positie, en Vertoningen in AI zodra je de export uploadt |
 | Google Ads | een klantaccount, nooit een beheerdersaccount | Google Ads API en een ontwikkelaarstoken | Uitgaven, Kliks, Vertoningen, Conversies, Conversiewaarde |
-| SE Ranking | een project | één API-sleutel voor het bureau | Gem. positie, Top 3, Top 10, Top 30, Scorende en Gevolgde zoekwoorden |
+| SE Ranking | een project | een API-sleutel voor het bureau, en voor het AI-zoekoverzicht toegang tot de Data API | Gem. positie, Top 3, Top 10, Top 30, Scorende en Gevolgde zoekwoorden, en het AI-zoekoverzicht |
 | Rank Math | een gekoppelde website | een applicatiewachtwoord op die WordPress-site, en een Content AI-abonnement | AI-zichtbaarheidsscore, Vermeldingen, Bronvermeldingen, Gem. sentiment, Gem. plaats |
 
 De API's zet je aan in het Google Cloud-project van je eigen OAuth-client, onder **APIs & Services
@@ -44,8 +49,8 @@ De API's zet je aan in het Google Cloud-project van je eigen OAuth-client, onder
    blijft de property-keuzelijst leeg terwijl al het andere ingesteld lijkt.
 
 2. Maak in het **API-center** van je Google Ads-beheerdersaccount een ontwikkelaarstoken aan en vul
-   het onder *Instellingen → Marketing* in bij **Google Ads-ontwikkelaarstoken**. Het wordt
-   versleuteld opgeslagen en nooit teruggegeven; laat het veld later leeg om het te behouden.
+   het in onder *Instellingen → Google Ads*. Het wordt versleuteld opgeslagen en nooit teruggegeven;
+   laat het veld later leeg om het te behouden.
 
 3. Koppel je eigen Google-account onder *Instellingen → Mijn account*, kaart **Google-account**,
    knop **Google koppelen**. Mag je marketingkoppelingen beheren, dan zitten Analytics, Search
@@ -54,13 +59,18 @@ De API's zet je aan in het Google Cloud-project van je eigen OAuth-client, onder
 4. Open een klant, klik ⋯ op het paneel **Marketing** en kies **Bewerken**. Kies een account in
    **Analytics-property**, **Search Console-site** en **Ads-account**. Heeft de klant meer dan één
    website, kies dan eerst bij **Koppelen aan website** aan welke site de koppeling hangt; anders
-   blijft hij op **Hele klant** staan.
+   blijft hij op **Hele klant** staan. Heeft de klant precies één website, dan staat die al
+   gekozen.
 </Steps>
 
 Een keuzelijst toont wat **jouw** koppeling bij Google kan bereiken, niet wat het bureau heeft.
 Blijft er iets leeg, dan zegt de lijst waarom: nog geen Google-account (met de knop **Google
 koppelen**), ontbrekende rechten (**Google opnieuw koppelen**), of bij Ads dat er nog een
-ontwikkelaarstoken nodig is. Heeft een collega de bron al bereikbaar, dan staat erbij wie dat is.
+ontwikkelaarstoken nodig is.
+
+Een ontbrekende Google-koppeling bepaalt alleen een zin, nooit of de rest getekend wordt. Een
+klant met een werkend SE Ranking-project en een Rank Math-koppeling krijgt dus gewoon zijn
+kiezers en cijfers, ook op een installatie zonder één Google-account.
 
 Meerdere koppelingen per bron per klant mogen: een klant met twee sites krijgt twee
 Search Console-koppelingen en twee properties, elk aan zijn eigen website gehangen.
@@ -68,45 +78,128 @@ Search Console-koppelingen en twee properties, elk aan zijn eigen website gehang
 ## SE Ranking
 
 SE Ranking werkt anders dan de drie Google-bronnen: geen OAuth, geen persoonlijke koppeling, maar
-één **SE Ranking API-sleutel** voor het hele bureau onder *Instellingen → Marketing*. Elk
-klantproject wordt daaraan gekoppeld, zodat zoekwoordposities, de website-audit en de
-zichtbaarheid in AI-zoekresultaten overal tegelijk werken. Zonder sleutel meldt schakl. dat er een
-sleutel nodig is; weigert SE Ranking hem, dan zegt schakl. dat ook.
+een **SE Ranking API-sleutel** voor het hele bureau onder *Instellingen → Marketing*. Elk
+klantproject wordt daaraan gekoppeld, in dezelfde kiezer als de andere bronnen, bij
+**SE Ranking-project**. Zoekwoordposities, de website-audit en de AI Result Tracker werken daarna
+overal tegelijk.
 
-<Aside type="caution" title="SE Ranking: de sleutel wel, de schermen nog niet">
-De keuzelijsten op de klantpagina bieden op dit moment alleen Google Analytics, Search Console en
-Google Ads. De SE Ranking-cijfers komen terecht in de hoofdstukken zoekwoordposities,
-website-audit en zichtbaarheid in AI-zoekresultaten van de
-[maandrapportage](/nl/docs/modules/reporting/). Twee dingen aan deze koppeling zijn bovendien nooit
-tegen een echte sleutel uitgeprobeerd: de precieze opzet van de `Authorization`-header en het pad
-waarop de projectenlijst wordt opgehaald. Beide komen uit de documentatie van SE Ranking.
+SE Ranking verkoopt twee API's en geeft voor elk een sleutel uit: de project-API (posities, audit)
+en de Data API (AI-zoeken). Vaak werkt één sleutel voor allebei, vaak ook niet. Heb je een aparte
+Data API-sleutel, zet die dan in **SE Ranking Data API-sleutel (optioneel)**; leeg betekent dat de
+eerste sleutel voor beide geldt. **Sleutel controleren** vraagt elke API met de sleutel die er
+werkelijk voor gebruikt wordt, laat zien hoeveel Data API-units je nog hebt, en kost zelf niets.
+
+### Het AI-zoekoverzicht
+
+Uit de Data API haalt schakl. per klant vier cijfers over AI-antwoorden: **Merkvermeldingen**,
+**Links naar de site**, **Gemiddelde positie** (lager is beter) en **Potentieel AI-verkeer**. Het
+gaat altijd over de laatste hele maand, vergeleken met de maand ervoor, en staat op het dashboard
+van de klant en als hoofdstuk in het rapport.
+
+<Aside type="caution" title="Standaard uit, want het kost units">
+Eén lezing kost 800 units van je eigen Data API-abonnement, per engine-keuze, per klant, per maand.
+Een update mag dat niet stilletjes gaan uitgeven, dus het staat uit tot iemand **AI-zichtbaarheid**
+aanzet: als huisstandaard onder *Instellingen → Marketing*, of per klant op het tabblad Marketing.
+De prijs staat bij elke knop die units uitgeeft. Een betaalde lezing wordt één keer gedaan en per
+maand bewaard.
 </Aside>
+
+Geldt de huisstandaard, dan vraagt schakl. het alleen voor klanten met een actieve
+marketingkoppeling. Het domein komt uit het gekoppelde project of de eerste website van de klant,
+het merk uit wat SE Ranking bij dat domein herkent; allebei kun je per klant zelf invullen. In de
+Nederlandse database heeft alleen Google AI-overzichten een maandreeks, dus voor een Nederlandse
+klant is **Alle engines samen** de bruikbare keuze. Een site die SE Ranking niet kent krijgt een zin
+in plaats van vier streepjes.
+
+## Vertoningen in AI-overzichten: de export van Search Console
+
+Search Console toont sinds juni 2026 hoe vaak een site in AI-overzichten en AI-modus verschijnt,
+in een eigen **Generatief AI-rapport**. De API geeft die cijfers niet terug, en schakl. schat ze
+dus ook niet. Op het dashboard staat daarom een kaart **Zichtbaarheid in AI-overzichten en
+AI-modus** met een link naar het rapport en de knop **Export uploaden**.
+
+<Steps>
+1. Open het rapport via de kaart en exporteer het **per dag**. Een week- of maandexport wordt
+   geweigerd, met een zin die zegt waarom.
+2. Upload het bestand op de kaart. De CSV van de datumtabel en de hele zip van Google worden allebei
+   gelezen, met Engelse of Nederlandse kolomkoppen.
+3. Het cijfer verschijnt als **Vertoningen in AI**: een tegel, een trend, de vergelijking, een
+   kolom in het overzicht over alle klanten en het hoofdstuk over AI-overzichten in het rapport.
+</Steps>
+
+De kaart zegt wanneer er voor het laatst is geüpload en welke dagen dat besloeg. De nachtelijke
+synchronisatie overschrijft een upload nooit. Voor een klant waarvoor niets is geüpload is er geen
+tegel en geen hoofdstuk: afwezig is nooit nul.
+
+## Tag Manager: een verbinding, geen bron
+
+Onder de vijf bronnen staat in dezelfde kiezer **Tag Manager**. Een container heeft geen
+dagcijfers, dus hij krijgt geen tegels; hij wordt gekoppeld via de eigen route van Tag Manager en
+staat daarna op de regel van het paneel met het aantal live tags en ongepubliceerde wijzigingen.
+De koppeling Tag Manager moet aanstaan en je moet containers mogen koppelen. Zie
+[Google Tag Manager](/nl/docs/integrations/google-tag-manager/).
 
 ## Wat er na het koppelen gebeurt
 
 Een nieuwe koppeling krijgt eenmalig een inhaalslag van ruim dertien maanden, zodat de sparklines
 en de vergelijking met vorig jaar meteen kloppen. Daarna haalt een nachtelijke taak de dagcijfers
 op en herhaalt daarbij de laatste week: Search Console levert zijn definitieve cijfers pas na twee
-tot drie dagen, en toeschrijving bij Analytics en Ads schuift ook nog wat na. Late cijfers
-corrigeren zich zo vanzelf.
+tot drie dagen, en toeschrijving bij Analytics schuift ook nog wat na. Voor Google Ads gaat hij
+30 dagen terug, want Google schrijft een conversie tot het einde van het conversievenster toe aan
+de dag van de klik; met een week zou een maand vergeleken worden voordat Google klaar is met tellen.
+Late cijfers corrigeren zich zo vanzelf.
+
+De uitsplitsingen onder de tegels worden live bij de bron gelezen en een dag bewaard. 's Nachts
+worden ze voor elke klant alvast opgehaald, dus wie 's ochtends een tabblad opent wacht niet op
+Google.
 
 Elke koppeling draagt zichtbaar haar toestand: **Gesynchroniseerd**, **Eerste synchronisatie
 loopt**, **Synchronisatiefout** of **Verbinding verbroken**, met **Laatst gesynchroniseerd** erbij.
-Er staat ook bij via wiens Google-account de koppeling loopt.
+Bij een verbroken koppeling staat via wiens Google-account hij liep, want dat is wie je moet
+vragen.
 
 Ontkoppelen wist niets. De koppeling wordt gedeactiveerd en de opgehaalde historie blijft staan;
 dezelfde property opnieuw koppelen zet hem weer aan.
+
+## Hoe een bron heet
+
+Verkoopt je bureau een bron onder een eigen naam, dan zet je die onder *Instellingen → Marketing*.
+Die naam staat daarna op het dashboard, in de zinnen over die bron en in de waarschuwingen van een
+rapport. Een klant in het portaal leest een bron onder jouw naam of een neutrale, zonder link naar
+een console en zonder de naam van de collega erachter.
+
+## Analytics en Search Console als eigen integratie
+
+Het dashboard stelt Analytics en Search Console één vraag: hoe doet deze klant het. Voor alle andere
+vragen bestaan de integraties **Google Analytics** en **Google Search Console**, die je aanzet onder
+*Instellingen → Integraties*. Ze lezen live onder dezelfde Google-toestemming, bewaren niets, hebben
+de module Marketing niet nodig en schrijven nooit.
+
+| Integratie | Wat het leest | MCP-sectie |
+| --- | --- | --- |
+| Google Analytics | zeventien routes: property's, datastromen, sleutelgebeurtenissen, aangepaste dimensies en metrics, overzicht, dagreeks, uitsplitsing, realtime, metadata, een vrij rapport en een draaitabel | `/mcp/google-analytics` |
+| Google Search Console | dertien routes: sites, sitemaps, overzicht, zoektypen, dag- en uurcijfers, uitsplitsing, stijgers en dalers, URL-inspectie, AI-zichtbaarheid en een vrije query | `/mcp/google-search-console` |
+
+Allebei gaan ze ook mee in de bundel `growth`. Vraagt een assistent Search Console naar
+AI-zichtbaarheid, dan zegt het antwoord dat de API dat cijfer niet heeft en geeft het de link naar
+het rapport, in plaats van een getal dat niets kan tegenspreken. Zie
+[MCP-server](/nl/docs/integrations/mcp/).
 
 ## Rechten
 
 | Recht | Wat het opent | Standaard bij |
 | --- | --- | --- |
-| `marketing.link.manage` | Koppelingen leggen en verbreken, en *Instellingen → Marketing* | Beheerder |
+| `marketing.link.manage` | Koppelingen leggen en verbreken, een Search Console-export uploaden, en *Instellingen → Marketing* | Beheerder |
 | `marketing.metrics.read` | De cijfers bekijken (paneel, tabblad, portaaltegel) | Beheerder, Medewerker, Klant |
 | `marketing.overview.read` | Het overzicht over alle klanten | Beheerder |
 | `google.connection.manage` | Je eigen Google-account koppelen | Beheerder, Medewerker |
+| `google_analytics.property.read` | Het eigen leesoppervlak van Analytics | Beheerder, Medewerker |
+| `google_analytics.report.run` | Het vrije rapport, de draaitabel en de compatibiliteitscontrole | Beheerder |
+| `google_search_console.site.read` | Het eigen leesoppervlak van Search Console | Beheerder, Medewerker |
+| `google_search_console.report.run` | De vrije query | Beheerder |
 
-Per rol in te stellen onder *Instellingen → Rollen*.
+Per rol in te stellen onder *Instellingen → Rollen*. De rechten van de twee integraties gaan nooit
+naar de rol Klant: de Google-toestemming van het bureau bereikt de property's van alle klanten.
 
 ## Goed om te weten
 
@@ -121,11 +214,14 @@ Per rol in te stellen onder *Instellingen → Rollen*.
   weigert elk verzoek. Dat ziet eruit als een kapotte module. De oplossing is schakl. bijwerken;
   in noodgevallen kan de beheerder de versie op de server met een instelling terugzetten.
 - **Het ontwikkelaarstoken hoort in het scherm, niet in de serverinstellingen.** Staat het alleen
-  in de omgeving van de server, dan meldt *Instellingen → Marketing* dat en kun je het alsnog in
-  de database opslaan.
+  in de omgeving van de server, dan meldt het scherm dat en kun je het alsnog in de database
+  opslaan.
+- **Een SE Ranking-project zonder AI Result Tracker is geen geweigerde sleutel.** De uitklapper
+  zegt dat dit project geen toegang heeft tot de tracker, en de rest van SE Ranking wordt gewoon
+  gelezen.
 - **Bij een verlopen licentie gaat de module alleen-lezen**: koppelen, ontkoppelen en de
   instellingen weigeren, en de nachtelijke synchronisatie staat stil. De al opgehaalde cijfers
-  blijven zichtbaar.
+  blijven zichtbaar, en de twee integraties blijven lezen.
 
 ## Verder lezen
 

@@ -1,51 +1,142 @@
 ---
 title: Taken
-description: "Het takenbord: eigen statussen, labels, checklists, sjablonen, herhaling en de planning van je werk op de agenda."
+description: "Het takenbord: taken die altijd een naam, een klant, een deadline en iemand hebben, aangemaakt met de hand, ingesproken of gemaild, met checklists, herhalingen als reeks en de planning van je werk op de agenda."
 sidebar:
   order: 5
 ---
 
 import { Aside, Steps } from '@astrojs/starlight/components';
 
-Taken zijn het werk zelf: wat er moet gebeuren, voor welke klant, door wie en wanneer. Het bord
-groepeert op de statussen die jouw bureau zelf inricht, niet op een lijstje dat wij bedacht
-hebben.
+Taken zijn het werk zelf: wat er moet gebeuren, voor welke klant, door wie en wanneer. Die vier
+vragen zijn in schakl. geen optionele velden: een taak zonder klant staat op geen klantdossier,
+een taak zonder deadline op geen scherm dat over tijd gaat, en een taak zonder iemand op
+niemands bord. Daarom vraagt elke manier om een taak te maken er meteen om.
 
-![Het takenbord, gegroepeerd op de statussen die je zelf hebt ingericht.](/img/docs/nl-tasks.png)
+![Het takenbord, gegroepeerd op wanneer het af moet.](/img/docs/nl-tasks.png)
 
 ## Waar je het vindt
 
 **Taken** in het hoofdmenu. Daarnaast staat er een paneel **Taken** op elk klantdossier en een
 takenlijst op elke projectpagina. De instellingsschermen zijn:
 
-- *Instellingen → Taakstatussen*: de kolommen van je bord
+- *Instellingen → Taakstatussen*: de statussen van je taken
 - *Instellingen → Taaklabels*: gekleurde labels
+- *Instellingen → Taken*: het taakadres waarmee een e-mail een taak wordt
 - *Taken → Sjablonen*: takensjablonen en checklistsjablonen op één scherm
 
-Taken hoort bij de open kern van schakl. en heeft dus geen licentiesleutel nodig.
+Taken hoort bij de open kern van schakl. en heeft dus geen licentiesleutel nodig. De AI-functies
+op deze pagina (inspreken, aanpassen met schakl, het invullen van een gemailde taak) vragen een
+eigen AI-aanbieder; zie [AI-assistentie](/nl/docs/modules/ai/).
 
 ## Het bord
 
 Open je **Taken**, dan zie je standaard **jouw** taken, niet die van iedereen. Wil je de rest
 zien, kies dan een andere toegewezene of "Geen" in de personenkiezer.
 
-Filteren kan op klant, project, toegewezene, label en op deadline (**Over tijd**, **Vandaag**,
-**Deze week**), plus vrije tekst. Met **Zonder vervaldatum** haal je de taken naar boven die
-zijn aangemaakt toen een vervaldatum nog niet verplicht was, zodat je ze er alsnog een kunt
-geven: één voor één, of een hele selectie tegelijk via de ✎. Rijen zijn gegroepeerd per status; afgeronde statussen staan
-standaard dichtgeklapt. Kolommen kies je zelf en die keuze blijft bewaard; sorteren gebeurt
-binnen elke groep.
+Het bord opent op de vraag wanneer iets af moet, niet op de volgorde waarin iemand ooit kaarten
+versleepte. De secties zijn **Over tijd**, **Vandaag**, **Deze week** (tot en met de komende
+zondag, niet "de komende zeven dagen") en **Later**; afgeronde taken staan dichtgeklapt onder
+**Afgerond**. Binnen een sectie staat eerst de vroegste deadline en bij dezelfde datum de
+hoogste prioriteit. Alleen **Over tijd** en **Vandaag** springen er in kleur uit; een taak met
+hoge prioriteit krijgt een streep langs de linkerrand. Elke deadline noemt ook de afstand:
+"20 aug · 4 dagen te laat". Wil je toch per status kijken, kies dan bij **Groeperen** voor
+**Status**; dat staat in de URL, dus die weergave kun je delen.
+
+Een herhalende taak die op schema loopt, staat als één rij op het bord: de eerstvolgende
+openstaande taak met een teken "↻ +11". Klik je daarop, dan klapt de reeks eronder open, en
+**Hele reeks bekijken** toont alle taken ervan. Een taak uit de reeks die vandaag moet of al te
+laat is, staat altijd gewoon als eigen rij, zodat de telling van Over tijd klopt.
+
+Filteren kan op klant, project, toegewezene, label en deadline, plus vrije tekst. Met **Zonder
+vervaldatum** haal je de taken naar boven die zijn aangemaakt toen een vervaldatum nog niet
+verplicht was, zodat je ze er alsnog een kunt geven: één voor één, of een hele selectie tegelijk
+via de ✎. Kolommen kies je zelf en die keuze blijft bewaard.
 
 Met de ✎ zet je de selectievakjes aan en pas je een hele selectie tegelijk aan: **status**,
-**toegewezene**, **prioriteit**, **project**, **klant** en **deadline**. Rijen die geweigerd
-worden (bijvoorbeeld een taak die een reden voor de deadline nodig heeft) worden per rij gemeld;
-de rest gaat gewoon door. **Nieuwe taak** maakt meteen een taak aan en zet je op de taakpagina
-in bewerkmodus; een apart aanmaakformulier is er niet.
+**toegewezene**, **prioriteit**, **project**, **klant** en **deadline**. Een deadline, een klant
+en een toegewezene kun je zo zetten maar nooit leegmaken. Rijen die geweigerd worden
+(bijvoorbeeld een taak die een reden voor de deadline nodig heeft) worden per rij gemeld; de rest
+gaat gewoon door.
+
+Rond je een taak af, dan kom je terug op het bord, op dezelfde selectie waar je vandaan kwam:
+het werk op die kaart is klaar.
+
+## Een taak aanmaken
+
+Er zijn vier deuren, en ze vragen allemaal hetzelfde minimum: een **titel**, een **klant**, een
+**vervaldatum** en **wie erop staan**.
+
+- **Nieuwe taak** op het bord, in de kop van een klant of in het klantpaneel **Taken** opent
+  een klein venster. Op een klantpagina staat de klant al ingevuld, en jijzelf staat als chip
+  bij de toegewezenen (weg te klikken). Pas na **Aanmaken** bestaat de taak, en je landt op de
+  taakpagina om de rest in te vullen. Een taak die je half bedacht en weer wegklikte, staat dus
+  nooit als lege rij op het bord.
+- Het **＋** in een kiezer maakt op dezelfde manier een taak en kiest hem meteen, zonder dat je de
+  pagina verlaat.
+- **Inspreken** en **E-mail naar het taakadres**: zie hieronder.
+- Via de API, MCP of de assistent. Noemt een aanroep niemand, dan komt de taak bij de
+  verantwoordelijke van het project, anders bij die van de klant, anders bij wie hem aanmaakt.
+
+Een project noemen is de klant noemen, want een project heeft er precies één. Taken die zijn
+aangemaakt voordat een klant verplicht was, blijven gewoon bewerkbaar; alleen de klant leeghalen
+kan niet meer.
+
+### Inspreken
+
+Naast **Nieuwe taak** staat **Inspreken**. Je zegt de taak in één keer, zoals je hem zou
+uitleggen: "maak een taak voor Jansen: nieuwe homepageteksten, uiterlijk vrijdag, hoge
+prioriteit; eerst concept schrijven, dan review met de klant, dan in WordPress zetten; reken drie
+uur". schakl. schrijft het uit en maakt er een concept van met titel, omschrijving, deadline,
+prioriteit, klant, project, toegewezene, labels, tijdbudget, stappen en links.
+
+<Steps>
+1. Druk op **Inspreken** en spreek (tot vijf minuten). Een tweede opname komt achter de eerste,
+   want je hoeft niet alles in één adem te zeggen.
+2. Onder **Wat je zei** staat het transcript. Klopt een naam niet, verbeter het en druk op
+   **Opnieuw verwerken**.
+3. Loop het concept na. Wat schakl. heeft ingevuld, is gemarkeerd met **Door schakl ingevuld**.
+4. **Taak aanmaken** schrijft alles in één keer weg, met de stappen als checklist. Tot die klik
+   is er niets opgeslagen.
+</Steps>
+
+Een naam die schakl. niet zeker herkent, laat het veld leeg in plaats van een andere klant te
+kiezen; **Taak aanmaken** blijft uit tot er een klant en een collega gekozen zijn. Inspreken vraagt
+een spraakaanbieder en de AI-functie **Taak inspreken, aanpassen en plannen**.
+
+### Een taak mailen naar het taakadres
+
+Onder *Instellingen → Taken* stel je een **Taakadres** in, bijvoorbeeld `taak@jouwbureau.nl`.
+Maak dat aan als alias of groep in je eigen maildomein. Een collega mailt dat adres (een notitie,
+een doorgestuurde klantmail, een foto) en er verschijnt een taak op zijn bord. schakl. leest het
+adres via de gekoppelde mailbox van de afzender, via Google Workspace of Microsoft 365, dus er is
+geen aparte mailserver nodig. De afzender is ook degene die de taak aanmaakt: wie geen taken mag
+aanmaken of de klant niet mag zien, wordt hier net zo geweigerd.
+
+- **Het onderwerp** wordt de titel. De klant noem je tussen rechte haken:
+  "[Nova Fietsen] SSL-certificaat verlengen".
+- **Regels bovenaan de mail** vullen de velden: `klant:`, `voor:`, `deadline:`, `project:`,
+  `labels:` en `prioriteit:`. Engelse woorden werken ook. Een deadline mag een datum zijn of een
+  woord als "vrijdag" of "a.s. vrijdag", en ook "uiterlijk 1 oktober" in de lopende tekst wordt
+  gelezen. Noemt de mail geen deadline, dan geldt **Standaarddeadline** (dagen na ontvangst).
+- **Een doorgestuurde klantmail** wordt herkend aan de mensen erin, als die contactpersoon zijn
+  van precies één klant. Die doorgestuurde mail komt als contactmoment aan de taak te hangen,
+  onder de naam en de datum van de oorspronkelijke afzender. Jouw eigen woorden erboven worden
+  de omschrijving, zonder je handtekening. Bijlagen gaan mee; een bijlage die niet mag, wordt
+  in de taak genoemd.
+- Met de AI-functie **E-mail naar taakadres** aan vult schakl. in wat je eigen woorden openlieten
+  (een klant, een collega, een deadline, stappen en links) en overschrijft het nooit wat jij
+  schreef.
+
+Is de klant niet te bepalen, dan wacht de mail onder **Taken → E-mailinbox**. Die tab verschijnt
+alleen zolang er iets wacht; je kiest de klant en maakt de taak af. In beide gevallen krijg je een
+melding die zegt voor welke klant, voor wie en met welke deadline de taak is gemaakt, en wat
+schakl. daarvan zelf koos. Een mail die alleen naar het taakadres ging, wordt geen contactmoment;
+een klantmail met het taakadres in cc wordt allebei.
 
 ## Statussen inrichten
 
-Onder *Instellingen → Taakstatussen* hernoem, verkleur en herorden je de kolommen van je bord,
-of voeg je er nieuwe toe. Elke status heeft drie vinkjes:
+Onder *Instellingen → Taakstatussen* hernoem, verkleur en herorden je de statussen, of voeg je er
+nieuwe toe. Elke status heeft drie vinkjes:
 
 - **Afgerond**: een eindstatus. Bepaalt wanneer een taak "klaar" is, klapt op het bord dicht en
   start een herhaling die op afronden staat.
@@ -59,35 +150,56 @@ nooit weg. Verplaats de taken er eerst uit.
 
 ## Een taak
 
-Op de taakpagina zet je met **Bewerken** de definitie open: **Status**, **Prioriteit**
-(Laag/Normaal/Hoog), **Toegewezen aan**, **Project**, **Klant**, **Vervaldatum** en
-**Tijdbudget** in minuten. Dat budget wordt getoond naast de uren die op de taak geschreven
-zijn, als "x over" of "x over budget".
+De taakpagina heeft één modus: je bewerkt elk veld op de plek waar je het leest. Klik op de
+titel om hem te hernoemen, op een eigenschap (**Status**, **Prioriteit**, **Toegewezen aan**,
+**Project**, **Klant**, **Vervaldatum**, **Tijdbudget**) om die te wijzigen, op de omschrijving
+om te schrijven. Een keuze uit een lijst is meteen opgeslagen; klik je ergens anders, dan sluit
+het veld zonder iets te wijzigen. De status staat er als een bolletje in zijn kleur naast de naam.
+Het tijdbudget wordt getoond naast de uren die op de taak geschreven zijn, als "x over" of "x over
+budget".
 
 ![Een taak met een checklist: afvinken is gebruiken, niet bewerken, dus er is geen opslaan-knop.](/img/docs/nl-task-detail.png)
 
 - **Labels**: gekleurd, organisatiebreed, en aan te maken vanuit de taak zelf.
-- **Checklists**: meerdere per taak, elk met een omschrijving in markdown en punten die hun
-  eigen omschrijving mogen hebben. Met **Uit sjabloon** haal je een bestaande checklist binnen;
-  met **Opslaan als sjabloon** zet je deze in de gedeelde bibliotheek.
-- **Links & bijlagen**: URL's plus echte bestandsuploads.
+- **Checklists**: meerdere per taak, elk met een omschrijving en punten die hun eigen toelichting
+  mogen hebben. Een punt of een lijst hernoem je door op de tekst te klikken, en de toelichting
+  bewerk je waar je hem leest. Met **Uit sjabloon** haal je een bestaande checklist binnen; met
+  **Opslaan als sjabloon** zet je deze in de gedeelde bibliotheek. **Stappen schrijven met
+  schakl** maakt een checklist uit de titel en de omschrijving.
+- **Links & bijlagen**: URL's plus echte bestanden. Een schermafbeelding plak je met Ctrl+V,
+  afbeeldingen staan als miniatuur en openen in een viewer, en per bestand zet je met het oogje of
+  de klant het mag zien. Zie [Bestanden](/nl/docs/modules/files/).
 - **Reacties**: met @-vermeldingen van collega's en contactpersonen en `#`-verwijzingen naar
-  andere taken. Bewerken en verwijderen mag; een bewerkte reactie krijgt het label "bewerkt".
+  andere taken, en met afbeeldingen die je in de tekst plakt. Je kunt op een reactie antwoorden;
+  een lang gesprek klapt oudere reacties in ("Toon 26 oudere reacties"). Bij **Volgorde** kies je
+  **Nieuwste eerst** of **Oudste eerst**; dat onthoudt schakl. per persoon, en antwoorden staan
+  altijd onder hun vraag. Een melding over een reactie opent de taak op precies die reactie, met
+  het antwoordvak eronder klaar.
 - **Activiteit**: alles wat er met de taak gebeurde, van aanmaken tot een verschoven deadline
   met reden. De naam van wie het deed wordt vastgelegd en blijft leesbaar als het account
   later verdwijnt.
 
 Vink je het laatste openstaande punt af, dan vraagt schakl. of de taak naar de eindstatus mag.
 
+### Aanpassen met schakl
+
+Onder de omschrijving staat het vak **Aanpassen met schakl**. Je typt of spreekt in wat er anders
+moet: "voeg een stap toe voor de DNS-wijziging, deadline vrijdag, zet erbij dat de klant het in het
+blauw wil". schakl. leest de hele kaart en voert de wijziging uit **als jou**: elke aanpassing
+staat onder jouw naam in de activiteit en gaat langs dezelfde regels als een gewone bewerking, dus
+een latere deadline krijgt je zin als reden. Klant en project worden daarbij nooit gewijzigd. Het
+vak staat er alleen als de AI-functie aan staat en jij de taak mag bewerken.
+
 <Aside type="caution">
 **Elke taak heeft een vervaldatum.** Zonder datum staat een taak op geen enkel scherm dat over
 tijd gaat: niet onder **Over tijd**, niet in de deadlinefeed van de agenda en niet in de
 tellers op je dashboard. schakl. vraagt er dus overal om waar je een taak aanmaakt, en laat je
-hem daarna niet leeghalen: hetzelfde venster dat om de naam vraagt, vraagt er de datum bij. Een vervaldatum is niet hetzelfde als een ingepland blok; het werk
+hem daarna niet leeghalen. Een vervaldatum is niet hetzelfde als een ingepland blok; het werk
 inplannen in de agenda blijft helemaal vrijwillig.
 
-Een deadline **naar later** verschuiven vraagt om een reden. Die reden komt in het
-activiteitenspoor van de taak te staan; zonder reden weigert de opslag.
+Een deadline **naar later** verschuiven vraagt om een reden. Je kiest in het venster dat
+verschijnt: een reden invullen en **Bevestigen** (dat slaat de nieuwe datum en de reden samen op),
+of de oude datum houden. De reden komt in het activiteitenspoor van de taak te staan.
 </Aside>
 
 ### Twee schakelaars die verder gaan dan de taak
@@ -96,10 +208,13 @@ activiteitenspoor van de taak te staan; zonder reden weigert de opslag.
   status via een contactmoment dat als afsluiter is aangewezen. Los van de statusinstelling,
   dus één taak kan het eisen zonder de hele status.
 - **Zichtbaar voor klant**: standaard uit. Staat hij aan, dan ziet een portaalcontact van die
-  klant de taak en mag erop reageren.
+  klant de taak en mag erop reageren. De labels van een taak ziet een klant nooit.
 
 Een taak kan ook aan een **contactpersoon van de eigen klant** worden toegewezen in plaats van
-aan een medewerker: "wachten op de klant". Aan allebei tegelijk kan niet.
+aan een medewerker: "wachten op de klant". Die taak wordt dan vanzelf zichtbaar voor de klant,
+staat bij die contactpersoon onder zijn eigen taken in het portaal, en heeft hij een actieve
+portaallogin, dan krijgt hij er een e-mail over. Aan een medewerker en een contactpersoon
+tegelijk kan niet.
 
 ## Inplannen op de agenda
 
@@ -108,24 +223,50 @@ Inplannen** (en vanuit het paneel **Planning** op de taak zelf) plan je blokken:
 
 <Steps>
 1. Kies de taak; het tijdbudget en de deadline staan erbij.
-2. Kies **Voor wie**. Jezelf mag altijd; een collega alleen met het bijbehorende recht.
+2. Kies **Voor wie**: een of meer collega's als chips, standaard iedereen die op de taak staat.
+   Jezelf mag altijd; een collega alleen met het bijbehorende recht. Er komt één blok per persoon.
 3. Vul **Datum**, **Starttijd**, **Duur (minuten)** en eventueel een **Notitie** in.
-4. Het blok verschijnt op de Agenda en is naar een andere dag te slepen.
-5. Is het blok voorbij, dan biedt het **Uren registreren**. Dat maakt de echte urenregistratie
+4. Naast het formulier staat die dag, met één kolom per persoon: wat er al gepland staat, verlof,
+   en de Google- of Outlook-afspraken. Het nieuwe blok staat er gestippeld overheen, en bovenaan
+   zie je **Geen overlap** of **Overlap: 2**, met per persoon waarmee.
+5. Het blok verschijnt op de Agenda en is naar een andere dag te slepen.
+6. Is het blok voorbij, dan biedt het **Uren registreren**. Dat maakt de echte urenregistratie
    aan en markeert het blok als geregistreerd, zodat je het nooit dubbel schrijft.
 </Steps>
 
-Eén taak mag meerdere blokken hebben; met de Google-koppeling aan komen ze ook in Google Agenda.
+Van een collega zie je alleen **Bezet** en het tijdvak, tenzij je zijn planning mag lezen. Een
+afspraak uit iemands eigen Google-agenda is voor iedereen alleen een tijdvak, nooit een titel.
+Eén taak mag meerdere blokken hebben; met de Google- of Microsoft-koppeling aan komen ze ook in
+de agenda van die persoon, met als titel "Klant: Taak".
 
 ## Herhaling
 
 Een taak kan **Dagelijks**, **Wekelijks**, **Maandelijks**, **Per kwartaal** of **Jaarlijks**
-terugkeren, in een van twee modi:
+terugkeren, op een vaste dag als je dat wilt: een weekdag, een dag van de maand, of een weekdag
+van de maand ("elke maand op de tweede dinsdag"). Er zijn twee modi:
 
-- **Na afronden**: de volgende taak verschijnt zodra je deze afrondt.
-- **Op schema**: hij wordt automatisch op het interval aangemaakt, ook als deze nog open staat.
+- **Na afronden**: de volgende taak ontstaat zodra je deze afrondt.
+- **Op schema**: alle taken voor het komende jaar worden direct aangemaakt, elk op een eigen
+  datum, en de regel houdt steeds een jaar vooruit klaar. Zo zie je een kwartaal vooruit wat er
+  aankomt, en kun je werk overdragen voordat het er is.
 
-Labels en checklists gaan mee naar de volgende taak.
+Bij **Op schema** hoort één reeks bij één regel. De regel staat op de eerste taak; elke andere
+taak uit de reeks zegt waar hij bij hoort en linkt naar **Regel bewerken**. Verander je het ritme,
+dan worden de taken in de toekomst die nog niet af zijn opnieuw aangemaakt; wat al af is blijft
+staan. Mee naar elke volgende taak gaan titel, omschrijving, prioriteit, klant en project,
+toegewezenen, labels, tijdbudget, links en checklists (weer onafgevinkt); reacties, bijlagen en
+geplande blokken niet.
+
+Geef je een taak uit een reeks aan iemand anders, dan vraagt schakl.: **Alleen deze taak** of
+**Deze en alle volgende**. Bij alle volgende gaan de toegewezenen van de latere taken mee, en ook
+de al geplande blokken en de naam in de planning van de regel. Handig als iemand vertrekt.
+
+Met **Plan elke volgende taak meteen in** krijgt elke nieuwe taak direct zijn tijdblokken. Met
+**Blok toevoegen** zet je er meer dan één neer, elk met een eigen moment (**Op de deadline**,
+**Dagen vóór de deadline**, **Dagen na de deadline**, **Een weekdag van die week**, **Een
+weekdag van de maand** of **Een dag van de maand**), een eigen tijd en duur, eigen mensen en een
+notitie. De voorbeeldweergave toont de echte datums van de volgende herhaling; een blok dat vóór
+vandaag zou vallen, wordt nooit ingepland.
 
 ## Sjablonen
 
@@ -135,13 +276,15 @@ per regel een prioriteit, **Deadline na** zoveel dagen, een tijdbudget, een toeg
 Toepassen kan **Handmatig** vanaf het klantdossier (**Sjabloon toepassen**) of automatisch
 **Bij klantstatus**: zodra een klant die status bereikt, verschijnen de taken. Ook een
 abonnementstype kan zijn sjablonen uitrollen zodra een abonnement voor het eerst actief wordt.
+Een sjabloonregel zonder **Deadline na** krijgt de dag van toepassen als deadline.
 **Checklistsjablonen** zijn herbruikbare checklists die iedereen aan een taak kan hangen.
 
 ## Herinneringen
 
 Eén keer per dag meldt schakl. wat over tijd is en wat binnen jouw eigen drempel valt; die
 drempel stel je per persoon in onder *Instellingen → Meldingen*, veld **Bijna verlopen
-(dagen)**. Een taak meldt zich één keer per deadline en opnieuw zodra iemand die verschuift.
+(dagen)**. Een taak meldt zich één keer per deadline en opnieuw zodra iemand die verschuift. Rond
+je de taak af, dan verdwijnt de herinnering erover bij iedereen die hem nog niet had geopend.
 
 ## Rechten
 
@@ -152,22 +295,29 @@ drempel stel je per persoon in onder *Instellingen → Meldingen*, veld **Bijna 
 | `tasks.task.write` | Beheerder (alles), Medewerker (eigen) |
 | `tasks.task.delete` | Beheerder |
 | `tasks.comment.write` | Beheerder (alles), Medewerker en Klant (eigen) |
-| `tasks.schedule.read` / `tasks.schedule.write` | Beheerder (iedereen), Medewerker (zichzelf) |
+| `tasks.schedule.read` | Beheerder (iedereen), Medewerker en Klant (eigen) |
+| `tasks.schedule.write` | Beheerder (iedereen), Medewerker (zichzelf) |
 | `tasks.label.write` · `tasks.status.write` | Beheerder |
 | `tasks.template.write` · `tasks.template.apply` · `tasks.checklist_template.write` | Beheerder |
+| `tasks.settings.manage` | Beheerder: *Instellingen → Taken* en het taakadres |
 
 "Eigen" betekent bij een taak: **de taak is aan jou toegewezen**. Een medewerker bewerkt dus de
-taken die van hem zijn en niet die van een ander. Alles is per rol aan te passen onder
-*Instellingen → Rollen*.
+taken die van hem zijn en niet die van een ander. Voor een klant betekent "eigen" bij de planning:
+blokken op een taak die hij mag zien, zonder de interne notitie. Alles is per rol aan te passen
+onder *Instellingen → Rollen*.
 
 ## Goed om te weten
 
 - **Een taak verwijderen neemt zijn reacties, checklists, links en ingeplande blokken mee.**
-  Al geschreven uren blijven bestaan; ze raken alleen hun koppeling met de taak kwijt.
+  Al geschreven uren blijven bestaan; ze raken alleen hun koppeling met de taak kwijt. Verwijder
+  je de eerste taak van een reeks, dan gaan de nog niet afgeronde taken in de toekomst mee.
 - **Import maakt altijd nieuwe taken aan.** Taaktitels mogen legitiem herhalen, dus er is geen
-  eerlijke sleutel om op bij te werken. De kolom `assignee` matcht op het e-mailadres van de
+  eerlijke sleutel om op bij te werken. Klant en vervaldatum zijn verplichte kolommen, en de
+  preview noemt de rij waar ze ontbreken. De kolom `assignee` matcht op het e-mailadres van de
   medewerker en `status` wordt tegen jouw eigen statuslijst gecontroleerd. Exporteren kan
   gewoon; zie [Import & export](/nl/docs/modules/import-export/).
+- **Een taak uit een automatiseringsregel** krijgt de klant van de taak of klant waar de regel
+  op afging, en een deadline uit de regel zelf (standaard de dag waarop hij afgaat).
 - **De tab Sjablonen verschijnt alleen bij wie ze mag beheren**; een portaalklant komt er niet
   bij.
 - Op het **Dashboard** staan de widgets **Mijn openstaande taken** en **Openstaande taken per
@@ -178,4 +328,6 @@ taken die van hem zijn en niet die van een ander. Alles is per rol aan te passen
 
 - [Projecten](/nl/docs/modules/projects/): waar taken hun budget en to-do-lijst vandaan halen
 - [Klanten](/nl/docs/modules/companies/): het dossier met het takenpaneel
+- [Agenda](/nl/docs/modules/calendar/): waar de ingeplande blokken staan
+- [AI-assistentie](/nl/docs/modules/ai/): inspreken, aanpassen met schakl en het taakadres
 - [Import & export](/nl/docs/modules/import-export/)

@@ -1,0 +1,192 @@
+---
+title: Timeon
+description: "Keep hours and projects in step with the Timeon time registration for as long as your cutover lasts: a direction per kind, invoiced hours protected, conflicts as decisions."
+sidebar:
+  order: 14
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Moving from Timeon to schakl. rarely happens in a day. For a while the team writes in both: hours
+are still logged there and already corrected here, projects are created here while people still
+book onto them there. An import script cannot deal with that: it only goes one way and can only
+create, so a correction made here gets overwritten or doubled. This integration keeps track of both
+sides, for as long as the cutover lasts.
+
+## Where to find it
+
+- **Instellingen → Timeon** (Settings → Timeon, also reached via *Instellingen → Integraties*): the
+  key and the policy, so which direction, how far back, what may never be overwritten and when it
+  runs by itself.
+- **Timeon-synchronisatie** (the **Synchronisatie openen** button): run syncs, read the result, the
+  pairings per hour and project, and the **Wacht op jou** (waiting for you) queue.
+
+Timeon is deliberately not in the main menu and has no card on the client page: a cutover ends,
+and a menu item for an integration with an end date points at an empty screen one day. When
+conflicts are open, the hours page tells you, with the count.
+
+The integration needs the **Uren** (time) module. Pairing projects works better with the
+**Projects** module too, but is possible without: an hour then books onto a client.
+
+## Turning it on, safely
+
+<Steps>
+1. Switch **Timeon** on under *Instellingen → Integraties* and open *Instellingen → Timeon*. Choose
+   **Organisatie koppelen** (connect organisation), give the connection a **Naam** (name) and paste
+   the **API-sleutel** (API key; in Timeon under Settings). The key is stored encrypted and never
+   shown again. Both directions start off.
+2. Press **Controleren** (verify). The answer names the organisation and its size ("7 employees,
+   108 clients, 159 projects"). A key that works is not the answer; which books it opens is.
+3. If you imported hours from Timeon earlier, set **Niets aanraken tot en met** (touch nothing up
+   to and including) to the day of that import. Everything on or before that date stays untouched.
+4. Open the sync page and press **Alleen koppelen** (pair only). That run pairs what already exists
+   on both sides and writes nothing, so "2814 paired, 3 only in Timeon" is a fact to look at before
+   you decide anything.
+5. Choose a direction per kind under **Wat er gesynchroniseerd wordt** (what is synchronised) and
+   run a **Proefrun** (dry run). Read the result: what would be pulled, pushed, protected and
+   skipped.
+6. Only then **Synchroniseren** (synchronise), and only then **Automatisch synchroniseren**
+   (automatic sync).
+</Steps>
+
+<Aside type="tip" title="Run it twice before you believe it">
+A first run always looks right: its counters cannot tell a sync that has nothing left to do the
+second time from one that will re-decide every row. So look at the second run too. It should do
+next to nothing.
+</Aside>
+
+## Directions, per kind
+
+Hours and projects each get their own direction, because the honest answer usually differs per
+kind: halfway through a cutover you pull hours (people still log there) while projects go to
+Timeon (they are created here now).
+
+| Direction | What it does |
+| --- | --- |
+| **Uit** (off) | Read nothing, write nothing |
+| **Ophalen uit Timeon** (pull) | Timeon to here; what you change here does not go back |
+| **Sturen naar Timeon** (push) | Here to Timeon; what changes there is not taken over |
+| **Twee richtingen** (two-way) | Both ways; whoever changed it last wins, unless both sides changed |
+
+At the top of the settings, **Wat deze koppeling doet** (what this connection does) says in
+sentences which way, how often, how far back and what is protected. A setting you cannot read out
+loud is one you cannot check.
+
+## Pair first, create later
+
+The first run against an environment that already holds Timeon history, after an import for
+example, must **recognise** those hours and pair them without writing anything. A sync that created
+first would double three years of timesheets, and there is no undo for that. Clients are paired on
+their **client number**, never on name: two clients with the same name happen, and a match on name
+is ambiguous exactly where it looks safest.
+
+## The window is the sync
+
+Timeon does not record when an hour was last changed, so "what changed since yesterday" is not a
+question its API can answer. Every run therefore re-reads a period and compares: the **Venster
+(dagen terug)** (window, days back), 45 days by default. Long enough for a correction made while
+preparing last month's invoice, short enough not to read three years every night. Every run names
+the period it read, because a change outside it is not noticed. To walk through an older month
+anyway, pick a period on the run itself.
+
+An hour that seems gone is only deleted when the whole period was demonstrably read in full *and*
+the hour is also gone when asked for by its number. An hour moved from 5 August to 5 January is
+missing from August and has not vanished.
+
+## When both sides changed
+
+Every pairing remembers what the hour looked like on both sides when they last agreed. If one side
+moved, that change travels. If both moved, **Als beide kanten gewijzigd zijn** (when both sides
+changed) decides:
+
+- **In de wachtrij zetten (niets overschrijven)** (queue it, overwrite nothing), the default: the
+  hour goes under **Wacht op jou** with the fields side by side, and you choose **Hou deze versie**
+  (keep this version), **Neem Timeon over** (take Timeon's) or **Mag verschillen** (may differ).
+- **schakl wint** or **Timeon wint** (schakl wins, Timeon wins): a decision to overwrite somebody's
+  edit. That is allowed, but it is chosen, not inferred.
+
+A decision is stored. **Mag verschillen** leaves both sides as they are, and that difference is
+not proposed again: a queue that shows the same twelve rows every night is one nobody reads after
+three weeks. A difference no direction can resolve, such as a Timeon project with no counterpart
+here, does not enter the queue per hour but appears once per run as a warning you can act on: pair
+the project, and on the next run the value travels by itself.
+
+## Projects
+
+Name, status, billable by default and budget travel in the direction you choose for projects. With
+**Ontbrekende projecten aanmaken** (create missing projects), a project that does not exist on the
+other side yet is created there too, with its budget and billable default, in whichever direction
+projects travel. A project that is already paired stays paired when it is renamed.
+
+With **Twee richtingen**, fields are merged one by one against what last agreed: a budget raised
+here and a project closed in Timeon are two changes by two people, and both arrive. Where it cannot
+be established which side changed, the sync page asks which side is right ("what is here is right"
+or "Timeon is right") and then syncs the projects once with that answer. Nothing is guessed.
+
+Timeon only knows a total budget. A budget that restarts per period here therefore does not travel,
+and that is reported.
+
+## What is never overwritten
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| **Gefactureerde uren beschermen** (protect invoiced hours) | on | An hour on an invoice is a record. It is never overwritten or deleted; the difference is reported |
+| **Goedgekeurde uren beschermen** (protect approved hours) | off | Hours approved here stay untouched too |
+| **Niets aanraken tot en met** | empty | Everything on or before that date stays out of reach |
+| **Goedkeuringen terugsturen** (send approvals back) | off | What you approve here is approved in Timeon too |
+| **Ontbrekende medewerkers aanmaken** (create missing users) | off | Off: hours of somebody with no account here are skipped and named, never put on someone else's name |
+
+A refusal per hour is a line in the report; a key that stopped working is one message and a run
+that did not succeed.
+
+## Automatic
+
+**Automatisch synchroniseren** is off until you switch it on, because a job that starts the moment
+you paste a key would make connecting irreversible. Then you choose **Hoe vaak** (how often):
+**Elk uur** (every hour), **Om de zoveel uur** (every few hours), **Elke dag** (daily) or **Elke
+werkdag** (every weekday), with a **Tijdstip** (time) on your organisation's clock. Summer and
+winter time do not shift it, and it is met within a quarter of an hour, not to the minute.
+
+During a cutover the team writes in both systems all day, so every hour is a reasonable choice then;
+once traffic goes one way again, daily is enough. Syncing more often than daily reads a shorter
+stretch on the in-between rounds, and the full window on the first run of the day. When it last ran
+by itself and when it runs next is shown on the settings *and* on the sync page: a schedule you
+cannot see working is one you cannot trust.
+
+## Permissions
+
+| Permission | What it opens | Default |
+| --- | --- | --- |
+| `timeon.settings.manage` | Set the connection up: key, directions, window, safeguards, schedule | Administrator |
+| `timeon.sync.run` | Run and follow syncs, see pairings and the queue, a dry run | Administrator |
+| `timeon.sync.write` | Let a run write and decide conflicts | Administrator |
+
+`timeon.sync.write` is never enough on its own: a run that pulls hours writes hours, so it also asks
+for the write permission on hours.
+
+## Good to know
+
+- **Not carried**: contacts, Timeon invoices as documents, tasks, categories, mileage, rates and
+  the separately billable duration. An hour billed for less than was worked in Timeon arrives here
+  with its full worked duration.
+- **A push sends the whole hour.** Timeon replaces an hour whole when it saves. Mileage, expenses
+  and the category, which schakl. has no field for, are therefore carried along unchanged: a
+  description correction must not delete an expense claim.
+- **Invoice state is guarded, not carried.** An hour invoiced here is not rewritten, and an hour on
+  an invoice in Timeon is not changed from here. A pulled hour does not bring an invoice state with
+  it. That holds as long as nobody invoices in Timeon any more; if you do, an hour could appear on
+  **Nog te factureren** (still to invoice) here a second time.
+- **What has been proven.** Reading, pairing, a dry run and real pull runs have been run against a
+  real Timeon organisation. Pushing has only been tested against a stand-in. Before the first real
+  push, do a dry run on a period holding **one** hour nobody minds, compare that hour in Timeon
+  field by field, and only then widen the window.
+- **Done with the cutover?** Set both directions to **Uit**, or delete the connection: the key, the
+  pairings and the runs go, the hours already carried over stay. Then revoke the API key in Timeon.
+
+## Read next
+
+<CardGrid>
+  <LinkCard title="Time" href="/en/docs/modules/time/" description="Where the hours land, and where an open conflict shows up." />
+  <LinkCard title="Projects" href="/en/docs/modules/projects/" description="Budgets and billable by default, the fields that travel with Timeon." />
+  <LinkCard title="Invoicing" href="/en/docs/modules/invoicing/" description="Why an invoiced hour is a record." />
+</CardGrid>

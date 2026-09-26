@@ -10,28 +10,32 @@
     "color": "#4285F4"
   },
   "tagline": {
-    "nl": "Kliks, vertoningen en posities per klant",
-    "en": "Clicks, impressions and positions per client"
+    "nl": "Kliks, posities en AI-overzichten per klant",
+    "en": "Clicks, positions and AI Overviews per client"
   },
   "summary": {
-    "nl": "Je koppelt per klant een Search Console-property op de klantpagina, een domeinproperty of een URL-prefix. Kliks, vertoningen, CTR en gemiddelde positie worden per dag bewaard, en de tabel met stijgers en dalers laat zien welke zoektermen ten opzichte van de vorige periode bewogen zijn. Dezelfde Google-toestemming als Analytics en Ads, dus geen extra login.",
-    "en": "You link a Search Console property per client on the client's page, either a domain property or a URL prefix. Clicks, impressions, CTR and average position are stored per day, and the movers table shows which queries shifted against the previous period. The same Google consent as Analytics and Ads, so no extra login."
+    "nl": "Je koppelt per klant een Search Console-property op de klantpagina, een domeinproperty of een URL-prefix. Kliks, vertoningen, CTR en gemiddelde positie worden per dag bewaard, en de tabel met stijgers en dalers laat zien welke zoektermen ten opzichte van de vorige periode bewogen zijn. Vertoningen in AI-overzichten en AI-modus geeft Google niet via de API terug; die komen binnen via de export van het Generatieve AI-rapport. En los van het dashboard is Search Console een eigen leesoppervlak, ook voor een AI-assistent: sitemaps, URL-inspectie, uurcijfers en een vrije query. Dezelfde Google-toestemming als Analytics en Ads, dus geen extra login.",
+    "en": "You link a Search Console property per client on the client's page, either a domain property or a URL prefix. Clicks, impressions, CTR and average position are stored per day, and the movers table shows which queries shifted against the previous period. Impressions in AI Overviews and AI Mode are something Google does not return through its API; they come in through the export of the Generative AI report. And apart from the dashboard, Search Console is a read surface of its own, for an AI assistant too: sitemaps, URL inspection, hourly figures and a free-form query. The same Google consent as Analytics and Ads, so no extra login."
   },
   "highlights": {
     "nl": [
       "Kliks, vertoningen, CTR en gemiddelde positie, per dag bewaard",
       "Topzoektermen, toppagina's en de grootste stijgers en dalers",
-      "Search Console maakt cijfers twee tot drie dagen later definitief; de nachtelijke run haalt de laatste week opnieuw op"
+      "Vertoningen in AI-overzichten en AI-modus via de exportknop van Google, als tegel, trend en rapporthoofdstuk",
+      "Search Console maakt cijfers twee tot drie dagen later definitief; de nachtelijke run haalt de laatste week opnieuw op",
+      "Een eigen leesoppervlak en MCP-sectie: sitemaps, URL-inspectie, uurcijfers en een vrije query"
     ],
     "en": [
       "Clicks, impressions, CTR and average position, stored per day",
       "Top queries, top pages and the biggest movers",
-      "Search Console finalises data two to three days late; the nightly run re-pulls the last week"
+      "Impressions in AI Overviews and AI Mode through Google's export button, as a tile, a trend and a report chapter",
+      "Search Console finalises data two to three days late; the nightly run re-pulls the last week",
+      "A read surface and MCP section of its own: sitemaps, URL inspection, hourly figures and a free-form query"
     ]
   },
   "where": {
-    "nl": "Klanten → de klant → paneel Marketing, plus het tabblad Marketing van die klant en Overzicht → Marketing.",
-    "en": "Klanten → de klant → paneel Marketing (Clients → the client → Marketing panel), plus that client's Marketing tab and Overzicht → Marketing (Overview → Marketing)."
+    "nl": "Klanten → de klant → paneel Marketing, plus het tabblad Marketing van die klant en Overzicht → Marketing. Het eigen leesoppervlak zet je aan onder Instellingen → Integraties.",
+    "en": "Klanten → de klant → paneel Marketing (Clients → the client → Marketing panel), plus that client's Marketing tab and Overzicht → Marketing (Overview → Marketing). The read surface of its own is switched on under Instellingen → Integraties (Settings → Integrations)."
   },
   "docs": "/docs/integrations/marketing-sources/",
   "page": {
@@ -45,14 +49,16 @@
         "Een Google Cloud-project met een OAuth-client, ingesteld onder Instellingen → Google Workspace",
         "De Google Search Console API staat aan in datzelfde project",
         "Een Google-account dat in Search Console toegang heeft tot de property, gekoppeld onder Instellingen → Mijn account",
-        "Het recht marketing.link.manage om accounts te mogen koppelen"
+        "Het recht marketing.link.manage om accounts te mogen koppelen",
+        "Voor het eigen leesoppervlak: de integratie Google Search Console aan onder Instellingen → Integraties. Die heeft de Google-koppeling nodig en niet de module Marketing"
       ],
       "en": [
         "The Marketing module is enabled and licensed for this workspace (Instellingen → Modules)",
         "A Google Cloud project with an OAuth client, configured under Instellingen → Google Workspace",
         "The Google Search Console API is switched on in that same project",
         "A Google account that has access to the property in Search Console, connected under Instellingen → Mijn account",
-        "The marketing.link.manage permission, to be allowed to link accounts"
+        "The marketing.link.manage permission, to be allowed to link accounts",
+        "For the read surface of its own: the Google Search Console integration switched on under Instellingen → Integraties. It needs the Google connection, not the Marketing module"
       ]
     },
     "steps": {
@@ -62,7 +68,8 @@
         "Open <strong>Klanten → de klant</strong> en klik in het paneel <strong>Marketing</strong> op bewerken.",
         "Kies <strong>Account koppelen</strong>, zet de bron op <code>Search Console-site</code> en pak de property van deze klant. Een domeinproperty staat in de lijst zonder het voorvoegsel <code>sc-domain:</code>, dus <code>klant.nl</code> is de domeinproperty en <code>https://klant.nl/</code> de URL-prefix.",
         "Meet de klant meerdere sites, koppel dan per site een property en zet bij <strong>Koppelen aan website</strong> de juiste site erbij; het paneel groepeert daarop.",
-        "De koppeling haalt ongeveer 13 maanden historie op en wordt daarna elke nacht bijgewerkt, waarbij de laatste zeven dagen opnieuw worden opgehaald."
+        "De koppeling haalt ongeveer 13 maanden historie op en wordt daarna elke nacht bijgewerkt, waarbij de laatste zeven dagen opnieuw worden opgehaald.",
+        "Wil je de vertoningen in AI-overzichten en AI-modus op het dashboard en in het rapport? Open in Search Console het <strong>Generatieve AI-rapport</strong> (het dashboard linkt ernaar), exporteer het <strong>per dag</strong>, en upload het bestand met <strong>Export uploaden</strong> op de kaart <strong>Zichtbaarheid in AI-overzichten en AI-modus</strong>. De CSV van de datumtabel en de hele zip van Google worden allebei gelezen."
       ],
       "en": [
         "Switch on the <strong>Google Search Console API</strong> in the Google Cloud project your OAuth client belongs to.",
@@ -70,7 +77,8 @@
         "Open <strong>Klanten → de klant</strong> (Clients → the client) and click edit on the <strong>Marketing</strong> panel.",
         "Choose <strong>Account koppelen</strong> (Link account), set the source to <code>Search Console-site</code> and pick this client's property. A domain property is listed without its <code>sc-domain:</code> prefix, so <code>klant.nl</code> is the domain property and <code>https://klant.nl/</code> the URL prefix.",
         "If the client measures several sites, link a property per site and set the matching site under <strong>Koppelen aan website</strong> (Link to website) — the panel groups on it.",
-        "The link backfills roughly 13 months and is then updated nightly, re-pulling the last seven days on every run."
+        "The link backfills roughly 13 months and is then updated nightly, re-pulling the last seven days on every run.",
+        "Want the impressions in AI Overviews and AI Mode on the dashboard and in the report? Open the <strong>Generative AI report</strong> in Search Console (the dashboard links to it), export it <strong>by day</strong>, and upload the file with <strong>Export uploaden</strong> (Upload export) on the <strong>Zichtbaarheid in AI-overzichten en AI-modus</strong> card. Both the CSV of the dates table and Google's whole zip are read."
       ]
     },
     "sections": [
@@ -115,6 +123,54 @@
           "nl": "Search Console levert de laatste dagen pas twee tot drie dagen later definitief aan. Daarom haalt de nachtelijke run niet alleen gisteren op, maar de hele laatste week opnieuw, en overschrijft hij de dagen die hij al had. Cijfers van eergisteren kunnen dus nog een keer veranderen, en dat is bedoeld: de alternatieve keuze zou zijn dat de eerste, onvolledige meting voor altijd blijft staan.",
           "en": "Search Console only finalises the most recent days two to three days later. So the nightly run does not just fetch yesterday — it re-pulls the whole trailing week and overwrites the days it already had. Figures from the day before yesterday can therefore change once more, by design: the alternative would leave the first, incomplete reading standing forever."
         }
+      },
+      {
+        "heading": {
+          "nl": "Vertoningen in AI: via de exportknop, want niet via de API",
+          "en": "Impressions in AI: through the export button, because not through the API"
+        },
+        "body": {
+          "nl": "Sinds juni 2026 toont Search Console hoe vaak een site in AI-overzichten en AI-modus verschijnt, in een eigen Generatief AI-rapport. De Search Console-API geeft die cijfers niet terug, en ze uit de webtotalen afleiden kan niet: daar zitten ze in zonder dat ze eruit te halen zijn. schakl. schat ze dus nooit. Wat Google wel biedt is een exportknop, en dat bestand upload je op de kaart op het dashboard. Het cijfer landt als Vertoningen in AI naast de vier andere, op dezelfde dagregels, dus de tegel, de trend, de vergelijking, het overzicht over alle klanten en het rapporthoofdstuk AI-overzichten lezen het net als kliks. Voor een klant waarvoor niemand iets heeft geüpload is er geen tegel en geen hoofdstuk: een nul zou een uitspraak zijn over zijn zichtbaarheid die niets op het scherm kan tegenspreken.",
+          "en": "Since June 2026 Search Console shows how often a site appears in AI Overviews and AI Mode, in a Generative AI report of its own. The Search Console API does not return those figures, and deriving them from the web totals is not possible: they are folded in there with no way to separate them. So schakl. never estimates them. What Google does offer is an export button, and that file you upload on the card on the dashboard. The figure lands as Vertoningen in AI (impressions in AI) beside the other four, on the same daily rows, so the tile, the trend, the comparison, the cross-client overview and the AI Overviews report chapter read it the way they read clicks. For a client nobody has uploaded anything for there is no tile and no chapter: a zero would be a claim about their visibility that nothing on the screen could contradict."
+        },
+        "bullets": {
+          "nl": [
+            "Exporteer per dag: een week- of maandexport wordt geweigerd met een zin, want één regel als één dag opslaan toont de maand een zevende van zijn grootte",
+            "Een nachtelijke synchronisatie overschrijft een upload nooit",
+            "Op de kaart staat wanneer er voor het laatst is geüpload en welke dagen dat besloeg, want een cijfer dat iemand moet uploaden moet zeggen tot hoe ver het loopt",
+            "Een assistent kan dezelfde cijfers als JSON aanleveren in plaats van als bestand"
+          ],
+          "en": [
+            "Export by day: a weekly or monthly export is refused with a sentence, because storing one row as one day would show the month a seventh of its size",
+            "A nightly sync never overwrites an upload",
+            "The card says when the last upload was and which days it covered, because a figure somebody has to upload must say how far it runs",
+            "An assistant can send the same figures as JSON instead of as a file"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Een eigen leesoppervlak, ook voor een assistent",
+          "en": "A read surface of its own, for an assistant too"
+        },
+        "body": {
+          "nl": "Het dashboard stelt Search Console één vraag: hoe doet deze klant het. Voor al het andere (welke zoekopdrachten op welke pagina landen, of een URL geïndexeerd is en waarom niet, welke sitemap fouten heeft, wat er vanochtend om negen uur gebeurde) is er de integratie Google Search Console: dertien leesroutes onder de API, die tegelijk de MCP-sectie /mcp/google-search-console zijn en meegaan in de bundel growth. Ze bewaren niets en lezen live, onder de Google-toestemming van wie het vraagt. Er wordt nooit iets geschreven, dus ook bij een verlopen licentie blijft alles leesbaar. Vraagt een assistent naar AI-zichtbaarheid, dan zegt het antwoord eerlijk dat de API dat cijfer niet heeft en geeft het de link naar het rapport.",
+          "en": "The dashboard asks Search Console one question: how is this client doing. For everything else (which queries land on which page, whether a URL is indexed and why not, which sitemap has errors, what happened at nine this morning) there is the Google Search Console integration: thirteen read routes in the API, which are also the MCP section /mcp/google-search-console and part of the growth bundle. They store nothing and read live, under the Google consent of whoever asks. Nothing is ever written, so everything stays readable on an expired licence too. Ask an assistant about AI visibility and the answer says honestly that the API does not have that figure, and gives the link to the report."
+        },
+        "bullets": {
+          "nl": [
+            "Sites en sitemaps, een overzicht, de verdeling over zoektypen, dag- en uurcijfers, een uitsplitsing en de stijgers en dalers",
+            "URL-inspectie: wat de index van Google over één adres weet",
+            "Een vrije query met eigen dimensies en filters, achter een eigen recht",
+            "Een onbekende dimensie of filter wordt hier geweigerd met de lijst die wel werkt, voordat Google gevraagd wordt"
+          ],
+          "en": [
+            "Sites and sitemaps, an overview, the split across search types, daily and hourly figures, a breakdown and the movers",
+            "URL inspection: what Google's index knows about one address",
+            "A free-form query with your own dimensions and filters, behind a permission of its own",
+            "An unknown dimension or filter is refused here, with the list that would have worked, before Google is asked"
+          ]
+        }
       }
     ],
     "permissions": [
@@ -125,13 +181,23 @@
       },
       {
         "key": "marketing.link.manage",
-        "nl": "Search Console-property's koppelen en ontkoppelen, en de accountkiezer openen. Standaard alleen beheerder.",
-        "en": "Link and unlink Search Console properties and open the account picker. Admin only by default."
+        "nl": "Search Console-property's koppelen en ontkoppelen, de accountkiezer openen en de export van het Generatieve AI-rapport uploaden. Standaard alleen beheerder.",
+        "en": "Link and unlink Search Console properties, open the account picker and upload the Generative AI report export. Admin only by default."
       },
       {
         "key": "marketing.overview.read",
         "nl": "Het cross-klantoverzicht onder Overzicht → Marketing, waar de kolom Gem. positie vandaan komt. Standaard alleen beheerder.",
         "en": "The cross-client grid under Overzicht → Marketing, which is where the average-position column comes from. Admin only by default."
+      },
+      {
+        "key": "google_search_console.site.read",
+        "nl": "Het eigen leesoppervlak: sites, sitemaps, overzicht, reeksen, uitsplitsingen, stijgers en dalers, URL-inspectie en AI-zichtbaarheid. Standaard beheerder en medewerker, nooit de rol Klant.",
+        "en": "The read surface of its own: sites, sitemaps, overview, series, breakdowns, movers, URL inspection and AI visibility. Admin and member by default, never the client role."
+      },
+      {
+        "key": "google_search_console.report.run",
+        "nl": "De vrije query: elke combinatie van dimensies, filters en aggregatie. Standaard alleen beheerder.",
+        "en": "The free-form query: any combination of dimensions, filters and aggregation. Admin only by default."
       }
     ],
     "limits": {
@@ -140,14 +206,16 @@
         "Alleen property's waar het gekoppelde Google-account zelf toegang toe heeft staan in de kiezer.",
         "Topzoektermen en toppagina's tonen tien regels; de stijgers en dalers worden bepaald over de drukste zoektermen van elke periode.",
         "CTR en gemiddelde positie over een periode worden opnieuw berekend en nooit opgeteld.",
-        "De cijfers van de laatste paar dagen zijn nog niet definitief en kunnen bij een volgende run veranderen."
+        "De cijfers van de laatste paar dagen zijn nog niet definitief en kunnen bij een volgende run veranderen.",
+        "Vertoningen in AI komen alleen binnen als iemand de export uploadt. Zonder upload is er geen tegel, nooit een nul."
       ],
       "en": [
         "Nothing is written back: no submitting sitemaps, no requesting indexing, no fixing coverage issues.",
         "Only properties the connected Google account itself has access to appear in the picker.",
         "Top queries and top pages show ten rows; movers are computed over each period's busiest queries.",
         "CTR and average position over a range are re-derived, never summed.",
-        "The last few days are not final yet and can change on a later run."
+        "The last few days are not final yet and can change on a later run.",
+        "Impressions in AI only arrive when somebody uploads the export. With no upload there is no tile, never a zero."
       ]
     }
   }

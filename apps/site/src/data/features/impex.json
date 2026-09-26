@@ -1,7 +1,7 @@
 {
   "name": "Import & export",
   "slug": "impex",
-  "order": 200,
+  "order": 210,
   "icon": "📥",
   "lucide": "impex",
   "title": {
@@ -98,6 +98,7 @@
             "Projecten, abonnementen en hosting: op naam",
             "Domeinen: op de domeinnaam, waarbij een geplakte URL eerst tot het kale hoofddomein wordt teruggebracht",
             "Websites: op het domein waar de site op staat",
+            "Facturen: op factuurnummer, ook facturen uit een ander pakket, met hun totalen zoals ze er staan en de originele pdf erbij",
             "Taken en urenstaten: altijd nieuw"
           ],
           "en": [
@@ -106,6 +107,7 @@
             "Projects, subscriptions and hosting: on the name",
             "Domains: on the domain name, a pasted URL being reduced to its bare root first",
             "Websites: on the domain the site sits on",
+            "Invoices: on the invoice number, including invoices from another package, their totals kept as stated and the original PDF alongside",
             "Tasks and timesheets: always created"
           ]
         }
@@ -116,8 +118,8 @@
           "en": "An export that comes back"
         },
         "body": {
-          "nl": "Een export bevat de hele lijst zoals je hem gefilterd hebt, niet alleen de pagina die je ziet, inclusief je eigen maatwerkvelden. De kolomkoppen zijn vaste sleutels en geen labels, dus het bestand wordt ongewijzigd herkend als je het terugzet: exporteren, twee kolommen aanpassen en importeren is de eenvoudigste manier om vijftig records tegelijk te wijzigen. Modules dragen bovendien kolommen bij aan elkaars bestanden, dus een klantenexport neemt de contactpersoon mee (voornaam, achternaam, e-mail, telefoon, functie), die bij het importeren in dezelfde rij wordt aangemaakt en gekoppeld; de eerste wordt de primaire contactpersoon van die klant. Die kolommen verschijnen alleen voor wie contactpersonen mag schrijven, zodat je nooit halverwege een bestand op een weigering stuit. En exporteren blijft werken als een licentie verloopt: een module die alleen-lezen wordt, laat je je gegevens nog steeds meenemen.",
-          "en": "An export holds the whole list as you have filtered it, not just the page you can see, and includes your own custom fields. The column headers are stable keys rather than labels, so the file is recognised unchanged when you put it back: export, edit two columns, import is the simplest way to change fifty records at once. Modules also contribute columns to each other's sheets, so a client export carries the contact person along (first name, last name, e-mail, phone, job title), created and linked in the same row on the way back in; the first one becomes that client's primary contact. Those columns only appear for someone who may write contacts, so you never hit a refusal halfway through a file. And exporting keeps working when a licence expires: a module that goes read-only still lets you take your data with you."
+          "nl": "Een export bevat de hele lijst zoals je hem gefilterd hebt, niet alleen de pagina die je ziet, inclusief je eigen maatwerkvelden. Dat geldt ook voor het filter waarmee een lijst opent: de klantenlijst staat op 'Niet gearchiveerd', dus de export bevat dan ook geen archief, en met 'Alles' komt het mee. De kolomkoppen zijn vaste sleutels en geen labels, dus het bestand wordt ongewijzigd herkend als je het terugzet: exporteren, twee kolommen aanpassen en importeren is de eenvoudigste manier om vijftig records tegelijk te wijzigen. Modules dragen bovendien kolommen bij aan elkaars bestanden, dus een klantenexport neemt de contactpersoon mee (voornaam, achternaam, e-mail, telefoon, functie), die bij het importeren in dezelfde rij wordt aangemaakt en gekoppeld; de eerste wordt de primaire contactpersoon van die klant. Die kolommen verschijnen alleen voor wie contactpersonen mag schrijven, zodat je nooit halverwege een bestand op een weigering stuit. En exporteren blijft werken als een licentie verloopt: een module die alleen-lezen wordt, laat je je gegevens nog steeds meenemen.",
+          "en": "An export holds the whole list as you have filtered it, not just the page you can see, and includes your own custom fields. That includes the filter a list opens on: the client list starts on 'Niet gearchiveerd', so its export holds no archive either, and 'Alles' brings it along. The column headers are stable keys rather than labels, so the file is recognised unchanged when you put it back: export, edit two columns, import is the simplest way to change fifty records at once. Modules also contribute columns to each other's sheets, so a client export carries the contact person along (first name, last name, e-mail, phone, job title), created and linked in the same row on the way back in; the first one becomes that client's primary contact. Those columns only appear for someone who may write contacts, so you never hit a refusal halfway through a file. And exporting keeps working when a licence expires: a module that goes read-only still lets you take your data with you."
         }
       },
       {

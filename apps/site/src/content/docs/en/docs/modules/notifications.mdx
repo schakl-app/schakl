@@ -1,8 +1,8 @@
 ---
 title: Notifications
-description: "The bell, the inbox and where notifications go: per event in-app, by e-mail, or to your own Slack, Teams or webhook."
+description: "The bell, the inbox and where notifications go: per event in-app, by e-mail, as a browser notification on your phone or laptop, or to your own Slack, Teams or webhook."
 sidebar:
-  order: 20
+  order: 21
 ---
 
 import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
@@ -17,7 +17,8 @@ inbox or their Slack, and whether it arrives now or as one bundle a day.
 - The **bell** in the top bar, on every screen, with the unread count.
 - **Meldingen** (Notifications), the full list, via "Alles bekijken" (View all) in the bell.
 - *Instellingen → Meldingen* (Settings → Notifications), under "Mijn instellingen" (My settings):
-  your own preferences and your own channels. Every member has this screen.
+  your own preferences, your own channels and **Browsermeldingen** (browser notifications) per
+  device. Every member has this screen.
 - *Instellingen → Standaardmeldingen* (Settings → Notification defaults), in the group "Communicatie
   & koppelingen" (Communication & integrations): what everyone inherits, plus the organisation's
   shared channels. Admins only.
@@ -31,18 +32,26 @@ the columns **Melding** (Notification), **Onderwerp** (Subject), **Door** (By) a
 and by record type (Taak, Project, Klant, Verlof, Urenregistratie, Contactmoment). Each row has
 **Markeer als gelezen** and back again; the top of the list carries **Alles als gelezen markeren**.
 
+Opening a notification takes you to the record it is about and marks it read (one you open in a
+background tab stays unread). If it is about a comment on a task, the task opens on exactly that
+comment, with folded comments unfolded and the reply box ready underneath. A timesheet reminder
+opens the week that was still empty.
+
 ## What you get told about
 
-There are twenty-one events, grouped the way the settings screen groups them:
+The events are grouped the way the settings screen groups them. Which ones you see depends on the
+modules your organisation runs: without the leave module there are no leave rows.
 
 | Group | For example |
 | --- | --- |
-| Taken (8) | Someone @mentions me in a comment |
+| Taken (11) | Someone @mentions me in a comment, someone replies to my comment, an e-mail I sent to the task address became a task |
 | Projecten (3) | A project is eating its budget |
 | Klanten (3) | A client changes status |
 | Verlof (3) | Someone requests leave |
 | Uren (2) | My timesheet is still empty |
 | Contactmomenten (2) | An e-mail is waiting for my review |
+| Vergaderingen (2) | The minutes of my recording are ready, or the recording never arrived |
+| SnelStart (1) | Last night's invoices did not reach the ledger |
 
 An automation rule can also send a notification. That one is not in the table below: you switch a
 rule off in the rule itself.
@@ -55,6 +64,7 @@ event, with:
 - **In-app**: an **Aan** (On) tick, a **Bezorging** (Delivery) and a **Vertraging (min)** (Delay in
   minutes).
 - **E-mail**: a **Bezorging** and a **Vertraging (min)**.
+- **Browser**: browser notifications on the devices you switched on (see below).
 - One column per channel you connected yourself.
 - **Waarde van** (Value from): where this row's value came from, as **Standaard** (Default),
   **Organisatie** (Organisation) or **Eigen instelling** (Your setting). **Terug naar overgenomen**
@@ -62,8 +72,8 @@ event, with:
 
 Delivery is always **Uit** (Off), **Direct** (Immediately), **Elk uur** (Hourly), **Dagelijks
 overzicht** (Daily digest) or **Wekelijks overzicht** (Weekly digest). "Alles instellen…" (Set all…)
-above a channel column sets that whole column at once; **Alle e-mail instellen op** does it for the
-e-mail column.
+above a channel column sets that whole column at once; **Alle e-mail instellen op** and **Alle
+browsermeldingen instellen op** do it for the e-mail and the browser column.
 
 <Aside type="caution">
 Everything outside the app is a subset of in-app. Untick a row's **Aan** box and that event no longer
@@ -72,20 +82,39 @@ reason for "nothing arrived". For a shared channel the same rule applies to the 
 in-app row: if nobody receives it in the app, nothing reaches the room either.
 </Aside>
 
-By default everything is on in-app. A short list arrives immediately (assignments, @mentions, overdue
-tasks, tasks scheduled for you and all three leave events); the rest lands in the daily digest at
-08:00 on your organisation's own clock (*Instellingen → Huisstijl → Tijdzone*, Settings → Branding →
-Timezone). E-mail is off for every event until somebody switches it on.
+By default everything is on in-app. A short list arrives immediately (assignments, @mentions, a
+reply to your own comment, overdue tasks, tasks scheduled for you, the task address's
+confirmation, all three leave events, an e-mail waiting for review and meeting minutes that are
+ready); the rest lands in the daily digest at 08:00 on your organisation's own clock
+(*Instellingen → Huisstijl → Tijdzone*, Settings → Branding → Timezone). Browser notifications
+follow the same list: what arrives immediately also goes to your device, the daily digest does
+not. E-mail is off until somebody switches it on, with one exception: meeting minutes that are
+ready (or a recording that never arrived) mail at once by default, because whoever recorded is
+often no longer at their desk.
 
 The **Algemeen** (General) section holds **Bijna verlopen (dagen)** (Due soon, in days; 3 by
-default), **Stille uren vanaf** / **tot** (Quiet hours from / until), and the **E-mailschema**
-(E-mail digest schedule): the **Tijd** (Time) and **Dag** (Day) your daily and weekly e-mail digests
-leave.
+default), **Stille uren vanaf** / **tot** (Quiet hours from / until), the **E-mailschema** (E-mail
+digest schedule) and the **Schema browsermeldingen** (browser digest schedule): the **Tijd** (Time)
+and **Dag** (Day) your daily and weekly digests leave.
 
-<Aside type="caution">
-Quiet hours are stored but not yet applied. The screen says so itself. Do not rely on nothing
-arriving overnight.
-</Aside>
+Quiet hours apply to e-mail, chat channels and browser notifications: whatever falls inside them
+waits until they are over, on your organisation's clock, including a window that wraps midnight.
+The bell is left alone; it interrupts nobody anyway.
+
+## Browser notifications
+
+A browser notification reaches your phone or a closed laptop lid, even when schakl. is not open.
+You switch it on per device under *Instellingen → Meldingen* → **Browsermeldingen** → **Aanzetten
+op dit apparaat** (switch on for this device); the browser then asks for permission itself. That
+is the choice: from then on the urgent events (the list above that arrives immediately) reach that
+device, and the **Browser** column adjusts it per event.
+
+- **Test versturen** (send test) sends a test notification to all your devices.
+- **Je apparaten** (your devices) shows where it is on, with **Laatst gezien** (last seen), and
+  **Verwijderen** removes a device.
+- On iPhone and iPad it only works in the installed app: add schakl. to your home screen first.
+- A digest is one message here too, not one per device per event. A device you threw away is
+  cleaned up on its own.
 
 ## Connecting a channel of your own
 
@@ -141,10 +170,17 @@ decision the organisation makes, not whoever last opened their own settings.
   and is retried at growing intervals. Half a digest sent is not a state that exists.
 - The **E-mail** kind rides your organisation's e-mail transport (*Instellingen → E-mail*), so it
   does nothing until that is configured.
-- Resolving the underlying item resolves the notification: a decided leave request or a reviewed
-  e-mail stops asking, for everyone who never opened it.
-- Notifications are part of the core and need no licence key. There is no SMS, no push notification
-  and no snooze; SMS exists only as a second factor at sign-in.
+- Resolving the underlying item resolves the notification: a decided leave request, a reviewed
+  e-mail or a finished task that was due soon or overdue stops asking, for everyone who never
+  opened it.
+- A digest carries only what is still active: whatever you already read in-app, or what has been
+  resolved meanwhile, is not sent out afterwards by e-mail or browser notification. If everything
+  has been read, nothing is sent.
+- A client's contact person only hears about a task they may see: when they are mentioned in a
+  comment, or when a task assigned to them is commented on. A client login gets that by e-mail at
+  once by default, because the bell is not where a client lives.
+- Notifications are part of the core and need no licence key. There is no SMS and no snooze; SMS
+  exists only as a second factor at sign-in.
 
 ## Read next
 

@@ -2,7 +2,7 @@
 title: Roles and permissions
 description: "Decide per role who may do what, with a separate setting for whose records it applies to and which clients they can see at all."
 sidebar:
-  order: 22
+  order: 23
 ---
 
 import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
@@ -98,6 +98,25 @@ Under *Instellingen → Team & gebruikers*, expand a team member. There you get 
 tick box per role, below it **Effectieve rechten** (the resolved list, each with the scope it
 resolved to) and one **Rollen opslaan** button.
 
+## When a colleague leaves
+
+A departing colleague you **deactivate**: *Instellingen → Team & gebruikers* (Settings → Team &
+users) → ⋯ → **Deactiveren** (deactivate). They can no longer sign in, a session still open on
+their desk stops at once too, and they drop out of the pickers for new work. Their name stays
+everywhere: hours, tasks, interactions, leave and the change history stay in their name. Roles,
+permissions, contract, schedule and hourly rate are kept, and **Activeren** (activate) undoes it
+in one click.
+
+**Intrekken** (revoke) is something else: it removes the membership, and with it the name from
+everything they appear on. It is meant for an account that should never have been here; the
+confirmation says so and points to Deactiveren. Through ⋯ → **Bewerken** (edit) you change an
+account's name.
+
+The list opens on the colleagues who still work here. Deactivated accounts sit below in a folded
+**Gedeactiveerd (n)** (deactivated) section that only exists once somebody has left; each row still
+says why it is off. Below the colleagues sits the **Klantlogins** (client logins) section: everyone
+at your clients who can sign in (see [Client portal](/en/docs/modules/portal/)).
+
 ## Client visibility is a separate question
 
 Permissions decide *what* someone may do; client groups decide *which clients*. Under
@@ -126,13 +145,17 @@ permission, deleting the role, and taking the role away from the last person who
 
 Nor may anyone be left with no role at all: "Elke gebruiker moet minstens één rol houden."
 
+Only administrators who can still sign in are counted. Deactivating the last administrator is
+therefore refused just the same, and you cannot deactivate your own account: ask a colleague with
+admin rights.
+
 ## Permissions
 
 | Permission | What it opens | Default |
 | --- | --- | --- |
 | `settings.roles.manage` | *Instellingen → Rollen*: managing roles and permissions | Administrator |
 | `members.member.read` | Viewing *Instellingen → Team & gebruikers* | Administrator |
-| `members.member.write` | Inviting, changing, removing and saving roles | Administrator |
+| `members.member.write` | Inviting, changing, deactivating, revoking and saving roles; also the Klantlogins register | Administrator |
 | `companies.group.manage` | *Instellingen → Klantgroepen* | Administrator |
 
 The Owner holds all four through its "everything".

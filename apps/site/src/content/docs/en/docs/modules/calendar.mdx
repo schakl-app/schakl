@@ -1,13 +1,13 @@
 ---
 title: Calendar
-description: "One agenda over every feed the platform has: planned task blocks, deadlines, team leave, availability, public holidays and your Google calendar."
+description: "One agenda over every feed the platform has: planned task blocks, deadlines, team leave, availability, public holidays and your Google or Outlook calendar, with shared calendars and a colour per person."
 sidebar:
   order: 6
 ---
 
 import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
 
-Planned work, deadlines, who is away and what is in your Google calendar are four different
+Planned work, deadlines, who is away and what is in your Google or Outlook calendar are four different
 questions that a week only answers together. The agenda puts every one of them on the same grid,
 each as a feed you can hide, recolour or split per person.
 
@@ -30,11 +30,20 @@ The view you leave it on is remembered, so the agenda opens the way you last use
 | Teamverlof | Approved and pending absence, per colleague |
 | Beschikbaarheid | A freelancer's own deviations from their base week |
 | Feestdagen | The public holidays your organisation actually observes |
-| Google Agenda | Your own connected Google calendar |
+| Google Agenda | Your own connected Google calendar, plus the shared calendars you tick |
+| Outlook-agenda | The same for Microsoft 365: your default calendar plus the calendars you tick |
 
-Each feed can be **switched off**, **recoloured**, and — for leave and availability — **split per
-person**, so one colleague's absence keeps its own colour while the rest share theirs. Those
-choices are yours and are stored against your account.
+Each feed can be **switched off**, **recoloured**, and — for planned tasks, leave and
+availability — **split per colleague** (**Per collega**), so one colleague's blocks or absence
+keep their own colour while the rest share theirs. A colleague's own colour beats the whole
+feed's. Those choices are yours and are stored against your account. A colleague who has left no
+longer appears in those lists.
+
+Which Google or Outlook calendars come along you choose on your own account page under
+**Agenda's** (calendars): your primary or default calendar always syncs, and every shared calendar
+you tick gets its own row in the feed menu with its own colour and its own toggle. Untick one and
+its events disappear at once. Opening the feed menu costs no request to Google or Microsoft: the
+agenda reads from the copy the integration keeps.
 
 <Aside type="note" title="A pending request is drawn faintly, with a question mark">
 Leave that has been requested and not yet decided is on the agenda already, at reduced opacity and
@@ -47,7 +56,10 @@ same Thursday.
 
 A task can carry a **planned block**: a day, a start time, a duration and who it is for. That
 block appears here, in that person's colour, and it can be dragged to another day or time — the
-task moves with it.
+task moves with it. One task can be planned for several colleagues in one go: each gets a block
+of their own. The planning dialog draws that day beside the form, with what each person already
+has (planned blocks, leave, appointments), so you see a double booking before you make it. For a
+colleague you only see **Bezet** (busy) there, unless you may read their planning.
 
 <Steps>
 1. Open a task and use **Inplannen** (Plan) to give it a block.
@@ -60,22 +72,23 @@ Planning is not the same as logging. A block says *when you intend to do it*; ho
 separately, and finishing a task offers to log the time against the block that was planned for it,
 so the same work is never counted twice.
 
-## Google Calendar, and which way it flows
+## Google and Outlook, and which way it flows
 
-With the Google Workspace integration connected per employee, your own Google calendar appears as
-a feed here, and what schakl. schedules is mirrored the other way: approved leave and planned task
-blocks are written into Google.
+With the Google Workspace or Microsoft 365 integration connected per employee, your own calendar
+appears as a feed here, and what schakl. schedules is mirrored the other way: approved leave and
+planned task blocks are written into your calendar. A task block is titled "Client: Task" there,
+so your own calendar says whose work it is. Connect both and a block lands in both.
 
 <Aside type="caution" title="The calendar writes one way">
-Leave and planned tasks go **out** to Google. Google events are read and shown, never turned into
-schakl. records. That keeps one authority per kind of thing rather than two systems each
-believing they own the same appointment.
+Leave and planned tasks go **out** to Google and Outlook. Events there are read and shown, never
+turned into schakl. records. That keeps one authority per kind of thing rather than two systems
+each believing they own the same appointment.
 </Aside>
 
 A leave type decides how its absence is drawn: an all-day chip, or a positioned block between the
 hours the person was scheduled to work. That is a property of the *kind* of leave rather than of
 one request — whether an absence reads as "away today" or "away between 08:30 and 17:00" is the
-same answer every time — and the Google mirror follows the same flag, so one absence is never an
+same answer every time — and the mirror in Google or Outlook follows the same flag, so one absence is never an
 hour block here and an all-day banner there.
 
 ## Permissions
@@ -90,6 +103,7 @@ than an agenda that refuses.
 | Teamverlof | `leave.request.read` |
 | Beschikbaarheid | `leave.availability.read` |
 | Google Agenda | Your own Google connection |
+| Outlook-agenda | Your own Microsoft 365 connection |
 
 ## Read next
 
@@ -97,4 +111,5 @@ than an agenda that refuses.
   <LinkCard title="Tasks" href="/en/docs/modules/tasks/" description="Where a planned block comes from." />
   <LinkCard title="Leave" href="/en/docs/modules/leave/" description="The absence the agenda draws." />
   <LinkCard title="Google Workspace" href="/en/docs/integrations/google-workspace/" description="Connecting the calendar, per employee." />
+  <LinkCard title="Microsoft 365" href="/en/docs/integrations/microsoft-365/" description="Connecting the Outlook calendar, per employee." />
 </CardGrid>

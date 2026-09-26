@@ -2,7 +2,7 @@
 title: Automatisering
 description: "Regels van het type: als dit gebeurt en aan deze voorwaarden voldoet, voer dan deze acties uit. Met een uitvoerlog van elke keer dat het gebeurde."
 sidebar:
-  order: 19
+  order: 20
 ---
 
 import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
@@ -69,7 +69,11 @@ een veld waarin je code kunt zetten: voorwaarden zijn beschrijvend, nooit uitvoe
 Acties lopen op volgorde. Vijf soorten zijn ingebouwd:
 
 - **Taak aanmaken**: uit een **Taaksjabloon**, of één losse taak met een **Taaktitel**. Vuurde de
-  regel op een klant, dan komt de taak vanzelf bij die klant te staan.
+  regel op een klant, dan komt de taak vanzelf bij die klant te staan; vuurde hij op een taak, dan
+  bij de klant van die taak. Een taak hoort altijd bij een klant: een regel die op geen van beide
+  vuurt en geen klant of project noemt, wordt geweigerd en die weigering staat in het uitvoerlog.
+  Elke taak krijgt een deadline: **Vervaldatum (dagen vanaf nu)** telt vanaf de dag waarop de regel
+  vuurt, op de kalender van je organisatie, en leeg of 0 is die dag zelf.
 - **Taakstatus wijzigen**: zet de taak op een **Nieuwe status**.
 - **Taak toewijzen**: kies bij **Toewijzen aan** de collega.
 - **Melding sturen**: kies **Ontvangers** en typ je eigen **Bericht**. Het verschijnt in hun inbox

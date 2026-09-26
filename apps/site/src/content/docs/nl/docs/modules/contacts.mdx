@@ -100,6 +100,10 @@ Heb je de module Klantportaal, dan staat op de contactpagina de kaart **Klantpor
 laatste toont een half uur lang het portaal precies zoals de klant het ziet; het wordt vastgelegd
 bij de activiteit van deze contactpersoon, en alles wat je ondertussen doet krijgt jouw naam erbij.
 
+Wie er over al je klanten heen kan inloggen, zie je onder *Instellingen → Team & gebruikers*, in de sectie
+**Klantlogins** onder je team: per login de klanten waar hij bij hoort en of de toegang nog leeft,
+met dezelfde acties als op de kaart. Zie [Klantportaal](/nl/docs/modules/portal/).
+
 ## Rechten
 
 Per rol in te stellen onder *Instellingen → Rollen*. Standaard:
@@ -107,14 +111,16 @@ Per rol in te stellen onder *Instellingen → Rollen*. Standaard:
 | Recht | Wat het doet | Standaard bij |
 | --- | --- | --- |
 | `contacts.contact.read` | Contactpersonen bekijken | Beheerder, Medewerker, Klant |
-| `contacts.contact.write` | Aanmaken en bewerken | Beheerder |
+| `contacts.contact.write` | Aanmaken en bewerken | Beheerder, Medewerker |
 | `contacts.contact.delete` | Verwijderen | Beheerder |
-| `contacts.link.write` | Aan klanten koppelen | Beheerder |
+| `contacts.link.write` | Aan klanten koppelen | Beheerder, Medewerker |
 | `contacts.type.read` | Contactsoorten bekijken | Beheerder, Medewerker, Klant |
 | `contacts.type.manage` | Contactsoorten beheren | Beheerder |
 
-Een **Medewerker** mag dus standaard alleen lezen. Wil je dat je team contactpersonen aanmaakt, vink dan
-`contacts.contact.write` en `contacts.link.write` aan bij die rol. Exporteren en importeren zijn
+Een **Medewerker** mag dus standaard contactpersonen aanmaken, bewerken en aan klanten koppelen,
+want de mensen bij een klant bijhouden is dagelijks werk; verwijderen blijft bij Beheerder. Een
+knop die koppelt vraagt beide rechten: wie contactpersonen mag bewerken maar niet koppelen, krijgt
+de koppelknoppen niet te zien. Exporteren en importeren zijn
 aparte rechten (`impex.export`, `impex.import`) en staan standaard alleen bij Beheerder.
 
 ## Goed om te weten

@@ -2,7 +2,7 @@
 title: Aangepaste velden
 description: "Definieer je eigen getypte velden op klanten, contactpersonen, projecten en meer, zonder een regel code."
 sidebar:
-  order: 21
+  order: 22
 ---
 
 import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
@@ -32,7 +32,11 @@ die je aan hebt staan.
 5. Vink **Verplicht** aan als het veld altijd ingevuld moet zijn.
 6. **Positie** is een getal dat de volgorde bepaalt; een lager getal komt hoger in het formulier
    te staan.
-7. Druk op **Aanmaken**.
+7. Alleen bij facturen, offertes en abonnementen: vink **Op het document tonen** aan als de waarde
+   op papier moet komen (zie hieronder).
+8. Alleen bij abonnementen: kies bij **Geldt voor** de abonnementstypes of standaardabonnementen
+   waarvoor het veld bedoeld is. Vink je niets aan, dan geldt het voor elk abonnement.
+9. Druk op **Aanmaken**.
 </Steps>
 
 De **Sleutel** vul je niet zelf in. Die wordt afgeleid uit het label en staat daarna in de tabel
@@ -69,6 +73,20 @@ kloppen.
   staan standaard uit; je zet ze zelf aan. Sorteren op een aangepast veld kan niet, dus die
   kolommen krijgen ook geen sorteerknop.
 - Als kolom in export en import, met de sleutel als kolomkop.
+- Op papier, als het veld op **Op het document tonen** staat: de eigen velden van een factuur of
+  offerte onder de documentgegevens, die van een abonnement op elke factuurregel die het
+  abonnement aanmaakt, bijvoorbeeld "Hosting Pro · Website: klant.nl". Of je de regel nu zelf
+  kiest in de factuureditor of de nachtelijke run hem klaarzet, de tekst is dezelfde.
+
+## Een veld voor één soort abonnement
+
+Een veld "Website" hoort bij een hostingabonnement en niet bij een SEO-retainer. Bij abonnementen
+kun je een veld daarom beperken met **Geldt voor**: tot een of meer abonnementstypes, een of meer
+standaardabonnementen, of beide (dan telt elk van de aangevinkte). Het veld verschijnt dan alleen
+op die abonnementen, is alleen daar verplicht als je het zo markeert, en wordt alleen daar
+afgedrukt. Een waarde die al op een ander abonnement stond, blijft bewaard: zet je een abonnement
+op een ander type en later terug, dan ben je niets kwijt. Bij een import wordt zo'n veld per rij
+beoordeeld, dus nooit als verplichte kolom voor het hele bestand.
 
 ## Wijzigen, uitzetten en verwijderen
 

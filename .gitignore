@@ -60,3 +60,4 @@ infra/cloudflared/*.json
 email-templates-editor.png
 # Vendored Sveltia CMS bundle for the site admin — a build/vendor artifact, not source.
 apps/site/public/admin/sveltia-cms.js
+.temp/*

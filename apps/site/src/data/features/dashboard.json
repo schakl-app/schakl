@@ -48,20 +48,30 @@
         "bullets": {
           "nl": [
             "Uren: Uren vandaag met de lopende timer, en Team deze maand met uren, facturabel aandeel, goed te keuren en omzet",
-            "Taken: Mijn openstaande taken (eerst wat het eerst moet) en Openstaande taken per project / klant",
+            "Taken: Mijn openstaande taken in vier secties (over tijd, vandaag, deze week, later) en Openstaande taken per project / klant, gerangschikt op wat te laat is in plaats van op hoeveel",
             "Verlof: je eigen Verlofsaldo, Verlof te beoordelen voor fiatteurs, en Vandaag afwezig",
             "Financieel: Openstaande facturen met vervallen posten luid gemarkeerd, Openstaande offertes en Terugkerende omzet",
-            "Projecten en Marketing: Projectbudgetten (de budgetprojecten met de hoogste verbranding) en de topklanten op sessies of kliks",
+            "Projecten en Marketing: Budgetstatus (elk urenbudget als over budget, bijna op of binnen budget, met hoeveel uur eroverheen), Projectbudgetten (de hoogste verbranding) en de topklanten op sessies of kliks",
             "Te beoordelen: E-mails te beoordelen, jouw gematchte berichten over alle klanten heen"
           ],
           "en": [
             "Uren: Uren vandaag with the running timer, and Team deze maand with hours, billable share, awaiting approval and revenue",
-            "Taken: Mijn openstaande taken (soonest due first) and Openstaande taken per project / klant",
+            "Taken: Mijn openstaande taken in four sections (overdue, today, this week, later) and Openstaande taken per project / klant, ranked by what is late rather than by how many",
             "Verlof: your own Verlofsaldo, Verlof te beoordelen for approvers, and Vandaag afwezig",
             "Financieel: Openstaande facturen with overdue flagged loudly, Openstaande offertes and Terugkerende omzet",
-            "Projecten and Marketing: Projectbudgetten (the budgeted projects burning hottest) and the top clients by sessions or clicks",
+            "Projecten and Marketing: Budgetstatus (every hour budget as over, almost spent or within, with the hours over), Projectbudgetten (the budgets burning hottest) and the top clients by sessions or clicks",
             "Te beoordelen: E-mails te beoordelen, your matched messages across every client"
           ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Elk getal opent de lijst die het telt",
+          "en": "Every figure opens the list it counts"
+        },
+        "body": {
+          "nl": "Een tegel die iets telt, telt over de hele set en niet over de pagina die hij toevallig toont, en elk getal is een link naar precies de lijst waar het over gaat. Mijn openstaande taken verdeelt je werk in over tijd, vandaag, deze week en later; elke kop draagt zijn aantal en opent de takenlijst met hetzelfde filter, dus 2 in de kop is 2 in de lijst. Vandaag staat er ook als er niets vandaag moet, zodat je 'niets vandaag' kunt onderscheiden van 'deze tegel doet vandaag niet'. Elke rij noemt de datum én de afstand, '24 aug · over 3 dagen' of '6 dagen te laat', en Later begint ingeklapt. Budgetstatus deelt alle urenbudgetten in drie banden, over budget, bijna op en binnen budget, met onder over budget hoeveel uur er samen overheen is; elke band opent de projectenlijst met dat filter. De kleuren zijn die van de toestand, nooit je merkkleur, en elke toestand draagt ook een teken, zodat de tegel ook in grijs leesbaar blijft. Is een tegel ingekort, dan zegt hij dat.",
+          "en": "A tile that counts something counts over the whole set rather than the page it happens to show, and every figure is a link to exactly the list it is about. Mijn openstaande taken splits your work into overdue, today, this week and later; each heading carries its count and opens the task list with the same filter, so 2 in the heading is 2 in the list. Today is drawn even when nothing is due today, so you can tell \"nothing today\" from \"this tile does not do today\". Every row names the date and the distance, \"24 aug · over 3 dagen\" or \"6 dagen te laat\", and Later starts folded. Budgetstatus divides every hour budget into three bands, over budget, almost spent and within budget, with the hours over summed under the first; each band opens the project list with that filter. The colours are the state's, never your brand colour, and every state carries a glyph as well, so the tile still reads in grey. When a tile is capped, it says so."
         }
       },
       {
@@ -90,8 +100,8 @@
           "en": "And the client gets a board of their own"
         },
         "body": {
-          "nl": "Een klant die in het portaal inlogt, landt op hetzelfde mechanisme met eigen aankleding: heeft hij meerdere bedrijven bij je lopen, dan staat er een schakelaar boven het bord met per bedrijf het eigen logo. Zijn galerij is een andere dan die van je team, want een tegel die naar een intern scherm linkt heeft daar niets te zoeken: hij kiest uit Jullie rapportage (de laatst gepubliceerde rapportage met samenvatting en pdf) en het marketingoverzicht dat jouw bureau voor hem heeft samengesteld. De indeling is van de klant; wat er in die marketingtegel staat blijft van jou. Mijn dag zelf is kernfunctionaliteit en vraagt geen licentiesleutel: welke widgets er bestaan volgt gewoon de modules die je draait.",
-          "en": "A client signing in to the portal lands on the same mechanism wearing its own chrome: if they have several companies with you, a switcher sits above the board carrying each company's own logo. Their gallery is not your team's — a tile linking into an internal screen has no business there — so they pick from Jullie rapportage (the latest published report with its summary and PDF) and the marketing overview your agency curated for them. The layout is the client's; what that marketing tile shows stays yours. My Day itself is core functionality and needs no licence key: which widgets exist simply follows the modules you run."
+          "nl": "Een klant die in het portaal inlogt, landt op hetzelfde mechanisme met eigen aankleding: één kolom, van boven naar beneden, en heeft hij meerdere bedrijven bij je lopen, dan staat er een schakelaar boven het bord met per bedrijf het eigen logo, en wisselt elke tegel mee. Zijn galerij is een andere dan die van je team, want een tegel die naar een intern scherm linkt heeft daar niets te zoeken, en de huisindeling van je team geldt voor hem niet. Hij kiest uit Jullie taken (wat er van hem gevraagd wordt) en Werkzaamheden (wat jullie voor hem doen), Jullie rapportage als voorblad met openen en downloaden, het marketingoverzicht dat jouw bureau voor hem heeft samengesteld, Mijn abonnementen, Mijn facturen en Mijn domeinnamen. De indeling is van de klant; wat er in die marketingtegel staat blijft van jou. Mijn dag zelf is kernfunctionaliteit en vraagt geen licentiesleutel: welke widgets er bestaan volgt gewoon de modules die je draait.",
+          "en": "A client signing in to the portal lands on the same mechanism in its own dress: one column, top to bottom, and if they run several companies with you a switcher sits above the board with each company's own logo, and every tile switches along. Their gallery differs from your team's, because a tile linking to an internal screen has no business there, and your team's house layout does not apply to them. They pick from Jullie taken (what is asked of them) and Werkzaamheden (what you are doing for them), Jullie rapportage as a cover with open and download, the marketing overview your agency composed for them, Mijn abonnementen, Mijn facturen and Mijn domeinnamen. The layout is the client's; what sits inside the marketing tile stays yours. Mijn dag itself is core functionality and needs no licence key: which widgets exist simply follows the modules you run."
         }
       }
     ]

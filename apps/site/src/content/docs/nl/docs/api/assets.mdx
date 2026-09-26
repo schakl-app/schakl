@@ -7,7 +7,7 @@ sidebar:
 
 Wat een bureau voor een klant beheert, en de vier diensten waar dat uit gelezen wordt: de registrar, de DNS-zone, de monitor en de site zelf.
 
-106 endpoints, verdeeld over 7 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
+128 endpoints, verdeeld over 7 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
 
 ## `domains`
 
@@ -1135,6 +1135,28 @@ Antwoord: `204`
 | `GET` `/wordpress/sites/{site_id}/abilities` | `wordpress.ability.read` |
 | `POST` `/wordpress/sites/{site_id}/abilities/run` | `wordpress.ability.read` |
 | `GET` `/wordpress/sites/{site_id}/brands` | `wordpress.site.read` |
+| `GET` `/wordpress/sites/{site_id}/bridge` | `wordpress.site.read` |
+| `GET` `/wordpress/sites/{site_id}/bridge/languages` | `wordpress.content.read` |
+| `POST` `/wordpress/sites/{site_id}/bridge/media` | `wordpress.content.write` |
+| `GET` `/wordpress/sites/{site_id}/bridge/menus` | `wordpress.content.read` |
+| `GET` `/wordpress/sites/{site_id}/bridge/menus/{menu}` | `wordpress.content.read` |
+| `POST` `/wordpress/sites/{site_id}/bridge/menus/{menu}/items` | `wordpress.content.publish` |
+| `DELETE` `/wordpress/sites/{site_id}/bridge/menus/{menu}/items/{item_id}` | `wordpress.content.publish` |
+| `GET` `/wordpress/sites/{site_id}/bridge/options` | `wordpress.content.read` |
+| `GET` `/wordpress/sites/{site_id}/bridge/options/{page}` | `wordpress.content.read` |
+| `PATCH` `/wordpress/sites/{site_id}/bridge/options/{page}` | `wordpress.content.publish` |
+| `GET` `/wordpress/sites/{site_id}/bridge/records` | `wordpress.content.read` |
+| `POST` `/wordpress/sites/{site_id}/bridge/records` | `wordpress.content.write` |
+| `GET` `/wordpress/sites/{site_id}/bridge/records/{wp_id}` | `wordpress.content.read` |
+| `PATCH` `/wordpress/sites/{site_id}/bridge/records/{wp_id}` | `wordpress.content.write` |
+| `DELETE` `/wordpress/sites/{site_id}/bridge/records/{wp_id}` | `wordpress.content.delete` |
+| `GET` `/wordpress/sites/{site_id}/bridge/records/{wp_id}/translations` | `wordpress.content.read` |
+| `POST` `/wordpress/sites/{site_id}/bridge/records/{wp_id}/translations` | `wordpress.content.write` |
+| `GET` `/wordpress/sites/{site_id}/bridge/schema` | `wordpress.content.read` |
+| `GET` `/wordpress/sites/{site_id}/bridge/strings` | `wordpress.content.read` |
+| `PUT` `/wordpress/sites/{site_id}/bridge/strings` | `wordpress.content.publish` |
+| `GET` `/wordpress/sites/{site_id}/bridge/terms` | `wordpress.content.read` |
+| `POST` `/wordpress/sites/{site_id}/bridge/terms` | `wordpress.content.write` |
 | `GET` `/wordpress/sites/{site_id}/content` | `wordpress.content.read` |
 | `POST` `/wordpress/sites/{site_id}/content` | `wordpress.content.write` |
 | `GET` `/wordpress/sites/{site_id}/content/{type}/{wp_id}` | `wordpress.content.read` |
@@ -1241,6 +1263,310 @@ Recht: `wordpress.site.read`
 Padparameters: `site_id`
 
 Antwoord: `200` · `WordPressBrand[]`
+
+#### `GET /api/v1/wordpress/sites/{site_id}/bridge`
+
+**Bridge Info** — What the site is, through the breik. Bridge plugin: versions, **every** post type (including ones hidden from the REST API), taxonomies, ACF options pages, menus, WPML languages, the SEO plugin, and what the stored credential may do. The read to make first on a site that has the plugin; 409 names the plugin on one that does not.
+
+Recht: `wordpress.site.read`
+
+Padparameters: `site_id`
+
+Antwoord: `200` · `WordPressBridgeInfo`
+
+#### `GET /api/v1/wordpress/sites/{site_id}/bridge/languages`
+
+**Bridge Languages** — WPML: the active languages and the default; 409 on a site without WPML.
+
+Recht: `wordpress.content.read`
+
+Padparameters: `site_id`
+
+Antwoord: `200` · `WordPressLanguages`
+
+#### `POST /api/v1/wordpress/sites/{site_id}/bridge/media`
+
+**Bridge Upload Media** — Upload a file to the site's media library from a URL or a base64 body, with alt text. Returns the attachment; use its id in image fields or as `featured_media`.
+
+Recht: `wordpress.content.write`
+
+Padparameters: `site_id`
+
+Request body: `WordPressMediaUpload`
+
+Antwoord: `201` · `WordPressBridgeMedia`
+
+#### `GET /api/v1/wordpress/sites/{site_id}/bridge/menus`
+
+**Bridge Menus** — The navigation menus and the theme locations they fill.
+
+Recht: `wordpress.content.read`
+
+Padparameters: `site_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `lang` | string |  |
+
+Antwoord: `200` · `WordPressMenuList`
+
+#### `GET /api/v1/wordpress/sites/{site_id}/bridge/menus/{menu}`
+
+**Bridge Menu** — One menu as a tree of items.
+
+Recht: `wordpress.content.read`
+
+Padparameters: `site_id`, `menu`
+
+Antwoord: `200` · `WordPressMenu`
+
+#### `POST /api/v1/wordpress/sites/{site_id}/bridge/menus/{menu}/items`
+
+**Bridge Menu Add Item** — Add a record, a term or a custom link to a menu — live at once, hence `publish`.
+
+Recht: `wordpress.content.publish`
+
+Padparameters: `site_id`, `menu`
+
+Request body: `WordPressMenuItemAdd`
+
+Antwoord: `201` · `WordPressMenu`
+
+#### `DELETE /api/v1/wordpress/sites/{site_id}/bridge/menus/{menu}/items/{item_id}`
+
+**Bridge Menu Remove Item** — Remove one item from a menu.
+
+Recht: `wordpress.content.publish`
+
+Padparameters: `site_id`, `menu`, `item_id`
+
+Antwoord: `200` · `WordPressMenu`
+
+#### `GET /api/v1/wordpress/sites/{site_id}/bridge/options`
+
+**Bridge Options Pages** — The site's ACF options pages (company details, footer, partners …).
+
+Recht: `wordpress.content.read`
+
+Padparameters: `site_id`
+
+Antwoord: `200` · `WordPressOptionsPages`
+
+#### `GET /api/v1/wordpress/sites/{site_id}/bridge/options/{page}`
+
+**Bridge Options Get** — The values on one options page, compact, with references; per language under WPML.
+
+Recht: `wordpress.content.read`
+
+Padparameters: `site_id`, `page`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `lang` | string |  |
+| `mode` | string |  (default `compact`) |
+| `include_schema` | boolean |  (default `false`) |
+
+Antwoord: `200` · `WordPressOptionsRead`
+
+#### `PATCH /api/v1/wordpress/sites/{site_id}/bridge/options/{page}`
+
+**Bridge Options Update** — Write ACF values on an options page. Live at once and site-wide, hence `publish`.
+
+Recht: `wordpress.content.publish`
+
+Padparameters: `site_id`, `page`
+
+Request body: `WordPressOptionsWrite`
+
+Antwoord: `200` · `WordPressOptionsRead`
+
+#### `GET /api/v1/wordpress/sites/{site_id}/bridge/records`
+
+**Bridge List Records** — Records of any post type through the plugin — REST-hidden types included — with the page path, status, and WPML language and translation ids per row.
+
+Recht: `wordpress.content.read`
+
+Padparameters: `site_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `post_type` | string |  (default `page`) |
+| `search` | string |  |
+| `status` | string | Comma-separated, or 'any'. |
+| `lang` | string |  |
+| `parent` | integer |  |
+| `page` | integer |  (default `1`) |
+| `per_page` | integer |  (default `20`) |
+
+Antwoord: `200` · `WordPressRecordList`
+
+#### `POST /api/v1/wordpress/sites/{site_id}/bridge/records`
+
+**Bridge Create Record** — A new record with its ACF fields, validated against the site's schema before anything is written; a refusal lists every problem with its path in `details.problems`. A live status needs `wordpress.content.publish`.
+
+Recht: `wordpress.content.write`
+
+Padparameters: `site_id`
+
+Request body: `WordPressRecordCreate`
+
+Antwoord: `201` · `WordPressRecord`
+
+#### `GET /api/v1/wordpress/sites/{site_id}/bridge/records/{wp_id}`
+
+**Bridge Get Record** — One record whole: core fields, taxonomies, SEO, the ACF `fields` (compact: per page-builder row only what that row uses) and `references` for every id in them.
+
+Recht: `wordpress.content.read`
+
+Padparameters: `site_id`, `wp_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `mode` | string |  (default `compact`) |
+| `include_schema` | boolean |  (default `false`) |
+
+Antwoord: `200` · `WordPressRecord`
+
+#### `PATCH /api/v1/wordpress/sites/{site_id}/bridge/records/{wp_id}`
+
+**Bridge Update Record** — Change a record: `fields` replaces named top-level ACF fields whole, `ops` edits one row by path without resending the rest. Validated first; nothing written on a refusal. Editing anything a visitor can see needs `wordpress.content.publish`.
+
+Recht: `wordpress.content.write`
+
+Padparameters: `site_id`, `wp_id`
+
+Request body: `WordPressRecordUpdate`
+
+Antwoord: `200` · `WordPressRecord`
+
+#### `DELETE /api/v1/wordpress/sites/{site_id}/bridge/records/{wp_id}`
+
+**Bridge Delete Record** — Trash a record (recoverable in the site's admin), or delete it for good.
+
+Recht: `wordpress.content.delete`
+
+Padparameters: `site_id`, `wp_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `force` | boolean | Delete permanently instead of trashing. (default `false`) |
+
+Antwoord: `200` · `WordPressBridgeDelete`
+
+#### `GET /api/v1/wordpress/sites/{site_id}/bridge/records/{wp_id}/translations`
+
+**Bridge Translations** — WPML: a record's translation group — per language the id, title, status and whether it is the original.
+
+Recht: `wordpress.content.read`
+
+Padparameters: `site_id`, `wp_id`
+
+Antwoord: `200` · `WordPressTranslations`
+
+#### `POST /api/v1/wordpress/sites/{site_id}/bridge/records/{wp_id}/translations`
+
+**Bridge Translate** — WPML: create this record's translation in `lang`, linked to it — the source copied with its references translated, your title/content/fields applied on top — or, with `translation_id`, connect an existing record as the translation. A live status needs `wordpress.content.publish`.
+
+Recht: `wordpress.content.write`
+
+Padparameters: `site_id`, `wp_id`
+
+Request body: `WordPressTranslationCreate`
+
+Antwoord: `201` · `WordPressRecord`
+
+#### `GET /api/v1/wordpress/sites/{site_id}/bridge/schema`
+
+**Bridge Schema** — The ACF field schema for a post type (optionally with template/parent), a record, an options page or a taxonomy: every field's name, type, choices, sub fields, the conditions that hide it, and the JSON the writer takes. Read before writing fields.
+
+Recht: `wordpress.content.read`
+
+Padparameters: `site_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `post_type` | string |  |
+| `template` | string |  |
+| `parent` | integer |  |
+| `wp_id` | integer | An existing record: the groups that apply to it. |
+| `options_page` | string |  |
+| `taxonomy` | string |  |
+
+Antwoord: `200` · `WordPressBridgeSchema`
+
+#### `GET /api/v1/wordpress/sites/{site_id}/bridge/strings`
+
+**Bridge Strings** — WPML String Translation: the registered strings with their translations per language.
+
+Recht: `wordpress.content.read`
+
+Padparameters: `site_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `domain` | string |  |
+| `search` | string |  |
+| `page` | integer |  (default `1`) |
+| `per_page` | integer |  (default `50`) |
+
+Antwoord: `200` · `WordPressStringList`
+
+#### `PUT /api/v1/wordpress/sites/{site_id}/bridge/strings`
+
+**Bridge String Update** — WPML String Translation: set a string's translation — live at once, hence `publish`.
+
+Recht: `wordpress.content.publish`
+
+Padparameters: `site_id`
+
+Request body: `WordPressStringUpdate`
+
+Antwoord: `200` · `WordPressStringResult`
+
+#### `GET /api/v1/wordpress/sites/{site_id}/bridge/terms`
+
+**Bridge List Terms** — The terms of one taxonomy, with their WPML language and, on request, ACF fields.
+
+Recht: `wordpress.content.read`
+
+Padparameters: `site_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `taxonomy` | string · verplicht |  |
+| `search` | string |  |
+| `lang` | string |  |
+| `mode` | string |  (default `none`) |
+
+Antwoord: `200` · `WordPressBridgeTermList`
+
+#### `POST /api/v1/wordpress/sites/{site_id}/bridge/terms`
+
+**Bridge Create Term** — A new term, its ACF fields validated first; with WPML, in a language and optionally as the translation of another term.
+
+Recht: `wordpress.content.write`
+
+Padparameters: `site_id`
+
+Request body: `WordPressBridgeTermCreate`
+
+Antwoord: `201` · `WordPressBridgeTerm`
 
 #### `GET /api/v1/wordpress/sites/{site_id}/content`
 

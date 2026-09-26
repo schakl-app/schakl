@@ -19,7 +19,8 @@ published — none of it had an answer here.
   choose the workspace schakl. writes in, and the kill switch.
 - **Marketing → Tag Manager** — the containers themselves: the live version, the tags, triggers
   and variables, the version history and the snippet.
-- On a **client page**, the container sits beside the domain and the website it runs on.
+- On a **client page** you attach it from the **Marketing** panel, where it sits as a connection
+  beside the sources, with the number of live tags and unpublished changes.
 
 Tag Manager needs the **Google Workspace** integration; switching it on under
 *Instellingen → Integraties* (Settings → Integrations) pulls that in for you, and the screen says
@@ -33,7 +34,7 @@ so before you save.
    project", which is an operator's job and not something a reconnect fixes.
 2. Make sure the Google account you will connect with has access to the client's container in
    Tag Manager. schakl. never asks for more than that account already has.
-3. Have the container's **tag id** to hand (`GTM-XXXXXXX`), or be ready to pick from the list of
+3. Have the container's **tag id** to hand (`GTM-XXXXXXX`), or be ready to search by name among the
    containers your account can reach.
 </Steps>
 
@@ -45,8 +46,9 @@ so before you save.
    connection, on purpose: the dashboard's three sources are read-only measurement, and asking
    somebody who wanted a traffic chart whether they may publish to a client's website is how
    people learn to click through consent screens without reading them.
-3. Link a container per client: paste the tag id, or pick from the list, then attach the client
-   and — optionally — the website it runs on.
+3. Link a container per client: paste the tag id, or search by name, then attach the client and,
+   optionally, the website it runs on. You can do that here, and also from the **Marketing** panel
+   on the client page, under **Tag Manager**; it is the same link.
 4. Leave **Eigen werkruimte** (Own workspace) on, and give it your agency's name. See below for
    why this matters more than it looks.
 </Steps>
@@ -67,6 +69,16 @@ to that container — which is the client's Tag Manager admin's job — or your 
 *before* your organisation asked for the Tag Manager scopes, which is one reconnect. schakl.
 checks the scope before it calls, so it can tell you which of the two you are looking at.
 </Aside>
+
+### A search box, not a list of everything
+
+Tag Manager counts its limit per user per minute, and listing an account's containers costs one
+request per account. A picker that fetched everything ran into that quota the first time it was
+opened at an agency with 44 accounts. So the picker is a search box: the account list is always
+read, the containers only for the accounts matching your search, up to a fixed ceiling. A pasted
+tag id is one request. What was not opened is named (*"8 van 44"*, 8 of 44), because a short list
+that looks complete reads as *"we are not in that account"*. If the quota runs out halfway, what
+was already read stays.
 
 ## A workspace is a shared draft, not a branch
 
@@ -143,10 +155,20 @@ So a conversion keeps **what was asked for** and **what was last observed** in s
 conversion whose tag somebody deleted in Tag Manager is then a state you can see, instead of a row
 that quietly keeps claiming to work.
 
+### Summary and goal
+
+The container page carries **Samenvatting en doel** (Summary and goal): two text fields in your own
+words. The **summary** says what this container is and does for the client; the **goal** what the
+tracking should prove, for example *"measure quote requests"*. Whoever may link the container can
+edit them; whoever may read it sees them. They are tracked in the activity log, and stored as two
+separate fields, never pasted together.
+
 ## The nightly count
 
 Every night at 05:35 each linked container's mirror is refreshed. If one container fails, that
-failure stays on its own row and the others refresh as normal.
+failure stays on its own row and the others refresh as normal. The number of staged changes also
+sits on the container's row in the client's Marketing panel, so you see it without opening the
+container.
 
 The number this job exists for is **staged and unpublished changes**. A change staged weeks ago
 and never published is the commonest way a client's tracking quietly stops being what they were

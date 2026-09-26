@@ -19,8 +19,9 @@ The main menu carries **Facturatie** (Invoicing) with *Facturen* (Invoices, whic
 Facturen and Offertes / Quotes) and *Nog te factureren* (To invoice). What you configure once lives
 at *Instellingen → Facturatie* (Settings → Invoicing), in the sections Bedrijfsgegevens (company
 details), Btw-tarieven (VAT rates), Producten en diensten, Sjablonen (templates), Nummering,
-Standaardwaarden (defaults), Automatisch factureren, Betalingsherinneringen (payment reminders) and
-Boekhouding (accounting). Every client page also carries a **Facturatie** panel with that client's
+Bestaande facturen overnemen (bringing existing invoices in), Standaardwaarden (defaults),
+Openbare factuurlink (public invoice link), Automatisch factureren, Betalingsherinneringen (payment
+reminders) and Boekhouding (accounting). Every client page also carries a **Facturatie** panel with that client's
 most recent invoices and quotes.
 
 Invoicing is a licensed module. Once a licence expires it goes read-only: viewing, printing and
@@ -66,6 +67,23 @@ document are still listed, labelled *al gefactureerd* (already invoiced): answer
 exactly how a duplicate happens. Only **Diensten en producten** has a free unit field. VAT is
 calculated and rounded once per rate group across the whole document rather than per line.
 
+The document heads every kind of line under its own band, even when only one kind is on it: the
+heading says what is being paid for. A period prints as `01-01-2025 - 01-01-2026`, whether you
+picked it yourself or the nightly run drafted it. Three more things come along by themselves:
+
+- **The name on the invoice.** A client has the name everyone knows it by and, where it differs,
+  a **Naam op de factuur** (name on the invoice, on the client under *Factuurgegevens* / billing
+  details), such as the B.V. or the holding company. Invoices, quotes and the UBL export use that
+  second name; everywhere else keeps the ordinary one. Empty means: the same name.
+- **Your own fields on paper.** A custom field on an invoice, quote or subscription set to **Op het
+  document tonen** (show on the document) is printed: an invoice's or quote's own under the
+  document details, a subscription's on every invoice line that subscription raises ("Hosting Pro
+  · Website: client.nl"). See [Custom fields](/en/docs/modules/custom-fields/).
+- **A subscription's notes.** When the standard subscription (or the subscription itself) is set
+  to "Op elke factuur afdrukken" (print on every invoice), its notes print under the lines, with
+  variables such as `{{company_name}}` and `{{amount}}` already filled in. Pick the period by hand
+  and the editor adds the note once under the Notes field.
+
 ## From draft to paid
 
 1. **Definitief maken** (Issue) allocates the number, freezes the client's address block and sets
@@ -79,7 +97,8 @@ calculated and rounded once per rate group across the whole document rather than
 ![An issued invoice: the amount is fixed, the payments sit below it, and you correct with a credit note.](/img/docs/en-invoice-detail.png)
 
 The ⋯ menu also holds Herinnering sturen (send reminder), Crediteren (create credit note), Factuur
-annuleren (cancel), PDF downloaden, Afdrukken / PDF (print) and UBL downloaden. *Vervallen*
+annuleren (cancel), Verwijderen (delete), PDF downloaden, Afdrukken / PDF (print) and UBL
+downloaden. *Vervallen*
 (overdue) is derived rather than set: open, past its due date, and something still outstanding.
 
 ## Quotes
@@ -103,6 +122,27 @@ on the line says which part of the work it concerned. If the invoice was already
 left over that goes back to the client, and the button there reads **Terugbetaling registreren**
 (register refund).
 
+## Cancelling or deleting
+
+**Factuur annuleren** (cancel invoice) first asks what should happen to the invoice:
+
+- **Tegenboeken met een creditfactuur** (reverse with a credit note), for an invoice the client has
+  received. schakl. creates and issues a credit note with the same lines at negative amounts in
+  one go; the invoice stays on record as credited, the billed work comes free again, and you land
+  on the credit note, ready to send. When the invoice was sent, this choice is already selected.
+- **Alleen annuleren** (cancel only), for an invoice nobody received. The status becomes
+  *Geannuleerd* (cancelled), nothing is reversed, and the number stays in the sequence.
+
+A cancellation exists only in schakl.; your client's books and your own accounting package follow a
+credit note. That is why it is the suggested route.
+
+**Deleting** an issued invoice is possible too, but only with an extra step: the dialog lists what
+will happen, and the red button only works once you tick *"Ik begrijp dat nummer … definitief
+verdwijnt"* (I understand that number … disappears for good). The number leaves the sequence, and a
+gap in your invoice numbering is something you must be able to explain to the tax authority.
+Payments, a credit note, a booking in the accounting package or an open online payment block the
+delete; afterwards only the activity log still records that the number existed.
+
 ## Paying online
 
 An open invoice carries an **Online betalingen** (online payments) card. As staff you press
@@ -111,19 +151,26 @@ An open invoice carries an **Online betalingen** (online payments) card. As staf
 place. The state follows along (waiting, processing, authorised, paid, failed, expired, cancelled)
 and as soon as the provider confirms, the payment is booked onto the invoice by itself.
 
-The client can start in four places: the button in the portal, the button in the invoice mail, the
-one in the reminder, and the QR code with its pay-online line on the document itself. All four land
-in the same place — the invoice's own page in the client portal — and never on the provider's
-checkout: such an address is a bearer credential on paper, it expires within a quarter of an hour
-while the invoice does not, and two valid ways into one debt produce double payments. The button in
-the mail is stricter than the link on the document: it appears only when a provider is connected
-*and* the invoice is still collectable. With no provider connected, exactly the mail that went out
-before goes out now.
+Every issued invoice has its own **public link**: a web address on which whoever holds it can view,
+download and pay exactly that one invoice, without an account. The QR code on the document and the
+link in the invoice mail and the reminder point there; a client with a portal login can also pay
+from the portal. None of them ever points at the provider's own checkout: that expires within a
+quarter of an hour while the invoice does not, and two valid ways into one debt produce double
+payments. The button in the mail appears only when a provider is connected *and* the invoice is
+still collectable; with no provider connected, exactly the mail that went out before goes out now.
+
+The link is on by default and switched off under *Instellingen → Facturatie → Openbare
+factuurlink*. That works retroactively: links already printed or mailed stop working as well. In
+the template you can take the address itself off the paper and keep only the QR code. A payer
+returning from a successful payment gets a thank-you page with the amount; a failed, expired or
+cancelled attempt is named as such.
 
 You connect your own account at *Instellingen → Mollie*: **Account toevoegen**, then a name, an
 optional supplier, and your API key from the Mollie dashboard. Live or test is derived from the key
-itself, and **Betaalmethoden** lists what Mollie itself reports back. Test payments run the whole
-loop but never mark an invoice paid.
+itself, and **Betaalmethoden** lists what Mollie itself reports back. A test payment runs the whole
+loop exactly like a real one: the invoice is marked paid and the payment row carries "(test)" in
+its note, so you can see it came from the test key. See also
+[Mollie](/en/docs/integrations/mollie/).
 
 <Aside type="caution" title="Two things that fail silently here">
 The **Meldingsadres** (notification URL) printed on the Mollie screen must be reachable from the
@@ -132,7 +179,9 @@ payments are collected and never booked, with nothing reporting an error. Rotati
 changes that URL.
 
 The Mollie integration is written from Mollie's official API documentation but has never been run
-against a real Mollie key. Treat it as unproven and rehearse with a test key first.
+against a real Mollie key. Treat it as unproven and rehearse with a test key first. Because a test
+payment really marks the invoice paid, rehearse on a trial invoice, not on one you still need to
+collect.
 </Aside>
 
 ## Automatic invoicing and reminders
@@ -169,13 +218,53 @@ Soort (kind) and group. Hours group by day, week, month, year, client, project o
 recurring half by client, month or kind. Group by client and each group carries a **Factuur maken**
 (create invoice) link.
 
+A subscription or domain whose invoice date has passed is listed here too: that is exactly what the
+nightly run bills at its next pass, and a backlog of several periods is caught up in one run rather
+than one period a night. A domain renewal without a price (the extension has no rate yet and the
+domain no price of its own) does not drop out: it is listed with the label **geen prijs** (no
+price) at zero, with a line above saying how many renewals are waiting on a price.
+
 ![To invoice does the same for the whole agency, grouped by day, week, month, client, project or employee.](/img/docs/en-uninvoiced.png)
 
 Every issued invoice downloads as **UBL 2.1** for Exact Online, SnelStart, Moneybird or
-e-Boekhouden, and that is the whole accounting story today: the Boekhouding screen says itself that
-no live connectors are installed. A client with a portal login sees **Mijn facturen** (my
+e-Boekhouden. If you work in SnelStart it can also run live: that integration puts clients and
+invoices into your administration itself and brings back what has been paid (see
+[SnelStart](/en/docs/integrations/snelstart/)). A client with a portal login sees **Mijn facturen** (my
 invoices): only the issued invoices of their own companies, with the same PDF you send. Drafts do
 not exist for them, and quotes stay internal.
+
+## Bringing existing invoices in
+
+Coming from Moneybird, SnelStart, e-Boekhouden or a spreadsheet, you bring your old invoices along,
+so a client's history and the outstanding balance are right from day one. It happens in one place:
+*Instellingen → Facturatie → Bestaande facturen overnemen* (bringing existing invoices in), in three
+steps.
+
+<Steps>
+
+1. **Import the spreadsheet.** One row per invoice: number, client, invoice date and totals, plus
+   the payment state if you have it. It is the ordinary import wizard: you map the columns and the
+   file is checked before anything is written. The totals are the fact, so they are taken as
+   stated and never recomputed; subtotal plus VAT must still equal the total to the cent. An amount
+   paid needs a date and becomes an ordinary payment row. An imported invoice sends no
+   notifications, and only gets reminders when the file says so per row.
+
+2. **Attach the original PDFs.** A zip of the PDFs your clients received at the time, each named
+   after the invoice number (`2024-0012.pdf`). Each file is attached to the imported invoice with
+   that number; separators, spaces and case do not count. The report names what matched and what
+   did not, and an invoice that already holds an original is skipped. A single PDF can also go on
+   the invoice itself, in the **Origineel** (original) card.
+
+3. **Move the numbering on.** Under Nummering, set the next invoice number past the highest number
+   you brought in, so the first new invoice does not collide.
+
+</Steps>
+
+An imported invoice sits among the others on the invoice list, marked with where it came from.
+With an original attached, the invoice page shows that PDF, and the public link and the download
+serve exactly those bytes; the **Origineel** card names the file and its fingerprint (SHA-256).
+Without one, schakl. shows a document built from the imported totals. The same import keeps working
+later: a paid amount can only go up in a new file, so "these forty are paid" is one file.
 
 ## Permissions
 
@@ -190,7 +279,7 @@ but only in their narrow form, so only for that client's own invoices.
 | `invoicing.invoice.read` | View invoices. It has two depths: the narrow one reaches documents only, the broad one also your company and bank details, the price list, the templates and the To-invoice backlog. |
 | `invoicing.invoice.write` | Create and edit invoices |
 | `invoicing.invoice.send` | Send invoices and payment reminders |
-| `invoicing.invoice.delete` | Delete draft invoices |
+| `invoicing.invoice.delete` | Delete draft invoices, and an issued invoice after the extra confirmation |
 | `invoicing.quote.read` / `.write` / `.send` / `.delete` | The same for quotes |
 | `invoicing.payment.write` | Register payments |
 | `invoicing.payment.link` | Start an online payment |
@@ -205,8 +294,9 @@ payment on its own invoice. Connecting a Mollie account is a separate permission
 - **Issued is issued.** Amounts can no longer change; you correct with a credit note. The process
   around it stays editable: reference, notes, due date, template, document language, exchange rate
   and pausing reminders.
-- **Delete is draft-only.** An issued invoice is cancelled instead, and cancelling refuses while
-  payments are registered against it or a credit note stands opposite it.
+- **Cancel an issued invoice with a credit note by preference.** Cancelling and deleting both refuse
+  while payments are registered against it or a credit note stands opposite it; deleting also asks
+  for an explicit confirmation naming the number.
 - **A time entry sits on one invoice, ever.** Delete or cancel an invoice and exactly those entries
   come free again; a second document claiming the same subscription period or domain year is
   refused.
@@ -216,9 +306,11 @@ payment on its own invoice. Connecting a Mollie account is a separate permission
 - **Formatting follows the document, not the reader**, and another currency is fine: the document
   is entirely in its own currency, and the exchange rate exists only so the summary tiles can be
   added up.
-- **The QR code is off by default** and encodes the invoice's page in the client portal, never a
-  checkout link: such a link is a bearer key and does not belong on printed paper.
-- Invoices and quotes do **not** travel as a spreadsheet; the UBL download is their way out.
+- **The QR code is off by default** and encodes the invoice's public link, never the provider's
+  checkout.
+- **Invoices travel by spreadsheet**: the invoice list has **Exporteren** (export, with your current
+  filters), and importing happens only through *Bestaande facturen overnemen* in the settings.
+  Quotes do not travel as a spreadsheet.
 
 ## Read next
 

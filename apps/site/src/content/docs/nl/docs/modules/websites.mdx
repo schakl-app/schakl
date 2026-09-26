@@ -2,7 +2,7 @@
 title: Websites
 description: "De site die op een domein staat: op @ of www, wie hem technisch beheert en op welk hostingaccount hij draait."
 sidebar:
-  order: 14
+  order: 15
 ---
 
 import { Aside, CardGrid, LinkCard } from '@astrojs/starlight/components';
@@ -15,10 +15,11 @@ draait. Eén website per domein, en dat domein bepaalt meteen van welke klant de
 
 ## Waar je het vindt
 
-In het hoofdmenu onder **Domeinen & websites → Websites**. Dat overzicht is de lijst; de
-detailpagina van een site is de **domeinpagina**, waar de website een eigen blok
-"Website" heeft. Elke rij in het overzicht linkt daar dan ook naartoe. Op een klantpagina staat
-het paneel **Websites** met de sites van die klant, hun host en hun hostingaccount.
+In het hoofdmenu onder **Domeinen & websites → Websites**. Dat overzicht is de lijst; elke rij
+opent de eigen pagina van de website, met zijn gegevens en daaronder de panelen die eraan hangen:
+de **Abonnementen** die hem online houden, en met de koppelingen aan WordPress en Uptime Kuma hun
+eigen kaarten. Op de domeinpagina staat de website ook nog als blok "Website". Op een klantpagina
+staat het paneel **Websites** met de sites van die klant, hun host en hun hostingaccount.
 
 ## Een website aanmaken
 
@@ -34,14 +35,25 @@ Omdat een website altijd aan een domein hangt, begint aanmaken met dat domein.
   een compleet nieuw hostingaccount aanmaken; het wordt na opslaan automatisch geselecteerd.
 - **Uptime-monitoring.** Een schakelaar, zichtbaar als groene pil in de kolom *Uptime*.
 
-Bewerken kan op twee plekken: via het ⋯-menu achter een regel in de lijst, of op de domeinpagina
-zelf in het blok Website. Verwijderen zit in datzelfde ⋯-menu.
+Bewerken kan op de pagina van de website (via het ⋯-menu bovenaan), via het ⋯-menu achter een
+regel in de lijst, of op de domeinpagina in het blok Website. Verwijderen zit in datzelfde ⋯-menu.
 
 <Aside type="caution">
-Uptime-monitoring is op dit moment een vastgelegd gegeven, geen actieve bewaking: schakl. pollt
-de site niet zelf en stuurt er geen melding over. Gebruik de schakelaar om vast te leggen welke
-sites bewaakt horen te worden; je kunt de lijst erop sorteren.
+De schakelaar Uptime-monitoring zelf is een vastgelegd gegeven: hij legt vast welke sites bewaakt
+horen te worden, en je kunt de lijst erop sorteren. De echte bewaking loopt via de koppeling
+[Uptime Kuma](/nl/docs/integrations/uptime-kuma/), die een monitor op de website zet en zijn
+status op de pagina van de website toont.
 </Aside>
+
+## Welk abonnement deze site online houdt
+
+Een website zegt waar hij draait (zijn hostingaccount) en, met het paneel **Abonnementen** op zijn
+pagina, ook wie daarvoor betaalt. Het paneel toont de gekoppelde afspraken met status, prijs en
+volgende factuurdatum. Via de keuzelijst koppel je een lopende afspraak van dezelfde klant; alleen
+afspraken van een type met **Dekt websites** aan (zoals Hosting) worden aangeboden. Met ＋ maak je
+een nieuw abonnement aan met de klant en de website al ingevuld. Ontkoppelen doe je per regel. Het
+paneel vraagt leesrecht op abonnementen, en de module Abonnementen moet aan staan. Zie
+[Abonnementen](/nl/docs/modules/subscriptions/).
 
 ## Het overzicht
 

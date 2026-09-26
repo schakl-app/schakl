@@ -1,0 +1,186 @@
+---
+// Demo — "Meetings". The recorder runs (the clock ticks, "Opgeslagen tot" says what is already
+// safe on the server), the person stops it, the worker writes the minutes, and the draft lands
+// for review: a numbered decision with the transcript's own words under it, and the action items
+// grouped by side and then by person — exactly as the meeting page draws them.
+//
+// Faithful to apps/web/src/routes/(app)/meetings/new/+page.svelte (the live surface: the title,
+// one big clock, one sentence about what is saved, one red button — no waveform, because the app
+// draws none) and [id]/+page.svelte (the minutes card: summary, "Besluiten" with a brand-filled
+// number and the clock it was said at, "Actiepunten" with an uppercase side heading and the
+// owner's name above their items).
+//
+// Base frame = the minutes, ready to review (motion contract in README.md): with no JS or
+// reduced motion this rests on the result, and the recorder and the progress line are hidden.
+import AppFrame from './AppFrame.astro';
+import Icon from './Icon.astro';
+import { labels, type Locale } from './labels.ts';
+
+interface Props {
+  locale: Locale;
+}
+const { locale } = Astro.props;
+const l = labels[locale];
+const nl = locale === 'nl';
+const s = {
+  title: 'Kick-off Studio Noord',
+  summary: nl
+    ? 'De nieuwe site gaat 1 november live; Studio Noord levert de teksten.'
+    : 'The new site goes live on 1 November; Studio Noord supplies the copy.',
+  decision: nl ? 'Livegang op 1 november' : 'Go live on 1 November',
+  quote: nl ? '“dan gaan we op 1 november live”' : '“so we go live on the first of November”',
+  us: 'Sanne Visser',
+  usItem: nl ? 'Planning en sitemap sturen' : 'Send the schedule and sitemap',
+  client: 'Jan Jansen',
+  clientItem: nl ? 'Teksten over de werkplaats aanleveren' : 'Supply the workshop copy',
+};
+const nav = ['dashboard', 'companies', 'projects', 'tasks', 'time', 'interactions', 'meetings'];
+---
+
+<AppFrame locale={locale} active="meetings" nav={nav} class="demo-meetings">
+  <div class="mt-back muted"><Icon name="arrowLeft" size={0.8} />{l.navMeetings}</div>
+
+  <div class="mt-swap mt-head">
+    <div class="screen__head mt-head__rec"><span class="screen__title">{l.mtRecordTitle}</span></div>
+    <div class="screen__head mt-head__meet">
+      <span class="screen__title">{s.title}</span>
+      <span class="chip chip--pending mt-pill">{l.mtStReview}</span>
+    </div>
+  </div>
+
+  <div class="mt-swap mt-stage">
+    <!-- the recorder: one number, one sentence about what is safe, one button -->
+    <div class="card mt-rec">
+      <div class="muted mt-rec__title">{s.title}</div>
+      <div class="mt-clock tnum">
+        <span class="mt-clock__a">42:15</span>
+        <span class="mt-clock__b">42:16</span>
+        <span class="mt-clock__c">42:17</span>
+      </div>
+      <div class="muted mt-rec__saved">{l.mtSavedUntil('42:05')}</div>
+      <span class="btn mt-stop"><Icon name="square" size={0.8} />{l.mtStop}</span>
+    </div>
+
+    <!-- the worker writing the minutes -->
+    <div class="card mt-proc">
+      <span class="mt-proc__dot"></span>
+      <span class="muted">{l.mtSummarising}</span>
+    </div>
+
+    <!-- the minutes, as the meeting page draws them -->
+    <div class="card mt-min">
+      <p class="mt-min__sum">{s.summary}</p>
+
+      <div class="mt-min__sub strong mt-dec">{l.mtDecisions}</div>
+      <div class="mt-decision mt-dec">
+        <span class="mt-num tnum">1</span>
+        <div>
+          <div class="mt-decision__t">{s.decision}</div>
+          <div class="muted mt-ev"><span class="tnum">12:40</span> · <i>{s.quote}</i></div>
+        </div>
+      </div>
+
+      <div class="mt-min__sub strong mt-act1">{l.mtActionItems}</div>
+      <div class="mt-who mt-act1"><span class="mt-side muted">{l.mtSideAgency}</span><span class="mt-owner">{s.us}</span></div>
+      <ul class="mt-items mt-act1"><li>{s.usItem} <span class="muted">— 03-10-2026</span></li></ul>
+      <div class="mt-who mt-act2"><span class="mt-side muted">{l.mtSideClient}</span><span class="mt-owner">{s.client}</span></div>
+      <ul class="mt-items mt-act2"><li>{s.clientItem}</li></ul>
+
+      <div class="mt-foot mt-act2">
+        <span class="btn btn--brand">{l.mtConfirm}</span>
+        <span class="btn"><Icon name="download" size={0.8} />{l.mtExport}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="stagefade"></div>
+</AppFrame>
+
+<style is:global>
+  .demo-meetings .mt-back { display: inline-flex; align-items: center; gap: 0.35em; font-size: 0.85em; margin-bottom: 0.5em; }
+  /* stacked states share one grid cell, so nothing shifts when they swap */
+  .demo-meetings .mt-swap { display: grid; }
+  .demo-meetings .mt-swap > * { grid-area: 1 / 1; }
+  .demo-meetings .mt-head__meet { gap: 0.6em; justify-content: flex-start; }
+  .demo-meetings .mt-pill { font-size: 0.75em; }
+
+  .demo-meetings .mt-rec,
+  .demo-meetings .mt-proc { align-self: start; text-align: center; padding: 1.4em 1em; }
+  .demo-meetings .mt-rec__title { font-size: 0.85em; }
+  .demo-meetings .mt-clock { position: relative; height: 1.3em; margin-top: 0.3em; font-size: 2.1em; font-weight: 650; }
+  .demo-meetings .mt-clock > span { position: absolute; inset: 0; }
+  .demo-meetings .mt-rec__saved { font-size: 0.85em; margin-top: 0.4em; }
+  .demo-meetings .mt-stop { margin-top: 1em; background: #dc2626; border-color: #dc2626; color: #fff; }
+  .demo-meetings .mt-stop svg { fill: currentColor; }
+  .demo-meetings .mt-proc { display: flex; align-items: center; justify-content: center; gap: 0.6em; font-size: 0.9em; }
+  .demo-meetings .mt-proc__dot {
+    width: 0.9em; height: 0.9em; border-radius: 50%; flex: none;
+    border: 2px solid color-mix(in srgb, var(--b) 25%, transparent); border-top-color: var(--b);
+  }
+
+  .demo-meetings .mt-min { padding: 0.95em 1.05em; font-size: 0.92em; }
+  .demo-meetings .mt-min__h { margin-bottom: 0.4em; }
+  .demo-meetings .mt-min__sum { margin: 0; font-size: 0.92em; line-height: 1.45; }
+  .demo-meetings .mt-min__sub { margin-top: 0.65em; font-size: 0.92em; }
+  .demo-meetings .mt-decision { display: flex; gap: 0.6em; margin-top: 0.4em; }
+  .demo-meetings .mt-num {
+    display: inline-grid; place-items: center; width: 1.35em; height: 1.35em; flex: none; margin-top: 0.1em;
+    border-radius: 50%; background: var(--b); color: var(--b-ink); font-size: 0.75em; font-weight: 650;
+  }
+  .demo-meetings .mt-decision__t { font-weight: 550; font-size: 0.92em; }
+  .demo-meetings .mt-ev { font-size: 0.8em; margin-top: 0.1em; }
+  .demo-meetings .mt-who { display: flex; align-items: baseline; gap: 0.6em; margin-top: 0.45em; }
+  .demo-meetings .mt-side { font-size: 0.72em; font-weight: 550; letter-spacing: 0.04em; text-transform: uppercase; }
+  .demo-meetings .mt-owner { font-size: 0.9em; font-weight: 550; }
+  .demo-meetings .mt-items { margin: 0.1em 0 0; padding-left: 1.2em; font-size: 0.9em; }
+  .demo-meetings .mt-foot { display: flex; gap: 0.5em; margin-top: 0.7em; }
+  .demo-meetings .mt-foot .btn { padding: 0.35em 0.7em; font-size: 0.82em; }
+  .demo-meetings .stagefade { position: absolute; inset: 0; background: var(--sf); opacity: 0; pointer-events: none; z-index: 30; }
+
+  /* base = the minutes ready for review: recorder, progress and the recorder's header hidden;
+     the clock reel rests on its last value */
+  .demo-meetings .mt-swap > .mt-rec,
+  .demo-meetings .mt-swap > .mt-proc,
+  .demo-meetings .mt-swap > .mt-head__rec { opacity: 0; }
+  .demo-meetings .mt-swap > .mt-min,
+  .demo-meetings .mt-swap > .mt-head__meet { opacity: 1; }
+  .demo-meetings .mt-clock > .mt-clock__a,
+  .demo-meetings .mt-clock > .mt-clock__b { opacity: 0; }
+  .demo-meetings .mt-clock > .mt-clock__c { opacity: 1; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .demo-meetings.is-playing .mt-swap > .mt-head__rec { animation: mt-rec 12s infinite; }
+    .demo-meetings.is-playing .mt-swap > .mt-rec { animation: mt-rec 12s infinite; }
+    .demo-meetings.is-playing .mt-swap > .mt-head__meet { animation: mt-meet 12s infinite; }
+    .demo-meetings.is-playing .mt-pill { animation: mt-min 12s infinite; }
+    .demo-meetings.is-playing .mt-swap > .mt-proc { animation: mt-proc 12s infinite; }
+    .demo-meetings.is-playing .mt-proc__dot { animation: mt-spin 0.9s linear infinite; }
+    .demo-meetings.is-playing .mt-swap > .mt-min { animation: mt-min 12s infinite; }
+    .demo-meetings.is-playing .mt-clock > .mt-clock__a { animation: mt-tick-a 12s infinite; }
+    .demo-meetings.is-playing .mt-clock > .mt-clock__b { animation: mt-tick-b 12s infinite; }
+    .demo-meetings.is-playing .mt-clock > .mt-clock__c { animation: mt-tick-c 12s infinite; }
+    .demo-meetings.is-playing .mt-stop { animation: mt-press 12s infinite; }
+    .demo-meetings.is-playing .mt-dec { animation: mt-in-dec 12s infinite; }
+    .demo-meetings.is-playing .mt-act1 { animation: mt-in-act1 12s infinite; }
+    .demo-meetings.is-playing .mt-act2 { animation: mt-in-act2 12s infinite; }
+    .demo-meetings.is-playing .stagefade { animation: mt-veil 12s infinite; }
+  }
+  /* recorder 0–34 %, stop pressed at ~30 %, the worker writes 36–52 %, the minutes from 52 % */
+  @keyframes mt-rec { 0%, 32% { opacity: 1; } 36%, 100% { opacity: 0; } }
+  @keyframes mt-meet { 0%, 33% { opacity: 0; } 37%, 100% { opacity: 1; } }
+  @keyframes mt-proc { 0%, 34% { opacity: 0; } 38%, 50% { opacity: 1; } 54%, 100% { opacity: 0; } }
+  @keyframes mt-min { 0%, 51% { opacity: 0; } 56%, 100% { opacity: 1; } }
+  @keyframes mt-tick-a { 0%, 8% { opacity: 1; } 8.01%, 100% { opacity: 0; } }
+  @keyframes mt-tick-b { 0%, 8% { opacity: 0; } 8.01%, 16% { opacity: 1; } 16.01%, 100% { opacity: 0; } }
+  @keyframes mt-tick-c { 0%, 16% { opacity: 0; } 16.01%, 100% { opacity: 1; } }
+  @keyframes mt-press {
+    0%, 26% { transform: none; filter: none; }
+    29% { transform: scale(0.95); filter: brightness(0.9); }
+    32%, 100% { transform: none; filter: none; }
+  }
+  @keyframes mt-in-dec { 0%, 58% { opacity: 0; transform: translateY(0.3em); } 64%, 100% { opacity: 1; transform: none; } }
+  @keyframes mt-in-act1 { 0%, 66% { opacity: 0; transform: translateY(0.3em); } 72%, 100% { opacity: 1; transform: none; } }
+  @keyframes mt-in-act2 { 0%, 74% { opacity: 0; transform: translateY(0.3em); } 80%, 100% { opacity: 1; transform: none; } }
+  @keyframes mt-spin { to { transform: rotate(360deg); } }
+  @keyframes mt-veil { 0%, 92% { opacity: 0; } 96%, 100% { opacity: 1; } }
+</style>

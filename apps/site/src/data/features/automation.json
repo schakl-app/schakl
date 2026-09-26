@@ -1,7 +1,7 @@
 {
   "name": "Automatisering",
   "slug": "automation",
-  "order": 220,
+  "order": 230,
   "icon": "⚡",
   "lucide": "automation",
   "title": {
@@ -89,14 +89,14 @@
         },
         "bullets": {
           "nl": [
-            "Taak aanmaken: één losse taak, of een heel taaksjabloon op de klant waarop de regel vuurde",
+            "Taak aanmaken: één losse taak met een deadline in dagen vanaf het vuren, of een heel taaksjabloon op de klant waarop de regel vuurde",
             "Taakstatus wijzigen",
             "Taak toewijzen",
             "Melding sturen: naar de collega's die je aanwijst, met je eigen tekst",
             "Webhook aanroepen"
           ],
           "en": [
-            "Create task: one loose task, or a whole task template onto the client the rule fired on",
+            "Create task: one bare task with a deadline in days from firing, or a whole task template on the client the rule fired on",
             "Set task status",
             "Assign task",
             "Send notification: to the colleagues you name, in your own words",

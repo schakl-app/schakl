@@ -15,9 +15,10 @@ rekenen projectbudgetten, retainers en facturen ermee.
 
 ## Waar je het vindt
 
-**Uren** in het hoofdmenu is je eigen week. Het teamwerk zit onder **Overzicht**: de tabbladen
-*Uren* (het Urenoverzicht), *Productiviteit* en *Omzet*. De klantpagina en de projectpagina
-dragen elk een paneel **Uren**. De enige instelling is *Instellingen → Uren-typen*.
+**Uren** in het hoofdmenu is je eigen week. Het teamwerk zit onder **Overzicht**, met de
+tabbladen *Overzicht* (het jaar in één oogopslag), *Omzet*, *Projecten*, *Medewerkers*, *Uren*
+(het Urenoverzicht) en *Marketing*. De klantpagina en de projectpagina dragen elk een paneel
+**Uren**. De enige instelling is *Instellingen → Uren-typen*.
 
 ## De timer
 
@@ -34,6 +35,12 @@ minuten), plus **Datum**, **Klant**, **Project**, **Taak**, **Omschrijving** en 
 verandert de duur mee, typ je een duur dan verschuift **Tot**. Staat **Tot** op of vóór **Van**,
 dan loopt de registratie door naar de volgende dag, zodat werk over middernacht niet in tweeën
 hoeft.
+
+Een tijd die je typt is de klok van je kantoor: schakl. leest hem in de tijdzone van je
+organisatie en slaat een echt tijdstip op. Een registratie die via de API of een AI-agent binnenkomt
+met een eigen tijdzone (`12:40:00+02:00`) landt dus op hetzelfde moment, en elke vraag "welke dag
+is dit" wordt in de tijdzone van je organisatie beantwoord: een regel van 23:30 staat op zijn eigen
+dag in de weekstaat, het overzicht en op de factuur.
 
 Kies je een project, dan verschijnt eronder **Beschikbare uren**: verbruikt tegenover budget deze
 periode, met een balk en wat er nog over is. Komt dat budget uit een retainer, dan staat erbij uit
@@ -70,9 +77,12 @@ formulier in; er wordt niets opgeslagen tot jij op **Opslaan** klikt.
 
 ## Goedkeuren en factureren
 
-*Overzicht → Uren* is de teamlijst. Je filtert op medewerker, klant, project, periode en type, en
-met de statuspillen op **Goed te keuren**, **Goedgekeurd**, **Te factureren** en **Gefactureerd**.
-De totalen onderaan gelden over de hele filterselectie, niet over de zichtbare pagina.
+*Overzicht → Uren* is de teamlijst. Je filtert op medewerker, klant, project, taak, periode en type,
+en met de statuspillen op **Goed te keuren**, **Goedgekeurd**, **Te factureren** en **Gefactureerd**.
+De totalen onderaan gelden over de hele filterselectie, niet over de zichtbare pagina. In de
+takenkiezer staan de open taken; afgeronde vind je via het zoekveld. Het filter staat in de URL,
+dus een urenregel op een klantpagina of het budgetcijfer op een taak opent precies de uren van die
+taak.
 
 Vink rijen aan en gebruik **Goedkeuren**, **Goedkeuring ongedaan maken** of **Markeren als
 gefactureerd**. Factureren impliceert goedkeuring: een regel die je op gefactureerd zet wordt
@@ -86,12 +96,34 @@ krijgt de melding "Goedgekeurde uren zijn vergrendeld"; vraag een beheerder om d
 
 ## Rapportages
 
-*Overzicht → Productiviteit* zet per medewerker de uren, het facturabele aandeel en het aantal
-actieve dagen naast elkaar. *Overzicht → Omzet* toont de omzet per maand, dit jaar tegenover vorig
-jaar, en de grootste klanten. Facturabele uren worden daar gerekend tegen het **uurtarief van de
+**Overzicht** opent op het jaar: omzet excl. en incl. btw tegenover vorig jaar, wat er openstaat,
+de geboekte uren en hoeveel budgetten over zijn, de maanden in een grafiek, en drie ranglijsten
+(klanten, projectbudgetten, team) die elk het tabblad openen dat ze uitlegt. Met de pijltjes stap
+je naar een ander jaar.
+
+- *Omzet* leest wat er echt gefactureerd is: per maand, per klant en per soort regel, excl. en incl.
+  btw, naast vorig jaar. Alleen uitgegeven documenten tellen, creditnota's negatief in hun maand.
+  Daaronder staat de waarde van de geboekte uren, met het verschil tussen de twee als eigen tegel.
+- *Projecten* zet per project het budget, de verbranding, de uren en wat die waard zijn naast
+  elkaar, met de budgetbanden (over, bijna op, binnen) erboven.
+- *Medewerkers* (voorheen Productiviteit) zet per collega de uren, het facturabele aandeel, de
+  goedkeuring, het aantal actieve dagen en de waarde naast elkaar.
+
+Staat facturatie uit, dan is omzet de waarde van de facturabele uren. Facturabele uren worden gerekend tegen het **uurtarief van de
 medewerker die ze boekte**: het veld *Uurtarief* op de persoon onder *Instellingen → Team &
 gebruikers*, en anders het *Standaard uurtarief* onder *Instellingen → Verlof*. Uren van iemand
-zonder tarief tellen niet mee in het bedrag.
+zonder tarief tellen niet mee in het bedrag, en wie helemaal geen tarieven gebruikt krijgt geen
+tegels van € 0.
+
+## Op de klantpagina
+
+Het paneel **Uren** op een klant groepeert per dag en noemt per regel de collega, de omschrijving,
+het project en de taak, de duur en of het facturabel is (✓ of —). Het zegt hoeveel van hoeveel
+registraties het toont en linkt voor de rest naar het Urenoverzicht, gefilterd op deze klant; het
+project en de taak op een regel openen precies die uren. Via ⋯ corrigeer je een regel ter plekke:
+je eigen regels, of die van een collega als je dat recht hebt, en een goedgekeurde regel alleen als
+je mag goedkeuren. **Uren boeken** in de kop en **＋ Uren schrijven** in het paneel openen hetzelfde
+formulier in een dialoog, met de klant al ingevuld; na opslaan werkt het paneel zich bij.
 
 ## Uren-typen instellen
 

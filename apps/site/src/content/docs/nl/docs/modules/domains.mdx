@@ -2,7 +2,7 @@
 title: Domeinen
 description: "Het domeinregister van je bureau: registrar, DNS, e-mail, jaarlijkse verlengingen en de vraag welke domeinen je doorbelast."
 sidebar:
-  order: 13
+  order: 14
 ---
 
 import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
@@ -19,7 +19,7 @@ In het hoofdmenu onder **Domeinen & websites → Domeinen**. Boven de lijst staa
 tabbladen: *Domeinen* en *TLD-tarieven*. Dat tweede tabblad is ook het scherm achter
 *Instellingen → Domeinen* ("TLD-tarieven voor jaarlijkse verlengingsfacturen"). Op elke
 klantpagina staat het paneel **Domeinen** met de domeinen van die klant, hun prijs per jaar
-en hun eerstvolgende verlenging.
+en hun eerstvolgende verlenging, en daaronder wat ze samen per jaar opleveren (zie hieronder).
 
 ## Een domein vastleggen
 
@@ -33,8 +33,9 @@ en hun eerstvolgende verlenging.
 - **Afwijkende prijs.** Een prijsafspraak voor dít domein, die het TLD-tarief opzij zet. Laat
   je het leeg, dan staat het tarief van de extensie als hint onder het veld.
 - **Facturatie.** Op een nieuw domein ingeklapt (met de gekozen antwoorden in de kop), bij het
-  bewerken open. Hierin staan "Wel factureren / Niet factureren / Volg het register" en
-  **Automatisch factureren**.
+  bewerken open. Hierin staan "Wel factureren / Niet factureren / Volg het register",
+  **Automatisch factureren**, de **Verlengdatum** en **Gefactureerd tot**: de datum tot waar
+  het domein al elders gefactureerd is, bijvoorbeeld in je vorige systeem.
 - **Klant**, **Status** (Actief, Doorverwijzing, Geparkeerd, Verlopen, Inactief) en, alleen bij
   status Doorverwijzing, **Doorverwijzen naar**.
 - **Registrar** en **DNS-provider** uit je eigen providerlijst (*Instellingen → Providers*), en
@@ -63,7 +64,13 @@ beantwoord kon worden, niet dat DNSSEC uitstaat.
 De startdatum bepaalt de verlengingsdatum: schakl. neemt de eerstvolgende verjaardag die nog
 komt, dus een domein dat je jaren geleden registreerde begint bij zijn volgende jaardag en
 nooit met terugwerkende kracht. Een nachtelijke taak zet die datum een jaar vooruit en geeft
-facturatie een regel `Domeinverlenging <naam> (<periode>)`. Hoe ver die factuur automatisch
+facturatie een regel `Domeinverlenging <naam> (<periode>)`.
+
+Een verlenging wordt **vooruit** gefactureerd: de factuur van 01-10-2026 betaalt het register
+voor het jaar dat dan begint, en de periode op de regel is dus `01-10-2026 - 01-10-2027`. Heb je
+het domein al elders gefactureerd, vul dan **Gefactureerd tot** in: jaren die op of vóór die
+datum eindigen, worden niet meer aangeboden en niet aangemaakt. Op de domeinpagina toont het
+paneel **Gefactureerde termijnen** welke jaren al op een factuur staan, en op welke. Hoe ver die factuur automatisch
 komt, bepaal je per domein met **Automatisch factureren** (of laat je op de instelling van de
 organisatie staan). Verlengingen die nog nergens op staan, kies je in de factuureditor onder
 *Nog te factureren domeinverlengingen*.
@@ -74,7 +81,9 @@ De prijs komt van het tabblad **TLD-tarieven**: één jaarprijs per extensie, me
 
 1. Open *Domeinen → TLD-tarieven* (of *Instellingen → Domeinen*).
 2. **Prijs instellen** vraagt om de **TLD**, de **Prijs per jaar** en **Geldig vanaf**. Vandaag
-   wijzigt direct, een datum in de toekomst plant de wijziging in.
+   wijzigt direct, een datum in de toekomst plant de wijziging in. De eerste prijs van een
+   extensie geldt ook voor verlengingen van vóór die datum, dus een tarief dat je vandaag voor
+   het eerst invoert prijst ook de verlengingen die al openstonden.
 3. Voor een ronde verhoging: **Prijsverhoging**, met *Percentage erbij*, *Vast bedrag erbij* of
    *Nieuw bedrag instellen*, een **Bereik** (alle TLD's of één) en een **Ingangsdatum**.
 4. **Voorbeeld** toont per TLD huidig → nieuw en hoeveel domeinen het raakt. Pas **Doorvoeren**
@@ -82,9 +91,12 @@ De prijs komt van het tabblad **TLD-tarieven**: één jaarprijs per extensie, me
 
 </Steps>
 
+Een verkeerde prijsregel haal je weg met **Prijsregel verwijderen** in het ⋯-menu van de regel;
+dat kan bij een geplande regel en bij de regel die nu geldt.
+
 <Aside type="caution">
-Al opgestelde facturen behouden hun bedrag. De prijshistorie is de bron: een factuur wordt
-geprijsd op het tarief dat gold op de factuurdatum, niet op het tarief van vandaag.
+Al opgestelde facturen behouden hun bedrag. De prijshistorie is de bron: een verlenging wordt
+geprijsd op het tarief dat gold op de verlengdatum, niet op het tarief van vandaag.
 </Aside>
 
 ## Wel factureren, niet factureren, of het register volgen
@@ -111,13 +123,31 @@ automatisch factureren. Loop die lijst na de eerste synchronisatie één keer na
 vertrouwt bij het factureren.
 </Aside>
 
+## Wat de domeinen van een klant opleveren
+
+Welke domeinen je factureert en welke niet, tel je apart op, nooit tegen elkaar weg: de domeinen
+van je eigen bureau staan meestal op niet factureren en kosten toch hun verlenging. Het paneel
+**Domeinen** op de klantpagina eindigt met een regel als "12 domeinen · € 180,00 / jaar
+gefactureerd · 2 niet gefactureerd (€ 25,00 / jaar)", en noemt apart hoeveel domeinen **zonder
+prijs** zijn, in plaats van ze stil als nul mee te tellen. Bij een domein dat je niet
+factureert staat dat onder de prijs. In de lijst staan dezelfde cijfers boven elke klantsectie, en onderaan de
+tabel het totaal over alles wat je gefilterd hebt, ook de rijen op andere pagina's.
+
 ## Lijst, export en bulk
 
-De lijst is de gedeelde tabel: je kiest zelf je kolommen (Domeinnaam, Klant, Status, Registrar,
-DNS-provider, DNSSEC, E-mail actief, Volgende verlenging, Prijs, Gefactureerd, Aangemaakt, plus
-je eigen velden) en sorteert erop. Naast de kolommenkiezer staan **Export/Import** en de **✎**
-die selectievakjes aanzet. In bulk wijzig je Status, Klant, Registrar, DNS-provider,
-E-mailprovider en Facturatie; dat laatste veld leegmaken betekent "Register volgen".
+De lijst is verdeeld in secties per klant, die je kunt inklappen: je weet meestal van wie een
+domein is voordat je weet hoe het heet. De kolom Klant blijft staan als link naar de klant. Omdat
+de pager de lijst in pagina's knipt, telt een sectie de rijen op deze pagina; het scherm zegt
+dat erbij.
+
+Je kiest zelf je kolommen (Domeinnaam, Klant, Status, Registrar, DNS-provider, DNSSEC, E-mail
+actief, Volgende verlenging, Prijs, Gefactureerd, Aangemaakt, plus je eigen velden) en sorteert
+erop, binnen elke sectie. Naast de kolommenkiezer staan **Export/Import** en de **✎** die
+selectievakjes aanzet. In bulk wijzig je Status, Klant, Registrar, DNS-provider,
+E-mailprovider, Facturatie (leegmaken betekent "Register volgen"), de **Verlengdatum**,
+**Gefactureerd tot**, de **Startdatum** en de **Afwijkende prijs**. Een portefeuille die je op
+één middag hebt ingevoerd heeft die middag overal als startdatum; zo zet je hem in één keer
+goed. De startdatum kan niet leeg, de afwijkende prijs wel: dan geldt weer het TLD-tarief.
 
 Een import werkt bij op domeinnaam, genormaliseerd, dus een geëxporteerd bestand dat je bewerkt
 en terugzet raakt dezelfde rijen. De domeinnaam zelf is niet in bulk te wijzigen: die *is* het
@@ -145,9 +175,10 @@ klantlogin het menu Domeinen ziet, haal dan `domains.domain.read` bij de rol *Kl
 - Alleen de statussen Actief, Doorverwijzing en Geparkeerd verlengen. Verlopen en Inactief
   krijgen geen verlengingsdatum en dus geen factuur.
 - Staat er geen prijs (geen TLD-tarief en geen afwijkende prijs), dan wordt er niets opgesteld
-  en blijft de verlenging openstaan. Zodra je een prijs voor die extensie instelt, wordt er
-  alsnog vanaf de oorspronkelijke datum gefactureerd; er gaat nooit stilzwijgend een jaar
-  verloren.
+  en blijft de verlenging openstaan. Op *Nog te factureren* staat ze wel, voor nul, met het
+  label **geen prijs**, en de factuureditor noemt de periode maar weigert hem als regel van
+  € 0,00 toe te voegen. Zodra je een prijs voor die extensie instelt, wordt er alsnog vanaf de
+  oorspronkelijke datum gefactureerd; er gaat nooit stilzwijgend een jaar verloren.
 - Een domein verwijderen neemt de website die erop staat mee. Het omgekeerde niet: een website
   verwijderen laat het domein staan.
 - Status **Doorverwijzing** is op zichzelf een label. De omleiding zelf richt je in via de

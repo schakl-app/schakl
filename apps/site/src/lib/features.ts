@@ -24,6 +24,7 @@ export const taglines: Record<string, { nl: string; en: string }> = {
   calendar: { nl: 'Alle feeds op één plek', en: 'Every feed in one place' },
   time: { nl: 'Timer, weekstaat, facturabel', en: 'Timer, timesheet, billable' },
   interactions: { nl: 'Alles op één tijdlijn', en: 'All on one timeline' },
+  meetings: { nl: 'Opnemen, notulen, taken', en: 'Record, minutes, tasks' },
   subscriptions: { nl: 'Terugkerende diensten', en: 'Recurring services' },
   invoicing: { nl: 'Facturen, offertes, betaald', en: 'Invoices, quotes, paid' },
   assets: { nl: 'Domeinen, sites, hosting', en: 'Domains, sites, hosting' },
@@ -70,7 +71,7 @@ export const groups: FeatureGroup[] = [
       nl: 'Contact, diensten, geld, assets en mensen: de dagelijkse bedrijfsvoering.',
       en: 'Contact, services, money, assets and people: the day-to-day of the shop.',
     },
-    slugs: ['interactions', 'subscriptions', 'invoicing', 'assets', 'leave', 'hr'],
+    slugs: ['interactions', 'meetings', 'subscriptions', 'invoicing', 'assets', 'leave', 'hr'],
   },
   {
     key: 'growth',

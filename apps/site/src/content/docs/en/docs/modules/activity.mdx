@@ -2,7 +2,7 @@
 title: Activity trail
 description: "The paper trail under every record: who changed what, and when. Kept automatically and impossible to erase."
 sidebar:
-  order: 23
+  order: 24
 ---
 
 import { Aside, CardGrid, LinkCard } from '@astrojs/starlight/components';
@@ -46,19 +46,21 @@ custom fields are deliberately left out of it.
 
 Alongside changes, the modules report their own milestones here too: a document added, a logo
 uploaded, an invoice issued, sent or paid, a payment reminder, a contact moment logged, a
-Cloudflare redirect set, portal access granted or revoked.
+Cloudflare redirect set, portal access granted or revoked, a client moved to the trash or restored from it.
 
 ## Reading and expanding
 
-The block shows the three newest lines; **Alle … tonen** (Show all …) expands the rest. At most
-ten lines are loaded. If there are exactly ten, a line underneath says "De 10 meest recente worden
-getoond" — showing the 10 most recent — so you never mistake a sample for the whole story.
+The block shows the three newest lines; **Nog … tonen** (Show … more) expands the rest. At most
+ten lines are loaded. If the trail is longer, the block says so: on the client page with the total
+("10 van 137 getoond", 10 of 137 shown), elsewhere with "Alleen de 10 meest recente worden
+getoond" (only the 10 most recent are shown), so you never mistake a sample for the whole story.
 
 ## Names that stay right
 
-The name in the trail is recorded at the moment of the change. If that colleague leaves later and
-you remove the account, their work stays attributed to them; it simply reads "(verwijderd)"
-afterwards. No name at all means the system itself acted, for instance a nightly job.
+The name in the trail is recorded at the moment of the change. If that colleague leaves later, you
+deactivate them and everything simply stays in their name (see
+[Roles and permissions](/en/docs/modules/roles/)). Remove the account anyway and their work in the
+trail stays attributed to them; it simply reads "(verwijderd)" afterwards. No name at all means the system itself acted, for instance a nightly job.
 
 ## Signed in as somebody else
 

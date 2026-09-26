@@ -119,12 +119,14 @@
           "nl": [
             "Per persoon aan te zetten met Mijn e-mail vastleggen in het CRM, plus een Outlook-categorie die nooit wordt vastgelegd",
             "Een bericht dat de worker oversloeg haal je alsnog op met een Outlook-link, een bericht-ID of de Message-ID, of zoek je op in je eigen mailbox",
-            "Een remote afbeelding in een bericht wordt weggelaten: een trackingpixel laden zou de afzender vertellen dat je de mail opende"
+            "Een remote afbeelding in een bericht wordt weggelaten: een trackingpixel laden zou de afzender vertellen dat je de mail opende",
+            "Een mail van een collega aan het taakadres van je bureau wordt uit zijn eigen verzonden mail gelezen en wordt een taak op zijn bord; zo'n mail komt niet op de klanttijdlijn"
           ],
           "en": [
             "Switched on per person with Mijn e-mail vastleggen in het CRM, plus an Outlook category that is never logged",
             "A message the worker skipped can be fetched afterwards by an Outlook link, a message ID or the Message-ID, or found by searching your own mailbox",
-            "A remote image in a message is dropped: loading a tracking pixel would tell the sender the mail was opened"
+            "A remote image in a message is dropped: loading a tracking pixel would tell the sender the mail was opened",
+            "A colleague's mail to your agency's task address is read from their own sent mail and becomes a task on their board; such a mail does not land on the client timeline"
           ]
         }
       }

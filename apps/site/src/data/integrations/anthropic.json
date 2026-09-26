@@ -14,18 +14,18 @@
     "en": "Claude behind your AI features, on your key"
   },
   "summary": {
-    "nl": "Je zet je eigen Anthropic-sleutel in Instellingen → AI; die wordt versleuteld opgeslagen en nooit teruggetoond. Vier functies staan los van elkaar aan of uit: Assistent, Schrijfhulp, Urenhulp en Briefing & rapporten. Een maandelijks tokenbudget met een meter houdt zichtbaar wat het kost.",
-    "en": "You put your own Anthropic key into Instellingen → AI (Settings → AI); it is stored encrypted and never played back. Four features switch on and off independently: Assistent, Schrijfhulp, Urenhulp and Briefing & rapporten. A monthly token budget with a live meter keeps the spend visible."
+    "nl": "Je zet je eigen Anthropic-sleutel in Instellingen → AI; die wordt versleuteld opgeslagen en nooit teruggetoond. Elke AI-functie staat los aan of uit, van de assistent en de schrijfhulp tot e-mail in taak en vergaderverslagen, en een maandelijks tokenbudget met een meter houdt zichtbaar wat het kost. Voor spraak naar tekst kies je er een tweede aanbieder bij, want Anthropic transcribeert niet.",
+    "en": "You put your own Anthropic key into Instellingen → AI (Settings → AI); it is stored encrypted and never played back. Every AI feature switches on and off on its own, from the assistant and the writing assist to e-mail into task and meeting minutes, and a monthly token budget with a live meter keeps the spend visible. For speech to text you pick a second provider alongside, because Anthropic does not transcribe."
   },
   "highlights": {
     "nl": [
       "Eigen sleutel, versleuteld per organisatie, nooit teruggetoond",
-      "Vier functies apart te schakelen; standaardmodel claude-opus-5",
+      "Acht functies apart te schakelen, elk met een eigen model als je wilt; standaardmodel claude-opus-5",
       "Het verbruik telt aantallen, nooit de tekst van een prompt of antwoord"
     ],
     "en": [
       "Your own key, encrypted per organisation, never played back",
-      "Four independently switchable features; default model claude-opus-5",
+      "Eight independently switchable features, each with its own model if you like; default model claude-opus-5",
       "Usage records counts only, never the text of a prompt or an answer"
     ]
   },
@@ -59,8 +59,9 @@
         "Open <strong>Instellingen → AI</strong> en zet <strong>Provider</strong> op <strong>Anthropic</strong>. Dat is ook de standaard van het formulier.",
         "Plak de sleutel in <strong>API-sleutel</strong>. Het veld is schrijf-alleen: bij een latere opslag laat je het leeg om de bewaarde sleutel te houden.",
         "Vul <strong>Model</strong> in of druk op <strong>Modellen ophalen</strong> om de actuele lijst bij Anthropic op te halen. De ingebouwde standaard is <code>claude-opus-5</code>.",
-        "Zet onder <strong>Functies</strong> aan wat je wilt gebruiken: Assistent, Schrijfhulp, Urenhulp, Briefing & rapporten. Elke functie mag met <strong>Eigen model (optioneel)</strong> een ander model krijgen.",
+        "Zet onder <strong>Functies</strong> aan wat je wilt gebruiken. Elke functie mag met <strong>Eigen model (optioneel)</strong> een ander model krijgen; voor snel toevoegen en inspreken werkt een snel model het prettigst.",
         "Beschrijf bij <strong>Huisstijl</strong> hoe jullie schrijven (maximaal 4000 tekens); die tekst gaat mee in elke schrijfopdracht. Vul eventueel een <strong>Maandelijks tokenbudget</strong> in; leeg is ongelimiteerd.",
+        "Wil je inspreken of vergaderingen transcriberen, kies dan onder <strong>Spraak naar tekst</strong> een <strong>Spraakaanbieder</strong> met een eigen sleutel: <strong>OpenAI</strong>, <strong>Mistral (Voxtral)</strong> of een OpenAI-compatibele server.",
         "Druk op <strong>Verbinding testen</strong> en geef daarna het recht <code>ai.use</code> aan de rollen die de functies mogen gebruiken, in <strong>Instellingen → Rollen</strong>."
       ],
       "en": [
@@ -68,33 +69,40 @@
         "Open <strong>Instellingen → AI</strong> (Settings → AI) and set <strong>Provider</strong> to <strong>Anthropic</strong>. It is also the form's default.",
         "Paste the key into <strong>API-sleutel</strong> (API key). The field is write-only: on a later save, leave it blank to keep the stored key.",
         "Fill in <strong>Model</strong>, or press <strong>Modellen ophalen</strong> (fetch models) to pull Anthropic's current list. The built-in default is <code>claude-opus-5</code>.",
-        "Under <strong>Functies</strong> (features), switch on what you want: Assistent, Schrijfhulp, Urenhulp, Briefing & rapporten. Each one can take a different model under <strong>Eigen model (optioneel)</strong>.",
+        "Under <strong>Functies</strong> (features), switch on what you want. Each one can take a different model under <strong>Eigen model (optioneel)</strong>; quick add and dictation feel best on a fast model.",
         "Describe how your agency writes under <strong>Huisstijl</strong> (house style, max 4000 characters); that text is prepended to every writing prompt. Optionally set a <strong>Maandelijks tokenbudget</strong> (monthly token budget); empty means unlimited.",
+        "To dictate or transcribe meetings, pick a <strong>Spraakaanbieder</strong> (speech provider) with its own key under <strong>Spraak naar tekst</strong>: <strong>OpenAI</strong>, <strong>Mistral (Voxtral)</strong> or an OpenAI-compatible server.",
         "Press <strong>Verbinding testen</strong> (test connection), then grant <code>ai.use</code> to the roles allowed to use the features, in <strong>Instellingen → Rollen</strong> (Settings → Roles)."
       ]
     },
     "sections": [
       {
         "heading": {
-          "nl": "Vier functies, los van elkaar",
-          "en": "Four features, independently switchable"
+          "nl": "Elke functie los van de andere",
+          "en": "Every feature on its own switch"
         },
         "body": {
-          "nl": "Alle AI in de app loopt door dezelfde kern, dus één sleutel, één set schakelaars en één budget gelden overal tegelijk. Een bureau dat wel schrijfhulp wil maar geen chatassistent, zet precies dat aan.",
-          "en": "Every AI feature in the app runs through the same core, so one key, one set of toggles and one budget apply everywhere at once. An agency that wants writing help but no chat assistant switches on exactly that."
+          "nl": "Alle AI in de app loopt door dezelfde kern, dus één sleutel, één set schakelaars en één budget gelden overal tegelijk. Een bureau dat wel schrijfhulp wil maar geen chatassistent, zet precies dat aan. Functies die woorden van anderen naar een model sturen, zoals de mail van een klant of een vergadering, hebben elk een eigen schakelaar: wie een collega zijn alinea laat oppoetsen, heeft daarmee nog niet ingestemd met het lezen van de klantmailbox.",
+          "en": "Every AI feature in the app runs through the same core, so one key, one set of toggles and one budget apply everywhere at once. An agency that wants writing help but no chat assistant switches on exactly that. Features that send other people's words to a model, such as a client's e-mail or a meeting, each have their own switch: an agency happy to have a colleague's paragraph polished has not thereby agreed to the client mailbox being read."
         },
         "bullets": {
           "nl": [
-            "Assistent: een uitschuifpaneel via de bovenbalk dat op een klant-, project- of taakpagina die record overneemt, met bronnen als aanklikbare chips",
+            "Assistent: een uitschuifpaneel via de bovenbalk dat de hele API kan lezen waar jij toegang toe hebt, en een vaste lijst dingen kan doen: een taak maken of bijwerken, een reactie plaatsen, uren boeken, de timer starten of stoppen",
             "Schrijfhulp: Verbeteren, Inkorten, Uitbreiden, Spelling & grammatica, Zakelijke of Informele toon, Vertalen, Schrijf uit; daarna Vervangen of Invoegen",
             "Urenhulp: één regel in Snel toevoegen op Uren wordt een concept-urenregel, plus Vul mijn dag aan voor het gat tussen je rooster en wat je boekte",
-            "Briefing & rapporten: Brief me streamt een samenvatting van de recente activiteit van een klant, AI-rapport schrijft een maandconcept dat je bewerkt en opslaat"
+            "Taak inspreken, aanpassen en plannen: een ingesproken taak wordt een concept dat je als geheel nakijkt, en een taak pas je aan in gewone woorden",
+            "Briefing & rapporten: Brief me vat de recente activiteit van een klant samen, AI-rapport schrijft een maandconcept",
+            "E-mail in taak en E-mail naar taakadres: een e-mail wordt een taak met notities, stappen en een deadline",
+            "Vergadertranscripten en verslagen: een opgenomen vergadering wordt een transcript, een verslag en taken om na te kijken"
           ],
           "en": [
-            "Assistent: a slide-over from the top bar that inherits the record on a company, project or task page, and cites its sources as clickable chips",
+            "Assistent: a slide-over from the top bar that can read the whole API you have access to, and do a stated list of things: create or update a task, post a comment, log hours, start or stop the timer",
             "Schrijfhulp: improve, shorten, expand, spelling & grammar, business or informal tone, translate, write out; then replace or insert",
             "Urenhulp: one line in Snel toevoegen on Uren becomes a draft time entry, plus Vul mijn dag aan for the gap between your schedule and what you logged",
-            "Briefing & rapporten: Brief me streams a digest of a client's recent activity, AI-rapport drafts a monthly report you edit and save"
+            "Taak inspreken, aanpassen en plannen: a dictated task becomes a draft you review whole, and a task is changed in plain words",
+            "Briefing & rapporten: Brief me summarises a client's recent activity, AI-rapport drafts a monthly report",
+            "E-mail in taak and E-mail naar taakadres: an e-mail becomes a task with notes, steps and a deadline",
+            "Vergadertranscripten en verslagen: a recorded meeting becomes a transcript, minutes and tasks to review"
           ]
         }
       },
@@ -133,20 +141,20 @@
     ],
     "limits": {
       "nl": [
-        "Anthropic heeft geen transcriptie-endpoint. Dictaat op Uren vraagt daarom een eigen spraakaanbieder (OpenAI of een OpenAI-compatibele server) in dezelfde instellingen; de chatsleutel hergebruiken configureert hier niets.",
-        "De assistent is bewust alleen-lezen: hij beantwoordt vragen en maakt of wijzigt nooit een record.",
+        "Anthropic heeft geen transcriptie-endpoint. Inspreken en vergaderingen vragen daarom een eigen spraakaanbieder (OpenAI, Mistral of een OpenAI-compatibele server) in dezelfde instellingen; de chatsleutel hergebruiken configureert hier niets.",
+        "De assistent schrijft alleen wat op een vaste lijst staat (een taak, een reactie, uren, de timer) en alleen als jij erom vraagt in je eigen bericht, nooit op grond van tekst die hij in een record of e-mail tegenkomt. Configureren, versturen en publiceren doet hij niet.",
         "De Urenhulp levert een concept dat het formulier invult. Er wordt nooit vanzelf een urenregel aangemaakt.",
         "Modelnamen zijn vrije tekst, zodat een nieuw model geen release nodig heeft. Een typefout merk je pas als foutmelding van de aanbieder, niet als validatie.",
         "Het maandbudget is een zachte grens voor mensen: bij het bereiken verschijnt Toch doorgaan. Aanroepen zonder gebruiker erachter stoppen wel hard.",
-        "Er is nog geen instelling voor reasoning-effort, en het antwoordplafond ligt vast op 8192 tokens."
+        "Er is nog geen instelling voor reasoning-effort. Het standaard antwoordplafond is 8192 tokens; de rapportage vraagt ruimer."
       ],
       "en": [
-        "Anthropic has no transcription endpoint at all. Dictation on Uren therefore needs its own separate speech credential (OpenAI or an OpenAI-compatible server) in the same settings screen — reusing the chat key configures nothing here.",
-        "The assistant is read-only by design: it answers questions and never creates or changes a record.",
+        "Anthropic has no transcription endpoint at all. Dictation and meetings therefore need their own speech provider (OpenAI, Mistral or an OpenAI-compatible server) in the same settings screen; reusing the chat key configures nothing here.",
+        "The assistant only writes what is on a stated list (a task, a comment, hours, the timer) and only when you ask in your own message, never on the strength of text it finds in a record or an e-mail. It does not configure, send or publish anything.",
         "The time assist returns a draft that prefills the form. It never creates a time entry on its own.",
         "Model names are free text on purpose, so a new model needs no release. A typo surfaces as a provider error, never as a validation message.",
         "The monthly budget is a soft cap for interactive use: on reaching it the UI offers Toch doorgaan (continue anyway). Non-interactive callers hard-stop.",
-        "There is no reasoning-effort setting yet, and the response ceiling is fixed at 8192 tokens."
+        "There is no reasoning-effort setting yet. The default response ceiling is 8192 tokens; reporting asks for more."
       ]
     }
   }

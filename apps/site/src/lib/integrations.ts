@@ -63,6 +63,16 @@ export const categories: IntegrationCategory[] = [
     },
   },
   {
+    key: 'time',
+    nl: 'Tijdregistratie',
+    en: 'Time registration',
+    lucide: 'clock',
+    intro: {
+      nl: 'Uren die elders geschreven worden gelijk houden met de uren hier, zolang een overstap duurt.',
+      en: 'Hours written elsewhere kept in step with the hours here, for as long as a cutover lasts.',
+    },
+  },
+  {
     key: 'domains',
     nl: 'Domeinen & DNS',
     en: 'Domains & DNS',

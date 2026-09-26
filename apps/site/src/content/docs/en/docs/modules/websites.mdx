@@ -2,7 +2,7 @@
 title: Websites
 description: "The site that sits on a domain: on @ or www, who manages it technically, and which hosting account it runs on."
 sidebar:
-  order: 14
+  order: 15
 ---
 
 import { Aside, CardGrid, LinkCard } from '@astrojs/starlight/components';
@@ -16,9 +16,11 @@ One website per domain, and that domain settles at once whose client's site it i
 ## Where to find it
 
 In the main menu under **Domeinen & websites → Websites** (Domains & websites → Websites). That
-overview is the list; a site's detail surface is the **domain page**, where the website has its
-own "Website" block. Every row in the overview links straight there. Each client page carries a
-**Websites** panel listing that client's sites, their host and their hosting account.
+overview is the list; every row opens the website's own page, with its details and below them the
+panels attached to it: the **Abonnementen** (subscriptions) that keep it online and, with the
+WordPress and Uptime Kuma integrations, their own cards. The domain page still shows the website
+as a "Website" block too. Each client page carries a **Websites** panel listing that client's
+sites, their host and their hosting account.
 
 ## Creating a website
 
@@ -34,14 +36,25 @@ Because a website always hangs off a domain, creating one starts with that domai
   account from the picker; it is selected automatically once saved.
 - **Uptime-monitoring.** A toggle, shown as a green pill in the *Uptime* column.
 
-You can edit in two places: the ⋯ menu behind a row in the list, or the Website block on the
-domain page itself. Delete sits in that same ⋯ menu.
+You can edit on the website's own page (through the ⋯ menu at the top), through the ⋯ menu behind
+a row in the list, or in the Website block on the domain page. Delete sits in that same ⋯ menu.
 
 <Aside type="caution">
-Uptime monitoring is currently a recorded fact, not active monitoring: schakl. does not poll the
-site itself and raises no alert about it. Use the toggle to record which sites ought to be
-monitored; the list can be sorted on it.
+The Uptime-monitoring toggle itself is a recorded fact: it records which sites ought to be
+monitored, and the list can be sorted on it. Actual monitoring runs through the
+[Uptime Kuma](/en/docs/integrations/uptime-kuma/) integration, which puts a monitor on the website
+and shows its status on the website's page.
 </Aside>
+
+## Which subscription keeps this site online
+
+A website says where it runs (its hosting account) and, with the **Abonnementen** panel on its
+page, also who pays for that. The panel lists the linked agreements with status, price and next
+invoice date. The picker attaches one of the same client's running agreements; only agreements of
+a type with **Dekt websites** (covers websites) switched on, such as Hosting, are offered. ＋
+creates a new subscription with the client and the website already filled in. Detaching is per
+row. The panel needs read access to subscriptions, and the Subscriptions module must be enabled.
+See [Subscriptions](/en/docs/modules/subscriptions/).
 
 ## The overview
 

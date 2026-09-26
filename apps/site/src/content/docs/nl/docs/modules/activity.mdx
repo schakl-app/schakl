@@ -2,7 +2,7 @@
 title: Activiteit
 description: "Het spoor onder elk record: wie wijzigde wat, en wanneer. Automatisch bijgehouden en niet te wissen."
 sidebar:
-  order: 23
+  order: 24
 ---
 
 import { Aside, CardGrid, LinkCard } from '@astrojs/starlight/components';
@@ -46,19 +46,21 @@ notitievelden en aangepaste velden staan er bewust niet in.
 Naast wijzigingen komen er ook gebeurtenissen op te staan die de modules zelf melden: een
 document toegevoegd, een logo geüpload, een factuur definitief gemaakt, verstuurd of betaald, een
 betalingsherinnering, een contactmoment vastgelegd, een Cloudflare-omleiding ingesteld,
-portaaltoegang gegeven of ingetrokken.
+portaaltoegang gegeven of ingetrokken, een klant naar de prullenbak verplaatst of eruit teruggezet.
 
 ## Lezen en uitklappen
 
-Het blok toont de drie nieuwste regels; met **Alle … tonen** klap je de rest uit. Er worden
-maximaal tien regels geladen. Zijn dat er precies tien, dan staat eronder "De 10 meest recente
-worden getoond", zodat je nooit een selectie voor het hele verhaal aanziet.
+Het blok toont de drie nieuwste regels; met **Nog … tonen** klap je de rest uit. Er worden
+maximaal tien regels geladen. Is het spoor langer, dan zegt het blok dat: op de klantpagina met
+het totaal ("10 van 137 getoond"), elders met "Alleen de 10 meest recente worden getoond", zodat
+je nooit een selectie voor het hele verhaal aanziet.
 
 ## Namen die blijven kloppen
 
-De naam in het spoor wordt vastgelegd op het moment van de wijziging. Vertrekt die collega later
-en verwijder je het account, dan blijft zijn werk op zijn naam staan; er komt alleen
-"(verwijderd)" achter. Staat er helemaal geen naam, dan heeft het systeem zelf iets gedaan,
+De naam in het spoor wordt vastgelegd op het moment van de wijziging. Vertrekt die collega later,
+dan deactiveer je hem en blijft alles gewoon op zijn naam staan (zie
+[Rollen en rechten](/nl/docs/modules/roles/)). Verwijder je het account toch, dan blijft zijn werk
+in het spoor op zijn naam staan; er komt alleen "(verwijderd)" achter. Staat er helemaal geen naam, dan heeft het systeem zelf iets gedaan,
 bijvoorbeeld een nachtelijke taak.
 
 ## Ingelogd als iemand anders

@@ -1,0 +1,156 @@
+{
+  "slug": "timeon",
+  "name": "Timeon",
+  "order": 25,
+  "category": "time",
+  "status": "live",
+  "lucide": "clock",
+  "mark": {
+    "monogram": "TO",
+    "color": "#0F766E"
+  },
+  "tagline": {
+    "nl": "Uren en projecten gelijk houden tijdens een overstap",
+    "en": "Hours and projects kept in step during a cutover"
+  },
+  "summary": {
+    "nl": "Stap je over van de urenregistratie Timeon naar schakl., dan duurt dat zelden één dag: een tijd lang schrijft het team in allebei. Deze koppeling houdt uren en projecten aan beide kanten gelijk, in de richting die jij per soort kiest, en herkent eerst wat een eerdere import al overzette voordat hij iets aanmaakt. Een uur dat al op een factuur staat wordt nooit herschreven, en een uur dat aan beide kanten gewijzigd is komt in een wachtrij in plaats van dat een van de twee stilletjes wint.",
+    "en": "Moving from the Timeon time registration to schakl. rarely happens in a day: for a while the team writes in both. This integration keeps hours and projects in step on both sides, in the direction you choose per kind, and first recognises what an earlier import already moved before it creates anything. An hour already on an invoice is never rewritten, and an hour changed on both sides goes to a queue instead of one of the two quietly winning."
+  },
+  "highlights": {
+    "nl": [
+      "Eerst koppelen, dan pas aanmaken: wat al aan beide kanten staat wordt herkend en niet verdubbeld",
+      "Per soort een richting: uren ophalen terwijl projecten vanuit schakl. naar Timeon gaan, of andersom",
+      "Gefactureerde uren worden nooit overschreven of verwijderd; het verschil wordt gemeld",
+      "Een proefrun is de standaard: je ziet wat er zou gebeuren voordat er iets gebeurt",
+      "Automatisch elk uur, om de zoveel uur, dagelijks of op werkdagen, op de klok van je organisatie"
+    ],
+    "en": [
+      "Pair first, create later: what already exists on both sides is recognised and not doubled",
+      "A direction per kind: pull hours while projects go from schakl. to Timeon, or the other way round",
+      "Invoiced hours are never overwritten or deleted; the difference is reported",
+      "A dry run is the default: you see what would happen before anything does",
+      "Automatic every hour, every few hours, daily or on weekdays, on your organisation's clock"
+    ]
+  },
+  "where": {
+    "nl": "Instellingen → Timeon (ook via Instellingen → Integraties) voor de sleutel en het beleid; de pagina Timeon-synchronisatie voor runs, koppelingen en de wachtrij. Staan er conflicten open, dan meldt de urenpagina dat met een aantal.",
+    "en": "Instellingen → Timeon (also via Instellingen → Integraties) for the key and the policy; the Timeon-synchronisatie page for runs, pairings and the queue. When conflicts are open, the hours page says so with a count."
+  },
+  "docs": "/docs/integrations/timeon/",
+  "page": {
+    "lead": {
+      "nl": "Een overstap die maanden duurt is geen brug maar twee systemen die allebei gebruikt worden. Een importscript kan maar één kant op en maakt alleen aan, dus een correctie die hier gemaakt is wordt overschreven of verdubbeld. Deze koppeling houdt beide kanten bij, en maakt van de regel dat een gefactureerd uur een vastlegging is een mechanisme in plaats van een verbod.",
+      "en": "A cutover that takes months is not a bridge but two systems both being used. An import script only goes one way and only creates, so a correction made here gets overwritten or doubled. This integration keeps track of both sides, and turns the rule that an invoiced hour is a record into a mechanism rather than a ban."
+    },
+    "requirements": {
+      "nl": [
+        "De module Uren staat aan; projecten koppelen gaat beter met de module Projecten erbij, maar kan zonder",
+        "Een API-sleutel van je Timeon-organisatie, te vinden in Timeon onder Instellingen",
+        "Klanten met hetzelfde klantnummer aan beide kanten: daarop worden ze gekoppeld, nooit op naam",
+        "Het recht timeon.settings.manage om de koppeling in te stellen; standaard alleen beheerders"
+      ],
+      "en": [
+        "The Uren (time) module is on; pairing projects works better with the Projects module too, but is possible without",
+        "An API key for your Timeon organisation, found in Timeon under Settings",
+        "Clients carrying the same client number on both sides: that is what they are paired on, never on name",
+        "The timeon.settings.manage permission to set the connection up; admin only by default"
+      ]
+    },
+    "steps": {
+      "nl": [
+        "Zet <strong>Timeon</strong> aan onder <strong>Instellingen → Integraties</strong> en open <strong>Instellingen → Timeon</strong>. Kies <strong>Organisatie koppelen</strong> en plak de <strong>API-sleutel</strong>. Beide richtingen staan na het koppelen uit.",
+        "Druk op <strong>Controleren</strong>. Het antwoord noemt de organisatie en haar omvang, bijvoorbeeld 7 medewerkers, 108 klanten, 159 projecten: niet alleen dát de sleutel werkt, maar welke administratie hij opent.",
+        "Heb je eerder uren geïmporteerd, zet dan <strong>Niets aanraken tot en met</strong> op de dag van die import. Dan blijft de oude historie buiten schot.",
+        "Open <strong>Synchronisatie openen</strong> en druk op <strong>Alleen koppelen</strong>. Die run koppelt wat al aan beide kanten staat en schrijft niets.",
+        "Kies onder <strong>Wat er gesynchroniseerd wordt</strong> per soort een richting (<strong>Ophalen uit Timeon</strong>, <strong>Sturen naar Timeon</strong> of <strong>Twee richtingen</strong>) en draai een <strong>Proefrun</strong>. Lees het resultaat: wat er opgehaald, verstuurd, beschermd en overgeslagen zou worden.",
+        "Pas daarna <strong>Synchroniseren</strong>, en pas daarna <strong>Automatisch synchroniseren</strong> met de frequentie die bij je overstap past."
+      ],
+      "en": [
+        "Switch <strong>Timeon</strong> on under <strong>Instellingen → Integraties</strong> and open <strong>Instellingen → Timeon</strong>. Choose <strong>Organisatie koppelen</strong> (connect organisation) and paste the <strong>API-sleutel</strong>. Both directions start off.",
+        "Press <strong>Controleren</strong> (verify). The answer names the organisation and its size, for example 7 employees, 108 clients, 159 projects: not just that the key works, but which books it opens.",
+        "If you imported hours earlier, set <strong>Niets aanraken tot en met</strong> (touch nothing up to and including) to the day of that import. Your old history then stays out of reach.",
+        "Open <strong>Synchronisatie openen</strong> and press <strong>Alleen koppelen</strong> (pair only). That run pairs what already exists on both sides and writes nothing.",
+        "Choose a direction per kind under <strong>Wat er gesynchroniseerd wordt</strong> (<strong>Ophalen uit Timeon</strong> pull, <strong>Sturen naar Timeon</strong> push, or <strong>Twee richtingen</strong> two-way) and run a <strong>Proefrun</strong> (dry run). Read the result: what would be pulled, pushed, protected and skipped.",
+        "Only then <strong>Synchroniseren</strong>, and only then <strong>Automatisch synchroniseren</strong> with the frequency your cutover needs."
+      ]
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Een koppeling draagt twee vingerafdrukken, geen vinkje",
+          "en": "A pairing carries two fingerprints, not a flag"
+        },
+        "body": {
+          "nl": "Elke gekoppelde rij onthoudt hoe hij er aan beide kanten uitzag bij de laatste keer dat ze gelijk waren. Is alleen één kant bewogen, dan gaat die wijziging mee in de richting die je koos. Zijn beide kanten bewogen, dan is dat een conflict, en een conflict is een bewaarde beslissing: Hou deze versie, Neem Timeon over of Mag verschillen. Een verschil dat je hebt laten staan wordt niet elke nacht opnieuw voorgelegd, want een wachtrij die dezelfde twaalf regels blijft tonen leest na drie weken niemand meer. En een verschil dat geen enkele richting kan oplossen, zoals een Timeon-project dat hier geen tegenhanger heeft, is geen conflict per uur maar één melding per run die je kunt afhandelen.",
+          "en": "Every paired row remembers what it looked like on both sides the last time they agreed. If only one side moved, that change travels in the direction you chose. If both sides moved, that is a conflict, and a conflict is a stored decision: keep this version, take Timeon's, or may differ. A difference you chose to keep is not proposed again every night, because a queue that keeps showing the same twelve rows is one nobody reads after three weeks. And a difference no direction can resolve, such as a Timeon project with no counterpart here, is not a conflict per hour but one warning per run you can act on."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Timeon weet niet wanneer een uur veranderde, dus het venster is de synchronisatie",
+          "en": "Timeon does not know when an hour changed, so the window is the sync"
+        },
+        "body": {
+          "nl": "De uren in Timeon dragen geen tijdstempel van hun laatste wijziging, dus 'wat is er sinds gisteren veranderd' is geen vraag die de API kan beantwoorden. Elke run leest daarom een periode opnieuw en vergelijkt, standaard 45 dagen terug: lang genoeg voor een correctie tijdens het klaarzetten van de factuur van vorige maand. Welke periode een run gelezen heeft staat erbij, want een wijziging daarbuiten wordt niet opgemerkt en dat hoort niet impliciet te zijn. Een uur dat verdwenen lijkt wordt pas als verwijderd behandeld als de hele periode compleet gelezen is en het uur ook bij navragen op nummer weg is: een uur dat naar een andere maand is verplaatst is niet verdwenen. Wie vaker dan dagelijks synchroniseert leest bij de tussenrondes een korter stuk, en de volle periode bij de eerste run van de dag.",
+          "en": "Timeon's hours carry no timestamp of their last change, so 'what changed since yesterday' is not a question its API can answer. Every run therefore re-reads a period and compares, 45 days back by default: long enough to catch a correction made while preparing last month's invoice. Which period a run read is shown with it, because a change outside it is not noticed and that should not be implicit. An hour that seems gone is only treated as deleted when the whole period was read completely and the hour is also gone when asked for by its number: an hour moved to another month has not vanished. Syncing more often than daily reads a shorter stretch on the in-between rounds, and the full period on the first run of the day."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Projecten reizen ook, per veld",
+          "en": "Projects travel too, field by field"
+        },
+        "body": {
+          "nl": "Naam, status, standaard factureerbaar en budget gaan mee in de richting die je voor projecten kiest, en met Ontbrekende projecten aanmaken ook een project dat aan de andere kant nog niet bestaat. Bij twee richtingen wordt per veld samengevoegd tegen wat de laatste keer gelijk was: een budget dat hier verhoogd is en een project dat daar is afgesloten zijn twee wijzigingen van twee mensen, en allebei komen ze aan. Waar niet vast te stellen is wie wat wijzigde, vraagt het scherm welke kant klopt in plaats van te gokken. Een budget dat per periode opnieuw begint kent Timeon niet; dat wordt gemeld en niet vertaald.",
+          "en": "Name, status, billable by default and budget travel in the direction you choose for projects, and with create missing projects on, so does a project that does not exist on the other side yet. Two-way, fields are merged one by one against what last agreed: a budget raised here and a project closed there are two changes by two people, and both arrive. Where it cannot be established who changed what, the screen asks which side is right instead of guessing. Timeon has no budget that restarts per period; that is reported, not translated."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Een overstap eindigt",
+          "en": "A cutover ends"
+        },
+        "body": {
+          "nl": "Daarom staat Timeon bewust niet in het hoofdmenu en niet op de klantpagina. De synchronisatiepagina is bereikbaar vanuit de instellingen, en op de urenpagina verschijnt alleen een aantal als er conflicten op je wachten. De dag dat Timeon uitgaat zet je beide richtingen op Uit of verwijder je de koppeling: de sleutel, de koppelingen en de runs verdwijnen, de uren die al zijn overgenomen blijven staan.",
+          "en": "That is why Timeon is deliberately not in the main menu and not on the client page. The sync page is reached from settings, and the hours page only shows a count when conflicts are waiting for you. The day Timeon is switched off you set both directions to off or delete the connection: the key, the pairings and the runs go, the hours already carried over stay."
+        }
+      }
+    ],
+    "permissions": [
+      {
+        "key": "timeon.settings.manage",
+        "nl": "De koppeling instellen: sleutel, richtingen, venster, beschermingen en het automatische schema. Standaard alleen beheerders.",
+        "en": "Set the connection up: key, directions, window, safeguards and the automatic schedule. Admin only by default."
+      },
+      {
+        "key": "timeon.sync.run",
+        "nl": "Runs draaien en volgen, de koppelingen en de wachtrij bekijken, en het aantal open conflicten op de urenpagina zien. Standaard alleen beheerders.",
+        "en": "Run and follow syncs, see the pairings and the queue, and see the open-conflict count on the hours page. Admin only by default."
+      },
+      {
+        "key": "timeon.sync.write",
+        "nl": "De synchronisatie laten schrijven en conflicten beslissen, altijd samen met het schrijfrecht op uren. Standaard alleen beheerders; een proefrun schrijft niets en heeft dit niet nodig.",
+        "en": "Let the sync write and decide conflicts, always together with the write permission on hours. Admin only by default; a dry run writes nothing and does not need it."
+      }
+    ],
+    "limits": {
+      "nl": [
+        "Niet mee: contactpersonen, Timeon-facturen als document, taken, categorieën, kilometers, tarieven en de apart factureerbare duur. Een uur waarvan in Timeon minder factureerbaar is dan gewerkt, komt hier met de volle gewerkte duur.",
+        "Kilometers, onkosten en de categorie worden bij versturen ongewijzigd meegegeven, want Timeon vervangt een uur in zijn geheel bij opslaan; een correctie van de omschrijving mag geen declaratie wissen.",
+        "De factuurstatus wordt in beide richtingen bewaakt en in geen van beide overgenomen. Dat klopt zolang er in Timeon niet meer gefactureerd wordt; doe je dat wel, dan is dit een risico op dubbel factureren.",
+        "Een medewerker zonder account hier wordt gemeld en overgeslagen, nooit op naam van een ander gezet, tenzij je Ontbrekende medewerkers aanmaken aanzet.",
+        "Het lezen is tegen een echte Timeon-organisatie gedraaid. Versturen is alleen tegen een nabootsing getest: begin met een proefrun op een periode met één uur waar niemand last van heeft, en vergelijk dat uur in Timeon veld voor veld.",
+        "Een tijdstip voor automatisch synchroniseren wordt gehaald binnen een kwartier, niet op de minuut."
+      ],
+      "en": [
+        "Not carried: contacts, Timeon invoices as documents, tasks, categories, mileage, rates and the separately billable duration. An hour that is billed for less than was worked in Timeon arrives here with its full worked duration.",
+        "Mileage, expenses and the category are carried along unchanged on a push, because Timeon replaces an hour whole when it saves; a description correction must not delete an expense claim.",
+        "Invoice state is guarded in both directions and carried in neither. That holds as long as nobody invoices in Timeon any more; if you do, this is a double-billing risk.",
+        "An employee with no account here is reported and skipped, never put on someone else's name, unless you switch on create missing users.",
+        "Reading has been run against a real Timeon organisation. Pushing has only been tested against a stand-in: start with a dry run on a period holding one hour nobody minds, and compare that hour in Timeon field by field.",
+        "A time of day for automatic sync is met within a quarter of an hour, not to the minute."
+      ]
+    }
+  }
+}

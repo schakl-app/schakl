@@ -8,7 +8,8 @@ sidebar:
 import { Aside, Steps } from '@astrojs/starlight/components';
 
 Every touchpoint with a client lands on one timeline — the meetings, calls and notes you log
-yourself, emails you upload, and (with the Google module) the email out of your team's mailboxes.
+yourself, emails you upload, and (with the Google Workspace or Microsoft 365 integration) the email
+out of your team's mailboxes.
 A colleague picking up an account can read the history instead of asking around for it.
 
 ![Every contact moment on one timeline: mail, call, meeting, wherever it came from.](/img/docs/en-interactions.png)
@@ -45,8 +46,13 @@ same form lives inside every Contactmomenten panel. In order:
 - **Contactpersonen** (Contact persons): everyone who was in it, not one person. Typing searches,
   an unknown name is created on the spot, and the first in the row is the lead. Filtering on
   someone finds the moments they were in, not only the ones they led.
-- **Gekoppeld aan** (Linked to): **Klant** (Client), **Project** and **Taak** (Task). Pick a
-  project or a task and the client is taken from it, which the field says out loud.
+- **Gekoppeld aan** (Linked to): **Klant** (Client), **Project** and **Taken** (Tasks). One email
+  often answers three tickets, so an interaction can hang on several tasks: *Nog een taak
+  toevoegen* (add another task) adds one. The first is the **hoofdtaak** (lead task; *Maak dit de
+  hoofdtaak* switches it), and it decides the client. Pick a project or a task and the client is
+  taken from it, which the field says out loud. Until a client is picked, a task in the picker says
+  whose it is. The moment shows on every linked task, and a follow-up in the same conversation
+  inherits all of them.
 - **Taak hiermee afronden** (Close task with this): available on a linked task, with a choice of
   your completed statuses.
 - **Richting** (Direction — Incoming, Outgoing or Not applicable) and **Notities** (Notes), rich
@@ -54,8 +60,13 @@ same form lives inside every Contactmomenten panel. In order:
 
 ## The list
 
-At the top sit the tabs **Alle** (All) and **Te beoordelen** (To review), a kind filter and the
-*Vastgelegd door* (Logged by) filter. That last one starts on **Mijn contactmomenten** (Mine) and
+Interacties opens on **Te beoordelen** (To review): the emails waiting for your decision. The tab
+carries the count ("Te beoordelen 11"), also while you search or page, so you can tell an empty
+queue from a filtered one. That queue is yours by construction and holds nothing but email, so it
+carries no owner, kind or date filters. **Alle** (All, `?status=all` in the URL) is the timeline of
+everything logged. A link from a client or project always lands on everything for that record.
+
+On **Alle** sit a kind filter and the *Vastgelegd door* (Logged by) filter. That last one starts on **Mijn contactmomenten** (Mine) and
 **Iedereen** (Everyone) is one click away, but naming a specific colleague needs the *View
 everyone's interactions* permission. For dates there is a week stepper (*Vorige week*, *Deze
 week*, *Volgende week*), a month picker and an explicit **Van** – **Tot en met** range with
@@ -68,12 +79,19 @@ client, project or task, with inline create) and *Verwijderen* (Delete). On an e
 (Approve), *Toewijzen…* (Assign…), *Afwijzen* (Reject) and *Aan gesprek toevoegen* (Add to
 conversation) join them.
 
-## Email from Gmail
+## Email from Gmail and Outlook
 
-With the Google module connected, schakl. polls the enrolled mailboxes every five minutes.
-Messages where a participant is a known contact land as **Te beoordelen**. The team then sees only
-the metadata: participants, subject and a snippet. Only once the mailbox owner approves is the
-body fetched and shared.
+With the Google Workspace (Gmail) or Microsoft 365 (Outlook) integration connected, schakl. polls
+the enrolled mailboxes every five minutes. Messages where a participant is a known contact land as
+**Te beoordelen**. The team then sees only the metadata: participants, subject and a snippet. Only
+on approval is the body fetched and shared. A colleague with both Gmail and Outlook is one
+colleague: a message is logged once, from the mailbox of the person it was addressed to.
+
+A conversation sits in the queue as one row, with the number of messages still waiting. Open it and
+you see the whole conversation: what has already been logged and where it was filed, beside your
+own waiting messages. **Hele gesprek goedkeuren (n berichten)** (approve the whole conversation)
+gives the rest of the conversation the same links; rejecting can take the other waiting messages
+along too.
 
 <Steps>
 
@@ -82,11 +100,14 @@ body fetched and shared.
 3. **Goedkeuren** shares the content, **Toewijzen…** first files it onto the right client or
    project, **Afwijzen** removes it.
 4. Several at once: switch the checkboxes on with the ✎, tick rows (shift-click selects a run) and
-   choose Approve, Assign or Reject. You get a per-row outcome rather than all-or-nothing.
+   choose Approve, Assign or Reject. A ticked conversation counts as all its waiting messages, and
+   the bar says how many messages that makes. You get a per-row outcome rather than
+   all-or-nothing.
 
 </Steps>
 
-The policy lives under *Instellingen → Google Workspace → Gmail-beleid* (Gmail policy). Under
+The policy lives under *Instellingen → Google Workspace → Gmail-beleid* (Gmail policy) and
+*Instellingen → Microsoft 365 → Outlook-beleid* (Outlook policy). Under
 **Nieuwe gekoppelde e-mails** (New matched emails) you choose between "Eigenaar keurt goed voordat
 de inhoud wordt vastgelegd" (the default) and "Direct vastleggen, inclusief inhoud"; *Ook e-mail
 tussen collega's oppikken* is off by default, and internal email always waits for review.
@@ -97,9 +118,11 @@ toekomstige e-mails in dit gesprek" that applies to the whole conversation. Ther
 </Aside>
 
 <Aside type="caution">
-An email that has not been reviewed is private to its mailbox owner. Not even an admin can decide
-about it: that escape deliberately does not exist. If someone leaves with a full review queue,
-nobody else can work through it.
+An email that has not been reviewed is private to its mailbox, not shared with the team. If more
+colleagues were on the message, it reaches each of their queues ("Uit de mailbox van Jan — je
+stond op deze e-mail, dus je kunt hem ook beoordelen"), and whoever decides first decides for all.
+An admin who was not on the message cannot decide about it: that escape deliberately does not
+exist.
 </Aside>
 
 The first poll of a newly connected mailbox imports nothing — it only records the starting point.
@@ -107,7 +130,7 @@ Existing mail is not pulled in retroactively.
 
 ## Uploading an email
 
-Without a Gmail connection (or for a message from another mailbox) there is **E-mail uploaden**
+Without a mailbox connection (or for a message from another mailbox) there is **E-mail uploaden**
 (Upload email). Export the message from your mail program as `.eml`; subject, participants, date,
 body and attachments are read out of the file and the formatting is kept. If the message is
 already on the timeline, schakl. says so and offers *Toch vastleggen* (Log anyway). Attachments
@@ -146,7 +169,8 @@ Set per role under *Instellingen → Rollen* (Settings → Roles). By default:
 | `interactions.kind.manage` | Manage interaction kinds | Administrator |
 
 The Client role holds none of these, so a client-portal login never sees the timeline. And
-`review` has no "anyone's" variant: even with it, you only ever decide about your own mailbox.
+`review` has no "anyone's" variant: even with it, you only ever decide about email from your own
+mailbox, or an email you were on yourself.
 
 ## Good to know
 
@@ -158,6 +182,8 @@ The Client role holds none of these, so a client-portal login never sees the tim
   name of whoever logged it, even after that colleague leaves.
 - Notifications: you can be alerted on *An email is waiting for my review* and *I am mentioned in
   an interaction*.
+- A recorded meeting lands on the timeline as an interaction once its minutes are confirmed,
+  with the contacts who were there; see [Meetings](/en/docs/modules/meetings/).
 
 ## Read next
 

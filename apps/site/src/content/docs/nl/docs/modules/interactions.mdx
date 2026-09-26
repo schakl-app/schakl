@@ -8,8 +8,8 @@ sidebar:
 import { Aside, Steps } from '@astrojs/starlight/components';
 
 Elk contact met een klant komt op één tijdlijn: de afspraken, telefoontjes en notities die je
-zelf vastlegt, e-mails die je uploadt, en (met de Google-module) de e-mail uit de mailboxen van
-je team. Zo kan een collega die een account overneemt de geschiedenis lezen in plaats van erom
+zelf vastlegt, e-mails die je uploadt, en (met de koppeling Google Workspace of Microsoft 365) de
+e-mail uit de mailboxen van je team. Zo kan een collega die een account overneemt de geschiedenis lezen in plaats van erom
 te moeten vragen.
 
 ![Elk contactmoment op één tijdlijn: mail, gesprek, afspraak, ongeacht waar het vandaan kwam.](/img/docs/nl-interactions.png)
@@ -44,16 +44,28 @@ zit in elk Contactmomenten-paneel. In volgorde:
 - **Contactpersonen**: iedereen die erbij was, niet één persoon. Typen zoekt, een onbekende naam
   maak je ter plekke aan, en de eerste in de rij is de eerstgenoemde. Filteren op iemand vindt de
   momenten waar hij bij was, niet alleen die hij leidde.
-- **Gekoppeld aan**: **Klant**, **Project** en **Taak**. Kies je een project of een taak, dan
-  wordt de klant daarvan overgenomen en zegt het veld dat ook.
+- **Gekoppeld aan**: **Klant**, **Project** en **Taken**. Eén e-mail beantwoordt vaak drie
+  tickets, dus een contactmoment kan aan meerdere taken hangen: met *Nog een taak toevoegen* zet
+  je er een bij. De eerste is de **hoofdtaak** (met *Maak dit de hoofdtaak* wissel je); die
+  bepaalt de klant. Kies je een project of een taak, dan wordt de klant daarvan overgenomen en zegt
+  het veld dat ook. Zolang er geen klant gekozen is, zegt een taak in de keuzelijst van wie hij is.
+  Het moment verschijnt op elke gekoppelde taak, en een vervolgbericht in hetzelfde gesprek erft
+  alle taken.
 - **Taak hiermee afronden**: bij een gekoppelde taak, met een keuze uit je afgeronde statussen.
 - **Richting** (Inkomend, Uitgaand, N.v.t.) en **Notities**, opmaakbare tekst met
   `@`-vermeldingen van collega's en contactpersonen.
 
 ## De lijst
 
-Bovenaan staan de tabs **Alle** en **Te beoordelen**, een typefilter en het filter *Vastgelegd
-door*. Dat laatste staat op **Mijn contactmomenten**; **Iedereen** is één klik verder, maar een
+Interacties opent op **Te beoordelen**: de e-mails die op jouw beslissing wachten. De tab draagt
+het aantal ("Te beoordelen 11"), ook terwijl je zoekt of bladert, zodat je een lege wachtrij kunt
+onderscheiden van een gefilterde. Die wachtrij is per definitie van jou en bestaat alleen uit
+e-mail, dus daar staan geen filters op eigenaar, type of datum. **Alle** (in de URL
+`?status=all`) is de tijdlijn met alles wat er is vastgelegd. Een link vanaf een klant of project
+landt altijd op alles van dat record.
+
+Op **Alle** staan een typefilter en het filter *Vastgelegd door*. Dat laatste staat op
+**Mijn contactmomenten**; **Iedereen** is één klik verder, maar een
 collega bij naam kiezen vraagt het recht *Contactmomenten van iedereen bekijken*. Voor datums is
 er een weekstapper (*Vorige week*, *Deze week*, *Volgende week*), een maandkeuze en een expliciet
 bereik **Van** – **Tot en met**, met *Datums wissen* ernaast. Zoeken gaat over onderwerp, fragment
@@ -63,12 +75,19 @@ Per rij biedt ⋯: *Bewerken*, *Verplaatsen / koppelen* (naar een andere klant, 
 met aanmaken ter plekke) en *Verwijderen*. Bij een e-mail komen daar *Goedkeuren*, *Toewijzen…*,
 *Afwijzen* en *Aan gesprek toevoegen* bij.
 
-## E-mail uit Gmail
+## E-mail uit Gmail en Outlook
 
-Met de Google-module gekoppeld pollt schakl. elke vijf minuten de aangemelde mailboxen. Berichten
-waarvan een deelnemer een bekende contactpersoon is, landen als **Te beoordelen**. Het team ziet
-dan alleen de metagegevens: deelnemers, onderwerp en een fragment. Pas als de eigenaar van de
-mailbox goedkeurt, wordt de inhoud opgehaald en met het team gedeeld.
+Met de koppeling Google Workspace (Gmail) of Microsoft 365 (Outlook) pollt schakl. elke vijf
+minuten de aangemelde mailboxen. Berichten waarvan een deelnemer een bekende contactpersoon is,
+landen als **Te beoordelen**. Het team ziet dan alleen de metagegevens: deelnemers, onderwerp en
+een fragment. Pas bij goedkeuren wordt de inhoud opgehaald en met het team gedeeld. Een collega
+met zowel Gmail als Outlook is één collega: een bericht wordt één keer vastgelegd, in de mailbox
+van degene aan wie het gericht was.
+
+Een gesprek staat in de wachtrij als één regel, met het aantal berichten dat nog wacht. Open je
+die, dan zie je het hele gesprek: wat er al vastgelegd is en waar het aan hangt, naast je eigen
+wachtende berichten. **Hele gesprek goedkeuren (n berichten)** geeft de rest van het gesprek
+dezelfde koppeling; afwijzen kan ook de andere wachtende berichten meenemen.
 
 <Steps>
 
@@ -77,12 +96,14 @@ mailbox goedkeurt, wordt de inhoud opgehaald en met het team gedeeld.
 3. **Goedkeuren** deelt de inhoud, **Toewijzen…** hangt hem eerst aan de juiste klant of het
    juiste project, **Afwijzen** haalt hem weg.
 4. Meerdere tegelijk: zet met de ✎ de selectievakjes aan, vink rijen aan (shift-klik selecteert
-   een reeks) en kies Goedkeuren, Toewijzen of Afwijzen. Je krijgt per stuk terugkoppeling, niet
-   alles of niets.
+   een reeks) en kies Goedkeuren, Toewijzen of Afwijzen. Een aangevinkt gesprek telt als al zijn
+   wachtende berichten, en de balk zegt hoeveel berichten het worden. Je krijgt per stuk
+   terugkoppeling, niet alles of niets.
 
 </Steps>
 
-Het beleid staat onder *Instellingen → Google Workspace → Gmail-beleid*. Bij **Nieuwe gekoppelde
+Het beleid staat onder *Instellingen → Google Workspace → Gmail-beleid* en *Instellingen →
+Microsoft 365 → Outlook-beleid*. Bij **Nieuwe gekoppelde
 e-mails** kies je tussen "Eigenaar keurt goed voordat de inhoud wordt vastgelegd" (standaard) en
 "Direct vastleggen, inclusief inhoud"; *Ook e-mail tussen collega's oppikken* staat uit, en
 interne e-mail wacht altijd op beoordeling.
@@ -94,9 +115,11 @@ niet.
 </Aside>
 
 <Aside type="caution">
-Een e-mail die nog niet beoordeeld is, is privé voor de eigenaar van de mailbox. Ook een
-beheerder kan er niet over beslissen: die omweg bestaat bewust niet. Vertrekt iemand met een
-volle beoordelingslijst, dan kan niemand anders die nog afhandelen.
+Een e-mail die nog niet beoordeeld is, is privé voor de mailbox, niet voor het team. Stonden er
+meer collega's op het bericht, dan komt hij bij ieder van hen in de wachtrij ("Uit de mailbox van
+Jan — je stond op deze e-mail, dus je kunt hem ook beoordelen"), en wie het eerst beslist, beslist
+voor allemaal. Een beheerder die niet op het bericht stond kan er niet over beslissen: die omweg
+bestaat bewust niet.
 </Aside>
 
 De eerste polling van een nieuw gekoppelde mailbox haalt niets op; die legt alleen het startpunt
@@ -104,7 +127,7 @@ vast. Bestaande mail wordt dus niet met terugwerkende kracht ingelezen.
 
 ## E-mail uploaden
 
-Zonder Gmail-koppeling (of voor een bericht uit een andere mailbox) is er **E-mail uploaden**.
+Zonder mailboxkoppeling (of voor een bericht uit een andere mailbox) is er **E-mail uploaden**.
 Exporteer het bericht uit je mailprogramma als `.eml`; onderwerp, deelnemers, datum, tekst en
 bijlagen worden uit het bestand gelezen en de opmaak blijft behouden. Staat het bericht al op de
 tijdlijn, dan zegt schakl. dat en kun je alsnog *Toch vastleggen*. Bijlagen die te groot zijn of
@@ -144,7 +167,8 @@ Per rol in te stellen onder *Instellingen → Rollen*. Standaard:
 | `interactions.kind.manage` | Contactmoment-typen beheren | Beheerder |
 
 De rol Klant houdt hiervan niets, dus een klantportaal-login ziet de tijdlijn nooit. En
-`review` kent geen "van iedereen": ook met dat recht beslis je alleen over je eigen mailbox.
+`review` kent geen "van iedereen": ook met dat recht beslis je alleen over e-mail uit je eigen
+mailbox, of over een e-mail waar je zelf op stond.
 
 ## Goed om te weten
 
@@ -156,6 +180,8 @@ De rol Klant houdt hiervan niets, dus een klantportaal-login ziet de tijdlijn no
   verdwijnt. Ook de naam van wie het vastlegde blijft staan als die collega later vertrekt.
 - Notificaties: je kunt je laten waarschuwen bij *Een e-mail wacht op mijn beoordeling* en
   *Ik word genoemd in een contactmoment*.
+- Een opgenomen vergadering komt na bevestigen als contactmoment op de tijdlijn, met de
+  contactpersonen die erbij waren; zie [Vergaderingen](/nl/docs/modules/meetings/).
 
 ## Verder lezen
 

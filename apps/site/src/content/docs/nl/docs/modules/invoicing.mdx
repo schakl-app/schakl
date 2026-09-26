@@ -19,7 +19,8 @@ belanden.
 In het hoofdmenu onder **Facturatie**: *Facturen* (met bovenaan de tabbladen Facturen en Offertes)
 en *Nog te factureren*. Wat je één keer instelt, staat op *Instellingen → Facturatie*, in de
 secties Bedrijfsgegevens, Btw-tarieven, Producten en diensten, Sjablonen, Nummering,
-Standaardwaarden, Automatisch factureren, Betalingsherinneringen en Boekhouding. Elke klantpagina
+Bestaande facturen overnemen, Standaardwaarden, Openbare factuurlink, Automatisch factureren,
+Betalingsherinneringen en Boekhouding. Elke klantpagina
 heeft daarnaast een paneel **Facturatie** met de recentste facturen en offertes.
 
 Facturatie is een gelicentieerde module. Verloopt de licentie, dan gaat hij alleen-lezen: bekijken,
@@ -62,6 +63,23 @@ die al ergens op staan, worden wél getoond met het label *al gefactureerd* erbi
 precies hoe een dubbele factuur ontstaat. Alleen bij **Diensten en producten** vul je zelf een
 eenheid in. Btw wordt per tariefgroep over het hele document berekend en afgerond, niet per regel.
 
+Het document zet elke soort regel onder een eigen kop, ook als er maar één soort op staat: de kop
+zegt waarvoor er betaald wordt. Een periode staat er als `01-01-2025 - 01-01-2026`, of je hem nu
+zelf kiest of de nachtelijke run hem klaarzet. Drie dingen komen verder vanzelf mee:
+
+- **De naam op de factuur.** Een klant heeft een naam waarmee iedereen hem kent en, als dat
+  anders is, een **Naam op de factuur** (op de klant, onder *Factuurgegevens*), bijvoorbeeld de
+  B.V. of de holding. Facturen, offertes en de UBL-export gebruiken die tweede naam; overal
+  anders blijft de gewone naam staan. Leeg betekent: dezelfde naam.
+- **Je eigen velden op papier.** Een aangepast veld op factuur, offerte of abonnement dat op
+  **Op het document tonen** staat, wordt afgedrukt: dat van een factuur of offerte onder de
+  documentgegevens, dat van een abonnement op elke factuurregel die het abonnement oplevert
+  ("Hosting Pro · Website: klant.nl"). Zie [Aangepaste velden](/nl/docs/modules/custom-fields/).
+- **De notities van een abonnement.** Staat het standaardabonnement (of het abonnement zelf) op
+  "Op elke factuur afdrukken", dan komen de notities onder de regels, met variabelen als
+  `{{company_name}}` en `{{amount}}` al ingevuld. Kies je de periode zelf, dan zet de editor de
+  notitie één keer onder het veld Notities.
+
 ## Van concept naar betaald
 
 1. **Definitief maken** kent het nummer toe, bevriest de adresgegevens van de klant en zet de
@@ -74,8 +92,8 @@ eenheid in. Btw wordt per tariefgroep over het hele document berekend en afgeron
 
 ![Een definitieve factuur: het bedrag ligt vast, de betalingen staan eronder, en corrigeren gaat met een creditfactuur.](/img/docs/nl-invoice-detail.png)
 
-In het ⋯-menu staan verder Herinnering sturen, Crediteren, Factuur annuleren, PDF downloaden,
-Afdrukken / PDF en UBL downloaden. De status *Vervallen* wordt afgeleid, niet gezet: open, de
+In het ⋯-menu staan verder Herinnering sturen, Crediteren, Factuur annuleren, Verwijderen, PDF
+downloaden, Afdrukken / PDF en UBL downloaden. De status *Vervallen* wordt afgeleid, niet gezet: open, de
 vervaldatum voorbij, en er staat nog iets uit.
 
 ## Offertes
@@ -99,6 +117,27 @@ factureren; een gedeeltelijke credit geeft niets vrij, want niets op de regel ze
 het werk het betrof. Was de factuur al betaald, dan blijft er een bedrag over dat terug naar de
 klant gaat: de knop heet daar **Terugbetaling registreren**.
 
+## Annuleren of verwijderen
+
+**Factuur annuleren** vraagt eerst wat er met de factuur moet gebeuren:
+
+- **Tegenboeken met een creditfactuur**, voor een factuur die de klant heeft ontvangen. schakl.
+  maakt in één keer een definitieve creditfactuur met dezelfde regels en negatieve bedragen; de
+  factuur blijft staan als gecrediteerd, het gefactureerde werk komt weer vrij en je komt uit op
+  de creditfactuur, klaar om te versturen. Is de factuur verstuurd, dan staat deze keuze al aan.
+- **Alleen annuleren**, voor een factuur die niemand heeft ontvangen. De status wordt
+  *Geannuleerd*, er komt geen tegenboeking, en het nummer blijft in de reeks staan.
+
+Een annulering bestaat alleen in schakl.; de boekhouding van je klant en je eigen boekhoudpakket
+volgen een creditfactuur. Daarom is dat de voorgestelde route.
+
+**Verwijderen** van een definitieve factuur kan ook, maar alleen met een extra stap: het venster
+somt op wat er gebeurt en de rode knop werkt pas als je aanvinkt *"Ik begrijp dat nummer … definitief
+verdwijnt"*. Het nummer verdwijnt uit de reeks, en een gat in de factuurnummering moet je aan de
+Belastingdienst kunnen verklaren. Betalingen, een creditfactuur, een boeking in het
+boekhoudpakket of een lopende online betaling houden het verwijderen tegen; alleen de
+activiteitenlog bewaart daarna nog dat het nummer bestond.
+
 ## Online laten betalen
 
 Op een openstaande factuur staat de kaart **Online betalingen**. Als medewerker maak je met
@@ -107,19 +146,27 @@ Op een openstaande factuur staat de kaart **Online betalingen**. Als medewerker 
 status loopt mee (Wacht op betaling, In verwerking, Gereserveerd, Betaald, Mislukt, Verlopen,
 Geannuleerd) en zodra de provider bevestigt, wordt de betaling vanzelf op de factuur geboekt.
 
-De klant kan op vier plekken beginnen: de knop in het portaal, de knop in de factuurmail, die in
-de herinnering, en de QR-code met de betaalregel op het document zelf. Alle vier komen op dezelfde
-plek uit, de factuurpagina in het klantportaal, en nooit op de betaalpagina van de provider: zo'n
-adres is een sleutel op papier, het verloopt binnen een kwartier terwijl de factuur blijft staan,
-en twee geldige ingangen naar één schuld leveren dubbele betalingen op. De knop in de mail is
-strenger dan de link op het document: die verschijnt alleen als er een provider gekoppeld is én de
-factuur nog te innen is. Is er geen provider gekoppeld, dan gaat exact dezelfde mail de deur uit
-als voorheen.
+Elke definitieve factuur heeft een eigen **openbare link**: een webadres waarop wie het heeft
+precies die ene factuur kan bekijken, downloaden en betalen, zonder account. De QR-code op het
+document en de link in de factuurmail en de herinnering wijzen daarheen; een klant met een
+portaallogin kan ook vanuit het portaal betalen. Nooit wijzen ze naar de betaalpagina van de
+provider zelf: die verloopt binnen een kwartier terwijl de factuur blijft staan, en twee geldige
+ingangen naar één schuld leveren dubbele betalingen op. De knop in de mail verschijnt alleen als
+er een provider gekoppeld is én de factuur nog te innen is; zonder provider gaat exact dezelfde
+mail de deur uit als voorheen.
+
+De link staat standaard aan en zet je uit onder *Instellingen → Facturatie → Openbare factuurlink*.
+Dat werkt met terugwerkende kracht: links die al gedrukt of gemaild zijn, doen het dan ook niet
+meer. In het sjabloon kun je het adres zelf van het papier halen en alleen de QR-code laten staan.
+Wie terugkomt van een geslaagde betaling krijgt een bedankpagina met het bedrag; een mislukte,
+verlopen of geannuleerde poging wordt ook zo genoemd.
 
 Je koppelt je eigen account onder *Instellingen → Mollie*: **Account toevoegen**, dan een naam,
 eventueel een leverancier, en je API-sleutel uit het Mollie-dashboard. Live of test wordt uit de
-sleutel zelf afgeleid, en **Betaalmethoden** toont wat Mollie zelf terugmeldt. Testbetalingen
-doorlopen de hele route maar zetten een factuur nooit op betaald.
+sleutel zelf afgeleid, en **Betaalmethoden** toont wat Mollie zelf terugmeldt. Een testbetaling
+doorloopt de hele route zoals een echte: de factuur gaat op betaald en de betaalregel krijgt
+"(test)" in de notitie, zodat je ziet dat hij van de testsleutel kwam. Zie ook
+[Mollie](/nl/docs/integrations/mollie/).
 
 <Aside type="caution" title="Twee dingen die hier stilzwijgend fout gaan">
 Het **Meldingsadres** op het Mollie-scherm moet vanaf internet bereikbaar zijn. Zit er een
@@ -129,7 +176,8 @@ adres.
 
 Doe daarom eerst één keer de hele route met de testsleutel van Mollie: een betaallink maken, hem
 betalen, en kijken of de betaalregel op de factuur verschijnt. Dat is de enige controle die
-bewijst dat het meldingsadres werkelijk bereikbaar is.
+bewijst dat het meldingsadres werkelijk bereikbaar is. Omdat een testbetaling de factuur echt op
+betaald zet, doe je dit op een proeffactuur en niet op een die nog geïnd moet worden.
 </Aside>
 
 ## Automatisch factureren en herinneringen
@@ -166,13 +214,55 @@ filtert op Soort en groepeert. Uren groepeer je op dag, week, maand, jaar, klant
 medewerker; het terugkerende deel op klant, maand of soort. Groepeer je op klant, dan staat er per
 klant een link **Factuur maken**.
 
+Een abonnement of domein waarvan de factuurdatum verstreken is, staat hier ook: dat is precies wat
+de nachtelijke run bij de eerstvolgende gelegenheid factureert, en een achterstand van meerdere
+periodes wordt in één run ingehaald in plaats van één periode per nacht. Een domeinverlenging
+zonder prijs (de extensie heeft nog geen tarief en het domein geen eigen prijs) valt niet weg maar
+staat er met het label **geen prijs** en een bedrag van nul, met erboven hoeveel verlengingen op
+een prijs wachten.
+
 ![Nog te factureren doet hetzelfde voor de hele organisatie, met een groepering per dag, week, maand, klant, project of medewerker.](/img/docs/nl-uninvoiced.png)
 
 Elke definitieve factuur download je als **UBL 2.1** voor Exact Online, SnelStart, Moneybird of
-e-Boekhouden; dat is vandaag het hele boekhoudverhaal, want het scherm Boekhouding meldt zelf dat
-er geen live koppelingen geïnstalleerd zijn. Een klant met een portaallogin ziet ten slotte **Mijn
+e-Boekhouden. Werk je met SnelStart, dan kan het ook live: die koppeling zet klanten en facturen
+zelf in je administratie en haalt terug wat er betaald is (zie
+[SnelStart](/nl/docs/integrations/snelstart/)). Een klant met een portaallogin ziet ten slotte **Mijn
 facturen**: alleen de definitieve facturen van zijn eigen bedrijven, met dezelfde pdf die jij
 verstuurt. Concepten bestaan voor hem niet en offertes blijven intern.
+
+## Bestaande facturen overnemen
+
+Kom je van Moneybird, SnelStart, e-Boekhouden of een spreadsheet, dan neem je je oude facturen
+mee, zodat de historie van een klant en het openstaande saldo vanaf dag één kloppen. Dat gebeurt
+op één plek: *Instellingen → Facturatie → Bestaande facturen overnemen*, in drie stappen.
+
+<Steps>
+
+1. **Spreadsheet importeren.** Eén rij per factuur: nummer, klant, factuurdatum en totalen, plus
+   de betaalstatus als je die hebt. Het is de gewone importwizard: je wijst de kolommen toe en het
+   bestand wordt gecontroleerd voordat er iets wordt weggeschreven. De totalen zijn het gegeven,
+   dus ze worden overgenomen zoals ze er staan en niet opnieuw uitgerekend; subtotaal plus btw
+   moet wel op de cent gelijk zijn aan het totaal. Een betaald bedrag heeft een datum nodig en
+   wordt een gewone betaalregel. Een geïmporteerde factuur stuurt geen meldingen, en krijgt alleen
+   herinneringen als het bestand dat per rij zegt.
+
+2. **Originele pdf's koppelen.** Een zip met de pdf's die je klanten destijds ontvingen, elk
+   genoemd naar het factuurnummer (`2024-0012.pdf`). Elk bestand wordt gekoppeld aan de
+   geïmporteerde factuur met dat nummer; scheidingstekens, spaties en hoofdletters tellen niet
+   mee. Het verslag noemt wat gekoppeld is en wat niet, en een factuur die al een origineel
+   heeft wordt overgeslagen. Eén pdf kan ook op de factuur zelf, in de kaart **Origineel**.
+
+3. **Nummering doorzetten.** Zet bij Nummering het volgende factuurnummer voorbij het hoogste
+   nummer dat je hebt overgenomen, zodat de eerste nieuwe factuur niet botst.
+
+</Steps>
+
+Een geïmporteerde factuur staat gewoon tussen de andere op de facturenlijst, met erbij waar ze
+vandaan komt. Heeft ze een origineel, dan toont de factuurpagina die pdf, en de openbare link en
+de download geven precies die bytes; de kaart **Origineel** noemt de bestandsnaam en de
+vingerafdruk (SHA-256). Zonder origineel toont schakl. een document dat uit de overgenomen
+totalen is opgebouwd. Dezelfde import werkt ook later nog: een betaald bedrag kan in een nieuw
+bestand alleen omhoog, dus "deze veertig zijn betaald" is één bestand.
 
 ## Rechten
 
@@ -187,7 +277,7 @@ vorm, dus uitsluitend voor de eigen facturen van die klant.
 | `invoicing.invoice.read` | Facturen bekijken. Kent twee dieptes: de smalle geeft alleen documenten, de brede ook bedrijfs- en bankgegevens, de prijslijst, de sjablonen en Nog te factureren. |
 | `invoicing.invoice.write` | Facturen aanmaken en bewerken |
 | `invoicing.invoice.send` | Facturen en betalingsherinneringen versturen |
-| `invoicing.invoice.delete` | Conceptfacturen verwijderen |
+| `invoicing.invoice.delete` | Conceptfacturen verwijderen, en een definitieve factuur na de extra bevestiging |
 | `invoicing.quote.read` / `.write` / `.send` / `.delete` | Hetzelfde voor offertes |
 | `invoicing.payment.write` | Betalingen registreren |
 | `invoicing.payment.link` | Online betaling starten |
@@ -202,8 +292,9 @@ betaling. Een Mollie-account koppelen is een apart recht: `mollie.settings.manag
 - **Definitief is definitief.** Bedragen zijn daarna niet meer te wijzigen; corrigeren doe je met
   een creditfactuur. Het proces eromheen blijft wel bij te werken: referentie, opmerkingen,
   vervaldatum, sjabloon, documenttaal, wisselkoers en het pauzeren van herinneringen.
-- **Verwijderen kan alleen bij een concept.** Een definitieve factuur annuleer je, en dat weigert
-  zolang er betalingen op staan of er een creditfactuur tegenover staat.
+- **Een definitieve factuur annuleer je bij voorkeur met een creditfactuur.** Annuleren en
+  verwijderen weigeren allebei zolang er betalingen op staan of er een creditfactuur tegenover
+  staat; verwijderen vraagt daarbovenop een uitdrukkelijke bevestiging met het nummer erin.
 - **Een urenregel staat maar op één factuur, ooit.** Verwijder of annuleer je een factuur, dan
   komen precies die uren weer vrij; een tweede factuur die dezelfde abonnementsperiode of hetzelfde
   domeinjaar claimt, wordt geweigerd.
@@ -212,9 +303,11 @@ betaling. Een Mollie-account koppelen is een apart recht: `mollie.settings.manag
   herschrijft nooit wat al ontvangen is.
 - **De opmaak volgt het document, niet de kijker**, en een andere valuta mag: het document staat
   volledig in zijn eigen valuta, de wisselkoers dient alleen om de tegels te kunnen optellen.
-- **De QR-code staat standaard uit** en verwijst naar de factuurpagina in het klantportaal, nooit
-  naar een betaallink: zo'n link is een sleutel en hoort niet op papier.
-- Facturen en offertes gaan **niet** per spreadsheet in of uit; de UBL-download is hun uitweg.
+- **De QR-code staat standaard uit** en verwijst naar de openbare link van de factuur, nooit naar
+  de betaalpagina van de provider.
+- **Facturen reizen per spreadsheet**: de facturenlijst heeft **Exporteren** (met je huidige
+  filters), en importeren kan alleen via *Bestaande facturen overnemen* in de instellingen.
+  Offertes gaan niet per spreadsheet in of uit.
 
 ## Verder lezen
 

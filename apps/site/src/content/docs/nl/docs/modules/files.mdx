@@ -1,8 +1,8 @@
 ---
 title: Bestanden
-description: "Waar bijlagen, logo's en documenten in schakl. terechtkomen, wat je mag uploaden en wie een bestand mag openen."
+description: "Waar bijlagen, logo's en documenten in schakl. terechtkomen, een schermafbeelding plakken, afbeeldingen in de tekst, wat je mag uploaden en wie een bestand mag openen, ook als klant."
 sidebar:
-  order: 25
+  order: 26
 ---
 
 import { Aside, CardGrid, LinkCard } from '@astrojs/starlight/components';
@@ -19,7 +19,9 @@ en app-icoon moeten op het inlogscherm staan en zijn daarom zonder inloggen op t
 | Waar | Wat je daar uploadt |
 | --- | --- |
 | Projectpagina, blok **Documenten** | Offertes, opleveringen, alles wat bij het project hoort |
-| Taakpagina, blok **Links & bijlagen** | Bijlagen bij één taak; uploaden kan in de bewerkmodus |
+| Taakpagina, blok **Links & bijlagen** | Bijlagen bij één taak, zoals een schermafbeelding |
+| Klantpagina, paneel **Documenten** | Contracten, briefings en alles wat bij de klant zelf hoort |
+| Omschrijvingen en reacties | Afbeeldingen midden in de tekst, zie hieronder |
 | Klantpagina, veld **Logo** | Het beeldmerk van de klant zelf |
 | *Instellingen → Mijn account* | **Foto uploaden**: je eigen profielfoto |
 | *Instellingen → Huisstijl* | Logo, favicon en app-icoon van je bureau |
@@ -31,14 +33,48 @@ binnengekomen e-mail, en de pdf van een gegenereerde rapportage.
 
 ## Uploaden en verwijderen
 
-In het blok **Documenten** zit één knop, **Bestand uploaden**. Kies je een bestand, dan gaat het
-meteen omhoog; er is geen aparte opslaan-stap. Per regel staat de bestandsnaam, de grootte en
-een ⋯-menu met **Verwijderen**, dat om bevestiging vraagt: "Dit bestand verwijderen? Dit kan niet
-ongedaan worden gemaakt."
+In het blok **Documenten** (en onder **Links & bijlagen** op een taak) zit de knop **Bestand
+uploaden**. Er zijn drie manieren die op hetzelfde uitkomen: de knop, een bestand erheen slepen, of
+een schermafbeelding plakken met **Ctrl+V** (op een Mac ⌘V) terwijl de pagina open staat. Een
+geplakte afbeelding krijgt een naam met de datum en tijd op de klok van je organisatie. Meerdere
+bestanden tegelijk kan ook. Er is geen aparte opslaan-stap: wat je kiest, gaat meteen omhoog. Een
+plakactie in een tekstveld blijft gewoon tekst; alleen een afbeelding wordt een upload.
 
-Op een taak zit hetzelfde blok, maar dan onder **Links & bijlagen** en alleen zichtbaar voor
-medewerkers. Op een project ziet een klant met een portaallogin de lijst wel, maar zonder
-uploadknop en zonder verwijderoptie.
+Afbeeldingen staan als miniatuur in de lijst, al het andere met naam en grootte. Per regel staat
+een ⋯-menu met **Verwijderen**, dat om bevestiging vraagt: "Dit bestand verwijderen? Dit kan niet
+ongedaan worden gemaakt." Op de taakpagina is bijlagen toevoegen gewoon gebruik van de taak: je
+hoeft niets eerst open te zetten.
+
+Het klantpaneel **Documenten** staat op het klantdossier naast de activiteit. Zolang een klant
+nog geen documenten heeft, is het paneel ingeklapt tot een ＋ in de strook met lege panelen.
+
+## Wat de klant ziet
+
+Per bijlage beslis je of een klant met een portaallogin hem mag zien: het oogje op de regel zet
+**Tonen aan de klant** of **Verbergen voor de klant**, en een zichtbaar bestand is gemarkeerd met
+**Zichtbaar voor de klant**. Standaard staat het uit, op taken, projecten en klanten. Een klant
+ziet dus alleen de bestanden die je bewust hebt aangevinkt, en dan zonder uploadknop en zonder
+verwijderoptie. Dat geldt voor de lijst, het bestand zelf en de miniatuur.
+
+Een afbeelding die midden in een omschrijving of reactie staat, volgt de tekst: wie die tekst
+mag lezen, ziet ook de afbeelding. Het oogje gaat alleen over bijlagen.
+
+## Afbeeldingen in de tekst
+
+In de omschrijving van een taak of project en in reacties op een taak plak je een afbeelding
+(of sleep je hem erin, of gebruik je de knop in de werkbalk) en hij komt op de plek van je cursor
+in de tekst te staan, niet onder de bijlagen. Selecteer je de afbeelding, dan kies je in de
+werkbalk de breedte: 25, 50, 75 of 100%, of **Auto** (de eigen grootte, nooit breder dan de
+kolom). Die breedte blijft bewaard zoals jij hem koos.
+
+## Bekijken
+
+Elke afbeelding, of het nu een bijlage is of een plaatje in de tekst, opent in dezelfde viewer
+boven de pagina, nooit in een nieuw tabblad. Met de pijltjes, een veegbeweging of de rij miniaturen
+onderaan ga je naar de volgende afbeelding op die pagina. Inzoomen gaat met het scrollwiel, knijpen
+of + en −; dubbelklikken wisselt tussen **Passend op scherm** en **Ware grootte**. **Origineel
+openen** en **Downloaden** blijven beschikbaar, en Escape sluit alleen de viewer, niet het venster
+eronder.
 
 ## Wat er in mag
 
@@ -46,24 +82,23 @@ Standaard geldt: maximaal **10 MB** per bestand, en alleen deze soorten:
 
 - afbeeldingen: PNG, JPEG, WebP, GIF, SVG en ICO
 - PDF
-- platte tekst en CSV
+- platte tekst, Markdown en CSV
 - ZIP
-- Word en Excel
+- Word, Excel en PowerPoint
 
-Wat er niet in staat, staat er bewust niet in: PowerPoint, video en audio worden standaard
-geweigerd. Lukt een upload niet, dan zegt het scherm waarom: "Dit bestandstype is niet
+Wat er niet in staat, staat er bewust niet in: video en audio worden standaard geweigerd. Lukt een upload niet, dan zegt het scherm waarom: "Dit bestandstype is niet
 toegestaan" of "Dit bestand is te groot". Beide grenzen zijn instellingen van de installatie
 (`SCHAKL_UPLOAD_MAX_BYTES` en `SCHAKL_UPLOAD_ALLOWED_TYPES`), dus wie de server beheert kan ze
 verruimen; in de app zelf staat er geen knop voor.
 
-Afbeeldingen en pdf's openen in een nieuw tabblad; al het andere wordt gedownload. SVG downloadt
-altijd, ook al is het een afbeelding, en dat is een bewuste veiligheidskeuze.
+Afbeeldingen openen in de viewer en pdf's in een nieuw tabblad; al het andere wordt gedownload.
+SVG downloadt altijd, ook al is het een afbeelding, en dat is een bewuste veiligheidskeuze.
 
 ## Rechten
 
 | Recht | Wat het geeft | Standaard |
 | --- | --- | --- |
-| `files.file.write` | Bijlagen uploaden en verwijderen, en je eigen profielfoto | Beheerder en Medewerker |
+| `files.file.write` | Bijlagen uploaden en verwijderen, zichtbaarheid voor de klant zetten, en je eigen profielfoto | Beheerder en Medewerker |
 | geen recht nodig | Een bestand van je eigen organisatie openen | Iedereen die is ingelogd |
 
 Lezen vraagt geen apart recht, maar dat betekent niet dat alles voor iedereen open ligt. De
@@ -98,8 +133,13 @@ opslag." Maak dus altijd van beide tegelijk een back-up.
 - Een record toont maximaal 200 bijlagen.
 - Afbeeldingen die in de tekst van een e-mail zitten, horen bij die tekst en staan dus niet
   tussen de bijlagen. Ze worden in het bericht zelf getoond.
-- Bestanden staan op je eigen installatie. Een koppeling met Google Drive voor bijlagen bestaat
-  nog niet; het taakscherm zegt dat er zelf bij.
+- Bijlagen staan op je eigen installatie, niet bij een externe dienst; het taakscherm zegt dat er
+  zelf bij. Met de koppeling met Google Workspace of Microsoft 365 kan een klant, project of taak
+  daarnaast een eigen Drive- of OneDrive-map hebben, in een apart paneel.
+- **Via de API en MCP** kun je ook uploaden: naast de gewone upload is er een variant die het
+  bestand als base64 in JSON meestuurt, zodat een AI-koppeling een schermafbeelding kan
+  aanleveren. Een miniatuur vraag je op in drie formaten; het origineel wordt nooit opnieuw
+  gecomprimeerd.
 - De beheerder van de installatie kiest waar de bytes staan: een schijfvolume of S3-compatibele
   objectopslag. Voor wie de app gebruikt verandert er niets. Zie
   [Bestandsopslag](/nl/docs/admin/storage/).

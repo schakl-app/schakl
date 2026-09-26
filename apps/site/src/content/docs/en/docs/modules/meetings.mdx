@@ -1,0 +1,213 @@
+---
+title: Meetings
+description: "Record a meeting in the browser; your organisation's speech provider transcribes it, your AI drafts the minutes, and once you confirm, the action items become tasks and the minutes a contact moment."
+sidebar:
+  order: 13
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+A meeting with a client produces agreements, and agreements nobody writes down are gone within a
+week. With Meetings you record the meeting; your organisation's speech provider transcribes it,
+your own AI drafts the minutes with the decisions and action items, and you review them. Only
+when you confirm do the minutes land on the client as a contact moment and the ticked action
+items become tasks.
+
+## Where to find it
+
+- Main menu **Vergaderingen** (Meetings): every recorded meeting, newest first, with search across
+  titles and transcripts and a client filter. From here you start **Vergadering opnemen** (Record
+  a meeting).
+- The **Vergaderingen** panel on the client page, with the number of action items per meeting.
+- *Instellingen → Vergaderingen*: the consent statement, the minutes document and your house
+  rules for the minutes.
+- *Instellingen → AI*: the **Vergadertranscripten en verslagen** (Meeting transcripts and minutes)
+  feature and the speech provider.
+
+<Aside type="caution">
+Meetings is a licensed module. Switch it on under *Instellingen → Modules* and make sure your
+licence covers it. Without cover the module goes read-only after the grace period: the minutes and
+transcripts stay readable, but nothing new is recorded.
+</Aside>
+
+## Before you start
+
+Recording needs two things under *Instellingen → AI*, and without both schakl. draws no record
+button, only a notice saying what is missing:
+
+- The **Vergadertranscripten en verslagen** feature is on. It is a switch of its own, separate from
+  the other AI features: a meeting is mostly *other people's* words, and they go to a model whole.
+- A **Spraakaanbieder** (speech provider) that can transcribe is set up, on its own key. For
+  meetings, pick a model that tells speakers apart: **Mistral (Voxtral)** with
+  `voxtral-mini-latest` (three hours in one request) or OpenAI `gpt-4o-transcribe-diarize` (25
+  minutes per request). `gpt-4o-transcribe`, `gpt-transcribe` and `whisper-1` return the words
+  only; the recorder says so above the record button, so you do not find out afterwards.
+
+A recording longer than the provider accepts in one request is cut into parts and transcribed part
+by part. A speaker may then carry a different label per part (S1, S2 · S3, S4); the review screen
+says how many parts the recording was transcribed in.
+
+## Recording a meeting
+
+<Steps>
+
+1. Open **Vergaderingen** and click **Vergadering opnemen** (Record a meeting).
+2. Fill in the **Titel** (Title), the **Klant** (Client — action items become this client's tasks)
+   and optionally the **Project**.
+3. Fill in **Wie zit er aan tafel** (Who is at the table): colleagues, the client's contacts, or a
+   name under *Anders* (Other). You are added yourself. The minutes put every action item on the
+   name of whoever took it on.
+4. Choose the **Soort** (Kind: *Op locatie* / In person, or *Online*) and **Wat wordt opgenomen**
+   (What to record): *Microfoon* for a meeting in the room, *Browsertabblad* (Browser tab) for a
+   Meet, Teams or Zoom call in this browser (plus your microphone), or *Bestand uploaden* (Upload a
+   file) for a recording you already have.
+5. Tick *Ik heb iedereen in deze vergadering verteld dat er wordt opgenomen* (I have told everyone
+   in this meeting that it is being recorded). Underneath is what to say: why (the minutes), who
+   reads it (your team) and how long the audio is kept.
+6. Click **Opname starten** (Start recording). The screen shows the clock and *Opgeslagen tot …*
+   (Saved up to …). Done? Click **Stoppen en uitschrijven** (Stop and transcribe).
+
+</Steps>
+
+While recording, the browser sends a piece to the server every minute (the first after only a few
+seconds). A crashed tab therefore costs a minute at most, not the meeting. If the server refuses a
+piece because the connection drops for a moment or schakl. is being updated, the browser retries
+for up to ten minutes while the recording carries on; the screen then says *Verbinding
+herstellen…* (Reconnecting…) in amber. Only if that fails does the line turn red with **Opnieuw
+opslaan** (Try saving again). If you try to leave the page while a recording runs, schakl. asks first.
+
+<Aside type="tip">
+Keep the screen open and awake. A locked phone freezes the tab and stops the recording; whatever
+was saved is kept. When a recording stops that way, the meeting page offers **Verwerk wat is
+opgeslagen** (Process what was saved), and if nobody does, schakl. finishes it on its own within
+half an hour. If nothing arrived at all, whoever started the recording is told, by mail too.
+</Aside>
+
+After that the meeting moves through *In de wachtrij* (Queued), *Wordt uitgeschreven*
+(Transcribing) and *Verslag wordt geschreven* (Writing minutes). A long meeting takes a few
+minutes; you can leave the page. When the minutes are ready you get a notification, by default by
+mail too: *The minutes of a meeting I recorded are ready*. If something goes wrong the meeting
+shows *Mislukt* (Failed) with the reason and an **Opnieuw proberen** (Try again) button.
+
+## Review and confirm
+
+A meeting on **Na te kijken** (To review) shows the draft beside the transcript and the recording.
+Every text field is formatted text you can also paste an image into:
+
+- **Samenvatting** (Summary): a short account of the meeting.
+- **Besproken** (Discussed): one field with a heading per topic and what was said about it
+  underneath.
+- **Besluiten** (Decisions), **Actiepunten** (Action items) and **Open vragen** (Open questions),
+  each with a button to add one.
+- Under every decision and action item is the quote from the transcript it rests on, with the
+  time. If that quote is not in the transcript, the item stays with the label *Niet in het
+  transcript gevonden* (Not found in the transcript). Read such items before you confirm; the
+  count sits next to the button.
+
+Action items are grouped by side and by person: **Voor ons** (For us to do) under each colleague,
+**Voor de klant** (For the client to do) under each contact, and **Overig** (Others). Per item you
+choose *Wie pakt het op* (Who took it on), a **Deadline** (Due) and a **Toelichting** (Details), and the
+*Als taak aanmaken* (Create as a task) tick. A promise by the client is minuted, not put on your
+board — unless you tick it, which makes it a task for that contact (waiting on the client).
+
+Next to the transcript you pair the participants with their speaker label (S1, S2 …) and click
+**Deelnemers opslaan** (Save participants). The usual case is doing that after the first draft;
+**Verslag opnieuw opstellen** (Write the minutes again) then redrafts over the same transcript, with
+the people known, without transcribing again and so without new audio cost.
+
+The **Deze vergadering in woorden aanpassen** (Change this meeting in words) box changes the
+meeting in your own words, for example *set the client to Nova, S2 is Jan Jansen, add an action
+item for Sanne: send the logo, due Friday*. It changes the title, client, project, kind and date,
+who was there and which speaker label they are, and while the minutes are under review every line
+of them. Everything is applied in your name, like an ordinary edit.
+
+**Concept opslaan** (Save draft) keeps your work; **Verslag bevestigen** (Confirm minutes) makes it
+a record:
+
+- A contact moment is filed on the client (*Afspraak op locatie* or *Online afspraak*), with the
+  contacts who were there.
+- Every ticked action item becomes a task. Tasks and contact moments go through their own
+  modules, with their own rules and permissions; an action item that could not become a task is
+  named with the reason after confirming, rather than blocking the whole minutes.
+
+Confirmed minutes show the *Contactmoment openen* (Open the contact moment) link and the tasks created.
+
+## Downloading
+
+**Downloaden** (Download) opens *Notulen downloaden* (Download the minutes). Tick which chapters to
+include: who was there, summary, discussed, decisions, action items, open questions, the evidence
+under decisions and action items (quote and time), and the full transcript as an appendix. The
+transcript is off unless you tick it. **Voorbeeld openen** (Open preview) shows exactly the page
+**Pdf downloaden** (Download PDF) prints.
+
+In the PDF the attendees are grouped under your agency's name and the client's, with a profile
+picture or initials. Action items sit per side under the person who took them on, and an item not
+found in the transcript stays marked on paper too.
+
+Under *Transcript als bestand* (Transcript as a file) you download just the words, with speakers
+and times: as **Tekst (.txt)**, **Markdown (.md)** or subtitles (**.srt**, **.vtt**) for a video
+editor.
+
+The recording plays on a phone; where a browser cannot play the format (Safari plays no WebM),
+there is a link to download the file instead.
+
+## Instellingen → Vergaderingen
+
+For administrators, under *Instellingen → Vergaderingen*:
+
+- **Opnemen** (Recording): *Vraag om de toestemmingsverklaring voordat een opname begint* (Ask for
+  the consent statement before a recording starts), on by default. If your agency has its own
+  procedure for this, switch it off; the tick and the check then go together.
+- **Notulen geschreven door AI** (Minutes written by AI): **Huisregels voor de notulen** (House
+  rules for the minutes), your own writing instruction (tone, length, what must always be in it).
+  The model receives it as a style, never as licence to add what was not said.
+- **Het notulendocument** (The minutes document): the **Ontwerp** (Design: *Standaard* or *Eigen
+  HTML* — Jinja and CSS in a sandbox without network access), the **Accentkleur** (Accent colour),
+  a **Kopafbeelding** (Header image), an **Afsluitende regel** (Closing line), profile pictures
+  beside names on or off, and the **Standaard aangevinkte hoofdstukken** (Chapters ticked by
+  default). The preview beside it draws your most recent minutes with these settings.
+
+## Permissions
+
+Configurable per role under *Instellingen → Rollen*. Defaults:
+
+| Permission | What it does | Default for |
+| --- | --- | --- |
+| `meetings.meeting.read` | View meetings and minutes | Admin, Member |
+| `meetings.meeting.write` | Record meetings and review minutes | Admin, Member |
+| `meetings.meeting.delete` | Delete meetings | Admin |
+| `meetings.settings.manage` | Manage meeting settings | Admin |
+
+What confirming produces also needs those modules' permissions: filing a contact moment and
+creating tasks. Someone who may review minutes but not create tasks is told so per action item.
+
+## Privacy and retention
+
+- **The audio is deleted 30 days after confirming**; the transcript and the minutes stay. Whoever
+  may review minutes can delete the audio sooner with **Audio verwijderen** (Delete the audio).
+- **A recording can be played by whoever may see the meeting**, and by nobody else who happens to
+  be able to point at the file.
+- **A client never sees a meeting.** A client portal login gets an empty list, no panel and no
+  recording or transcript, even if someone grants the Client role the read permission. What the
+  client is owed is the confirmed contact moment, under the rules of
+  [Interactions](/en/docs/modules/interactions/).
+- A member restricted to a client group sees only those clients' meetings.
+- Deleting a meeting removes the audio, the transcript and the draft minutes; a contact moment and
+  tasks already confirmed from it stay.
+
+## API and MCP
+
+Everything the screen does goes through the API under `/api/v1/meetings`, and so is also a tool on
+the [MCP server](/en/docs/integrations/mcp/): create a meeting, post the recording in pieces
+(base64 in JSON, so an AI client can do it too), finish, set participants, redraft, confirm, fetch
+the PDF and the transcript. The transcript comes as JSON by default, with the time and the
+speaker's name per line; `format=txt|md|srt|vtt` returns a file.
+
+For the assistant there are three read tools: `meetings.find`, `meetings.transcript` and
+`meetings.minutes`, all three behind `meetings.meeting.read`.
+
+## Read next
+
+- [Interactions](/en/docs/modules/interactions/) — where the confirmed minutes land
+- [Tasks](/en/docs/modules/tasks/) — where the action items land
+- [AI](/en/docs/modules/ai/) — the provider, the speech provider and the budget

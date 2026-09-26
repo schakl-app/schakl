@@ -1,8 +1,8 @@
 ---
 title: AI assistance
-description: "One AI account for the whole platform: your own provider and key, four features you switch on separately, a monthly budget with a meter, and speech to text."
+description: "One AI account for the whole platform: your own provider and key, eight features you switch on separately, an assistant that reads your whole workspace and can record a stated list, a monthly budget with a meter, and speech to text."
 sidebar:
-  order: 28
+  order: 29
 ---
 
 import { Aside, Steps } from '@astrojs/starlight/components';
@@ -21,6 +21,9 @@ AI control is drawn anywhere in the app.
 - The **Urenhulp** (Time assist): the **Snel toevoegen** (Quick add) field above the entry form on
   *Uren* (Hours).
 - **Brief me** and **AI-rapport** (AI report): two buttons on the client page.
+- On *Taken* (Tasks): **Inspreken** (Dictate) beside **Nieuwe taak**, and on every task the
+  **Aanpassen met schakl** box and the **Stappen schrijven met schakl** button.
+- *Instellingen → Taken* (Settings → Tasks): the task address, whose blanks the AI fills in.
 
 AI falls under the commercial licence; see [Licences](/en/docs/admin/licenses/).
 
@@ -52,17 +55,37 @@ AI falls under the commercial licence; see [Licences](/en/docs/admin/licenses/).
    stored settings; on a failure the provider's own error text is shown verbatim.
 </Steps>
 
-## The four features
+## The features
 
 Each feature is its own checkbox with an **Eigen model (optioneel)** (Model override) box beside
-it, so you can put a fast model on the time assist and leave the larger one for writing.
+it, so you can put a fast model on the time assist and leave the larger one for writing. Features
+that read what somebody else wrote (an e-mail, a meeting) deliberately get a checkbox of their
+own: an agency happy for AI to polish a colleague's paragraph has not thereby agreed to it reading
+a client's mailbox.
 
-**Assistent.** The sparkle icon in the top bar opens the **Assistent** slide-over, where you ask
-about your own clients, projects, tasks and hours ("How many hours did I log this week?"). On a
-client, project or task page it inherits that record, so "this client" resolves. Answers carry
-source chips that deep-link to the records they came from. The assistant is deliberately
-read-only: it looks things up and answers, it never creates or changes anything. And it only sees
-what you may see.
+| Feature | What it does |
+| --- | --- |
+| **Assistent** | The chat panel: questions about your whole workspace, and recording a stated list of things |
+| **Schrijfhulp** (Writing assist) | Rewriting, shortening, translating and writing out in every rich text field |
+| **Urenhulp** (Time assist) | Snel toevoegen and Vul mijn dag aan on *Uren* |
+| **Briefing & rapporten** | Brief me and the AI report on the client page |
+| **E-mail in taak** (E-mail into task) | Filling in a task you create while approving an e-mail, from that e-mail |
+| **Taak inspreken, aanpassen en plannen** (Dictate, adjust and plan tasks) | Dictating a task, changing a task in words, writing its steps |
+| **E-mail naar taakadres** (Mail to task address) | Filling in what a task mailed to the task address left open |
+| **Vergadertranscripten en verslagen** (Meeting transcripts and minutes) | Transcribing a recorded meeting and drafting its minutes ([Meetings](/en/docs/modules/meetings/)) |
+
+**Assistent.** The sparkle icon in the top bar opens the **Assistent** slide-over. You ask about
+anything in your workspace (clients, projects, tasks, hours, domains, invoices, marketing
+figures): the assistant searches the same API an external AI client gets over MCP, and so sees
+exactly what you may see and nothing more. On a client, project or task page it inherits that
+record, so "this client" resolves. Answers carry source chips that deep-link to the records they
+came from, and while it works you see what it is reading ("Leest domeinen…", reading domains).
+
+It writes only from a fixed list: **create or change a task**, **post a comment**, **log hours**
+and **start or stop the timer**. Every write goes through, as you, the same checks as doing it on
+the screen yourself, with your permissions and on your activity trail ("Opslaan…", saving).
+Configuring something, sending an invoice or publishing a report is beyond it; widening that list
+is a deliberate decision in the code, not a search result.
 
 **Schrijfhulp.** Every rich text field (client, contact, project, task, interaction, invoice and
 quote texts, task and subscription templates, and long-text custom fields) carries a sparkle icon
@@ -75,7 +98,9 @@ reader as je, keep sentences short") is prepended to every writing request.
 
 **Urenhulp.** On *Uren* you type one line into **Snel toevoegen**, for example "gisteren
 14:00-16:30 website Jansen, homepage overleg". The server looks up your own clients, projects and
-tasks and prefills the entry form with them; saving is yours. **Vul mijn dag aan** (Fill in my
+tasks and prefills the entry form with them; saving is yours. Whatever the line itself says
+unambiguously ("gisteren", "afgelopen vrijdag", 14:00-16:30, "2 uur", "90 min") is filled in even
+without the model, so half a match still yields half a line. **Vul mijn dag aan** (Fill in my
 day) compares your work schedule with your approved leave and what you already logged, and
 suggests draft rows for the gap from tasks you demonstrably worked on that day. Nothing there is
 saved without your click either.
@@ -85,28 +110,54 @@ client's recent activity, with source chips. **AI-rapport** drafts a monthly rep
 the editor and save as a record. This is the light version in the core; the full report with a
 branded PDF, a schedule and sending is the [reporting module](/en/docs/modules/reporting/).
 
+**Tasks.** Three features work on [Tasks](/en/docs/modules/tasks/):
+
+- **Taak inspreken, aanpassen en plannen.** **Inspreken** lets you say a task in one go and hands
+  you a draft you read through whole before anything is saved. On an existing task you type or
+  speak what should change into the **Aanpassen met schakl** box; schakl. applies it as you, under
+  your name on the trail. **Stappen schrijven met schakl** builds a checklist from the title and
+  the description.
+- **E-mail in taak.** Create a task while approving an e-mail and schakl. reads that e-mail and
+  fills the task in: description, steps, a deadline if there is none yet, the links from the
+  mail. It writes from your agency's side: a mail you sent the client becomes a task for you, not
+  for the client. Who gets the task, for which client and whether the client sees it are things
+  an e-mail can never decide, however it is worded.
+- **E-mail naar taakadres.** A mail to the task address becomes a task; the AI only fills in what
+  your own words left open and never overwrites what you wrote.
+
 ## Dictating instead of typing
 
 Speech to text needs a credential of its own, because Anthropic (the default provider) has no
 transcription service. *Instellingen → AI* carries a **Spraak naar tekst** (Speech to text) block
 for it:
 
-- **Spraakaanbieder** (Speech provider): *Uit* (Off), OpenAI or OpenAI-compatible. Anthropic is
-  deliberately absent, because that setting could never work. On *Uit* your chat provider is
-  reused, which only resolves if that is OpenAI or a compatible server.
+- **Spraakaanbieder** (Speech provider): *Uit* (Off), OpenAI, OpenAI-compatible or Mistral
+  (Voxtral). Anthropic is deliberately absent, because that setting could never work. On *Uit*
+  your chat provider is reused, which only resolves if that is OpenAI or a compatible server.
 - **API-sleutel voor spraak** (Speech API key), **Basis-URL** (compatible only), **Spraakmodel**
-  (Speech model, empty means `whisper-1`) and **Maandbudget audio (seconden)** (Monthly audio
-  budget in seconds). Audio is counted in seconds rather than tokens, so it gets its own budget.
+  (Speech model; empty means `whisper-1` on OpenAI) and **Maandbudget audio (seconden)** (Monthly
+  audio budget in seconds). Audio is counted in seconds rather than tokens, so it gets its own
+  budget. For meetings, pick a model that labels who spoke; the screen names which ones do.
 
-A microphone then appears beside **Snel toevoegen** on *Uren*: **Inspreken** (Dictate), speak,
-**Opname stoppen** (Stop recording), and the transcript lands in the field. Reading it back is
-the whole point — Dutch proper nouns are exactly what a recogniser gets wrong, and "Janssen"
-instead of "Jansen" silently matches no client at all.
+There are four places with a microphone, and each follows its own feature's checkbox:
 
-The microphone is drawn only when all four hold: a speech service is configured, **Urenhulp** is
-on, you may write time entries, and the browser is allowed to record. That last one requires
-`https://`. A recording runs to at most 60 seconds; too long, or an unsupported format, is a
-clean error rather than a half-transcribed line.
+| Where | Feature | At most |
+| --- | --- | --- |
+| **Snel toevoegen** on *Uren* | Urenhulp | 2 minutes |
+| **Inspreken** on *Taken*, and the **Aanpassen met schakl** box on a task | Taak inspreken, aanpassen en plannen | 5 minutes |
+| The **Assistent**'s input box | Assistent | 5 minutes |
+| Recording a meeting | Vergadertranscripten en verslagen | as long as the meeting |
+
+Whatever you dictate always lands as text in the field first. Reading it back is the whole
+point — Dutch proper nouns are exactly what a recogniser gets wrong, and "Janssen" instead of
+"Jansen" silently matches no client at all. In the assistant you send the message yourself; with
+a dictated task you read the draft before anything is created.
+
+The microphone is drawn only when a speech service is configured, that place's feature is on, you
+may do the thing (log hours, create tasks) and the browser is allowed to record. That last one
+requires `https://`. While recording, the counter runs with the cap beside it (`0:42 / 5:00`), and
+when the cap is reached the recording stops and the screen says so. Too long, or an unsupported
+format, is a clean error rather than a half-transcribed line.
 
 ## Budget and usage
 
@@ -123,12 +174,14 @@ schakl.
 
 | Permission | What it opens | Held by default |
 | --- | --- | --- |
-| `ai.use` | Using the AI features: assistant, writing assist, time assist, briefings and dictation | Administrator, Member |
+| `ai.use` | Using the AI features: assistant, writing assist, time assist, briefings, tasks and dictation | Administrator, Member |
 | `ai.settings.manage` | *Instellingen → AI*: provider, key, features, budget, test and usage | Administrator |
-| `time.entry.write` | Additionally required to dictate, because the transcript becomes a time entry | Administrator, Member (own entries) |
+| `time.entry.write` | Additionally required to dictate hours, because the transcript becomes a time entry | Administrator, Member (own entries) |
+| `tasks.task.create` / `tasks.task.write` | Additionally required to dictate a task or change one with schakl | Administrator, Member |
 
 Clients with a portal login are not given `ai.use`, on purpose: AI reads across the very records
-a client role is scoped away from.
+a client role is scoped away from. What the assistant records additionally needs exactly the
+permission the screen would ask for.
 
 ## Good to know
 
@@ -142,7 +195,9 @@ a client role is scoped away from.
   setting wins. It is never quietly defaulted to non-billable.
 - **Names are matched literally.** "Jansn" finds nothing. What you yourself logged in the last
   thirty days is weighed in, so Tuesday's client is usually recognised anyway.
-- **Dictation works only in the Snel toevoegen field** on *Uren* today, nowhere else.
+- **An e-mail cannot make the AI do what it may not.** For *E-mail in taak*, assignee, client,
+  project, status and client visibility are simply not among the fields the model may fill in,
+  and a link only comes along if it appears verbatim in the mail.
 - **AI-configuratie verwijderen** (Remove AI configuration) at the bottom of the page takes every
   AI feature away until a new key is entered. The usage history is kept.
 - **An expired licence stops generation**, while the settings screen and the usage history stay

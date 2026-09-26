@@ -1,0 +1,197 @@
+---
+title: Timeon
+description: "Houd uren en projecten gelijk met de urenregistratie Timeon zolang je overstap duurt: per soort een richting, gefactureerde uren beschermd, conflicten als beslissing."
+sidebar:
+  order: 14
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Overstappen van Timeon naar schakl. gebeurt zelden op één dag. Een tijd lang schrijft het team in
+allebei: uren worden daar nog geregistreerd en hier al gecorrigeerd, projecten worden hier
+aangemaakt terwijl er daar nog op geboekt wordt. Een importscript kan daar niets mee: het gaat maar
+één kant op en kan alleen aanmaken, dus een correctie die hier is gemaakt wordt overschreven of
+verdubbeld. Deze koppeling houdt beide kanten bij, zolang de overstap duurt.
+
+## Waar je het vindt
+
+- **Instellingen → Timeon** (ook te bereiken via *Instellingen → Integraties*): de sleutel en het
+  beleid, dus welke richting, hoe ver terug, wat er nooit overschreven mag worden en wanneer het
+  automatisch draait.
+- **Timeon-synchronisatie** (knop **Synchronisatie openen**): runs draaien, het resultaat lezen,
+  de koppelingen per uur en project, en de wachtrij **Wacht op jou**.
+
+Timeon staat bewust niet in het hoofdmenu en heeft geen kaart op de klantpagina: een overstap
+eindigt, en een menu-item voor een koppeling met een einddatum wijst op een dag naar een leeg
+scherm. Staan er conflicten open, dan zie je dat op de urenpagina, met het aantal erbij.
+
+De koppeling heeft de module **Uren** nodig. Projecten koppelen gaat beter met de module
+**Projecten** erbij, maar kan zonder: een uur boekt dan op een klant.
+
+## Aanzetten, veilig
+
+<Steps>
+1. Zet **Timeon** aan onder *Instellingen → Integraties* en open *Instellingen → Timeon*. Kies
+   **Organisatie koppelen**, geef de koppeling een **Naam** en plak de **API-sleutel** (in Timeon
+   te vinden onder Instellingen). De sleutel wordt versleuteld bewaard en nooit teruggetoond.
+   Beide richtingen staan na het koppelen uit.
+2. Druk op **Controleren**. Het antwoord noemt de organisatie en haar omvang ("7 medewerkers, 108
+   klanten, 159 projecten"). Een sleutel die werkt is het antwoord niet; welke administratie hij
+   opent wel.
+3. Heb je eerder uren uit Timeon geïmporteerd, zet dan **Niets aanraken tot en met** op de dag van
+   die import. Alles op of vóór die datum blijft ongemoeid.
+4. Open de synchronisatie en druk op **Alleen koppelen**. Die run koppelt wat al aan beide kanten
+   staat en schrijft niets, zodat "2814 gekoppeld, 3 alleen in Timeon" een feit is om naar te
+   kijken voordat je iets beslist.
+5. Kies onder **Wat er gesynchroniseerd wordt** per soort een richting en draai een **Proefrun**.
+   Lees het resultaat: wat er opgehaald, verstuurd, beschermd en overgeslagen zou worden.
+6. Pas daarna **Synchroniseren**, en pas daarna **Automatisch synchroniseren**.
+</Steps>
+
+<Aside type="tip" title="Draai hem twee keer voordat je hem gelooft">
+Een eerste run ziet er altijd goed uit: aan zijn tellers is niet te zien of een synchronisatie bij
+de tweede keer niets meer te doen heeft, of elke rij opnieuw gaat beslissen. Kijk dus ook naar de
+tweede run. Die hoort vrijwel niets te doen.
+</Aside>
+
+## Richtingen, per soort
+
+Uren en projecten krijgen elk hun eigen richting, omdat het eerlijke antwoord meestal per soort
+verschilt: halverwege een overstap haal je uren op (mensen schrijven daar nog) terwijl projecten
+naar Timeon gaan (die worden hier nu aangemaakt).
+
+| Richting | Wat het doet |
+| --- | --- |
+| **Uit** | Niets lezen, niets schrijven |
+| **Ophalen uit Timeon** | Timeon naar hier; wat je hier wijzigt, gaat niet terug |
+| **Sturen naar Timeon** | Hier naar Timeon; wat daar wijzigt, wordt niet overgenomen |
+| **Twee richtingen** | Beide kanten op; wie het laatst wijzigde wint, behalve als beide kanten wijzigden |
+
+Bovenaan de instellingen staat in zinnen **Wat deze koppeling doet**: welke kant op, hoe vaak,
+hoe ver terug en wat er beschermd is. Een instelling die je niet kunt voorlezen is er een die je
+niet kunt controleren.
+
+## Eerst koppelen, dan pas aanmaken
+
+De eerste run tegen een omgeving die al Timeon-historie heeft, bijvoorbeeld na een import, moet
+die uren **herkennen** en koppelen zonder iets te schrijven. Een synchronisatie die eerst aanmaakte
+zou drie jaar urenstaten verdubbelen, en daar bestaat geen ongedaan maken voor. Klanten worden
+gekoppeld op hun **klantnummer**, nooit op naam: twee klanten met dezelfde naam komen gewoon voor,
+en een koppeling op naam is juist dubbelzinnig waar hij het veiligst lijkt.
+
+## Het venster is de synchronisatie
+
+Timeon houdt niet bij wanneer een uur voor het laatst gewijzigd is, dus "wat is er sinds gisteren
+veranderd" is geen vraag die zijn API kan beantwoorden. Elke run leest daarom een periode opnieuw
+en vergelijkt: het **Venster (dagen terug)**, standaard 45 dagen. Lang genoeg voor een correctie
+die je maakt terwijl je de factuur van vorige maand klaarzet, kort genoeg om niet elke nacht drie
+jaar te lezen. Elke run noemt de periode die hij gelezen heeft, want een wijziging daarbuiten
+wordt niet opgemerkt. Wil je een oudere maand alsnog nalopen, kies dan bij de run zelf een
+periode.
+
+Een uur dat verdwenen lijkt, wordt pas verwijderd als de hele periode aantoonbaar compleet gelezen
+is én het uur ook bij navragen op nummer weg is. Een uur dat van 5 augustus naar 5 januari is
+verplaatst, ontbreekt in augustus en is niet verdwenen.
+
+## Als beide kanten wijzigden
+
+Elke koppeling onthoudt hoe het uur er aan beide kanten uitzag toen ze voor het laatst gelijk
+waren. Bewoog één kant, dan gaat die wijziging mee. Bewogen beide kanten, dan beslist
+**Als beide kanten gewijzigd zijn**:
+
+- **In de wachtrij zetten (niets overschrijven)**, de standaard: het uur komt onder
+  **Wacht op jou**, met de velden naast elkaar, en jij kiest **Hou deze versie**,
+  **Neem Timeon over** of **Mag verschillen**.
+- **schakl wint** of **Timeon wint**: een beslissing om iemands wijziging te overschrijven. Dat kan,
+  maar het wordt gekozen en niet afgeleid.
+
+Een beslissing wordt bewaard. **Mag verschillen** laat beide kanten staan, en dat verschil wordt
+daarna niet meer voorgelegd: een wachtrij die elke nacht dezelfde twaalf regels toont, leest na
+drie weken niemand meer. Een verschil dat geen enkele richting kan oplossen, zoals een
+Timeon-project zonder tegenhanger hier, komt niet per uur in de wachtrij maar één keer per run als
+melding die je kunt afhandelen: koppel het project, en bij de volgende run gaat de waarde vanzelf
+mee.
+
+## Projecten
+
+Naam, status, standaard factureerbaar en budget reizen mee in de richting die je voor projecten
+kiest. Met **Ontbrekende projecten aanmaken** wordt ook een project dat aan de andere kant nog niet
+bestaat daar aangemaakt, met budget en standaard factureerbaarheid, in welke richting projecten ook
+reizen. Een project dat al gekoppeld is blijft gekoppeld als het een andere naam krijgt.
+
+Bij **Twee richtingen** wordt per veld samengevoegd tegen wat de laatste keer gelijk was: een
+budget dat hier verhoogd is en een project dat in Timeon is afgesloten zijn twee wijzigingen van
+twee mensen, en allebei komen ze aan. Waar niet vast te stellen is welke kant wijzigde, vraagt de
+synchronisatiepagina welke kant klopt ("Wat hier staat klopt" of "Timeon klopt") en synchroniseert
+de projecten daarna één keer met dat antwoord. Er wordt niet gegokt.
+
+Timeon kent alleen een totaalbudget. Een budget dat hier per periode opnieuw begint, gaat daarom
+niet mee en wordt gemeld.
+
+## Wat nooit overschreven wordt
+
+| Instelling | Standaard | Wat het doet |
+| --- | --- | --- |
+| **Gefactureerde uren beschermen** | aan | Een uur dat op een factuur staat is een vastlegging. Het wordt nooit overschreven of verwijderd; het verschil wordt gemeld |
+| **Goedgekeurde uren beschermen** | uit | Ook hier goedgekeurde uren blijven ongemoeid |
+| **Niets aanraken tot en met** | leeg | Alles op of vóór die datum blijft buiten schot |
+| **Goedkeuringen terugsturen** | uit | Wat je hier goedkeurt, wordt ook in Timeon goedgekeurd |
+| **Ontbrekende medewerkers aanmaken** | uit | Uit: uren van iemand zonder account hier worden overgeslagen en genoemd, nooit op naam van een ander gezet |
+
+Een weigering per uur is een regel in het rapport; een sleutel die niet meer werkt is één melding
+en een run die niet gelukt is.
+
+## Automatisch
+
+**Automatisch synchroniseren** staat uit tot je het aanzet, want een taak die begint zodra je een
+sleutel plakt maakt koppelen onomkeerbaar. Daarna kies je **Hoe vaak**: **Elk uur**, **Om de
+zoveel uur**, **Elke dag** of **Elke werkdag**, met een **Tijdstip** op de klok van je organisatie.
+De overgang naar zomer- of wintertijd verschuift dat tijdstip niet, en het wordt gehaald binnen een
+kwartier, niet op de minuut.
+
+Tijdens een overstap schrijft het team de hele dag in beide systemen, dus elk uur is dan een
+redelijke keuze; als het verkeer weer één kant op gaat, is dagelijks genoeg. Wie vaker dan
+dagelijks synchroniseert leest bij de tussenrondes een korter stuk terug, en het volle venster bij
+de eerste run van de dag. Wanneer er voor het laatst automatisch gedraaid is en wanneer de volgende
+keer is, staat op de instellingen én op de synchronisatiepagina: een schema dat je niet ziet werken
+is er een dat je niet kunt vertrouwen.
+
+## Rechten
+
+| Recht | Wat het opent | Standaard |
+| --- | --- | --- |
+| `timeon.settings.manage` | De koppeling instellen: sleutel, richtingen, venster, beschermingen, schema | Beheerder |
+| `timeon.sync.run` | Runs draaien en volgen, koppelingen en wachtrij bekijken, een proefrun | Beheerder |
+| `timeon.sync.write` | Een run laten schrijven en conflicten beslissen | Beheerder |
+
+`timeon.sync.write` is nooit genoeg op zichzelf: een run die uren ophaalt schrijft uren, dus hij
+vraagt ook het schrijfrecht op uren.
+
+## Goed om te weten
+
+- **Niet mee**: contactpersonen, Timeon-facturen als document, taken, categorieën, kilometers,
+  tarieven en de apart factureerbare duur. Een uur waarvan in Timeon minder factureerbaar is dan
+  gewerkt, komt hier met de volle gewerkte duur.
+- **Versturen stuurt het hele uur.** Timeon vervangt een uur bij opslaan in zijn geheel. Kilometers,
+  onkosten en de categorie, waar schakl. geen veld voor heeft, worden daarom ongewijzigd
+  meegegeven: een correctie van de omschrijving mag geen declaratie wissen.
+- **De factuurstatus wordt bewaakt, niet overgenomen.** Een uur dat hier gefactureerd is wordt niet
+  herschreven, en een uur dat in Timeon op een factuur staat wordt niet vanaf hier gewijzigd. Een
+  opgehaald uur krijgt zelf geen factuurstatus mee. Dat klopt zolang er in Timeon niet meer
+  gefactureerd wordt; doe je dat wel, dan kan een uur hier nog een keer op **Nog te factureren**
+  verschijnen.
+- **Wat bewezen is.** Het lezen, het koppelen, een proefrun en echte ophaalruns zijn tegen een
+  echte Timeon-organisatie gedraaid. Versturen is alleen tegen een nabootsing getest. Doe voor de
+  eerste echte verzending een proefrun op een periode met **één** uur waar niemand last van heeft,
+  vergelijk dat uur in Timeon veld voor veld, en maak het venster pas daarna groter.
+- **Klaar met overstappen?** Zet beide richtingen op **Uit**, of verwijder de koppeling: de sleutel,
+  de koppelingen en de runs verdwijnen, de uren die al zijn overgenomen blijven staan. Trek daarna
+  de API-sleutel in bij Timeon.
+
+## Verder lezen
+
+<CardGrid>
+  <LinkCard title="Uren" href="/nl/docs/modules/time/" description="Waar de uren landen, en waar een open conflict zich meldt." />
+  <LinkCard title="Projecten" href="/nl/docs/modules/projects/" description="Budgetten en standaard factureerbaar, de velden die met Timeon meereizen." />
+  <LinkCard title="Facturatie" href="/nl/docs/modules/invoicing/" description="Waarom een gefactureerd uur een vastlegging is." />
+</CardGrid>

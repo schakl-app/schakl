@@ -17,14 +17,23 @@ de vraag wat er maandelijks doorloopt.
 
 **Abonnementen** in het hoofdmenu. Boven de sectie staan tabbladen: de lijst zelf,
 **Standaardabonnementen** en **Abonnementstypes**. Die twee zie je alleen met de bijbehorende
-beheerrechten; *Instellingen → Abonnementen* leidt naar hetzelfde scherm. De klantpagina en de
-projectpagina dragen elk een paneel **Abonnementen**.
+beheerrechten; *Instellingen → Abonnementen* leidt naar hetzelfde scherm. De klantpagina, de
+projectpagina en de websitepagina dragen elk een paneel **Abonnementen**.
+
+De lijst is verdeeld in secties per standaardabonnement, met de klant als eerste kolom; een klik
+op de klant opent het abonnement, de klantpagina zit in het ⋯-menu. Een **Volgende factuur** die
+al voorbij is, staat als verlopen deadline, en de tegel **Factuurdatum verstreken** opent *Nog te
+factureren* met alleen de abonnementen.
 
 Bovenaan de lijst staan **Maandelijks terugkerende inkomsten**, **Jaarlijks terugkerende
 inkomsten** en het aantal **Actieve abonnementen**. Eronder filter je op klant, op status en op je
 eigen typen.
 
 ## Een abonnement aanmaken
+
+Vanaf de klantpagina gaat het het snelst: de ＋ op het paneel **Abonnementen** opent hetzelfde
+formulier in een venster, met de klant al ingevuld en bij de projecten alleen die van deze klant.
+Na opslaan sta je nog steeds op de klantpagina. Vanuit de lijst werkt het zo:
 
 <Steps>
 1. Klik **Nieuw abonnement**, eventueel na een keuze bij **Vanuit standaardabonnement**: dat vult
@@ -37,8 +46,14 @@ eigen typen.
 5. Koppel bij **Gekoppelde projecten** de projecten waarvan de uren tegen de bundel tellen.
 </Steps>
 
-Een nieuw abonnement staat standaard op **Actief**. De **Volgende factuur** wordt dan zelf afgeleid
-(startdatum plus één periode) en is pas in het bewerkformulier zichtbaar en aan te passen. Een
+Een nieuw abonnement staat standaard op **Actief**. De **Volgende factuur** wordt dan zelf afgeleid:
+de eerstvolgende periodegrens vanaf de startdatum die nog moet komen, dus een afspraak die al jaren
+loopt begint niet met een stapel periodes uit het verleden. Pas in het bewerkformulier is die datum
+zichtbaar en aan te passen; een datum die je zelf invult wordt altijd gevolgd.
+
+Is er al gefactureerd in je vorige systeem, vul dan **Gefactureerd tot** in. Periodes die op of vóór
+die datum eindigen worden nergens meer aangeboden en nooit aangemaakt, ook niet door de
+nachtelijke run. Een
 abonnement dat via een import binnenkomt krijgt bewust de status **Concept**, zodat een bulkimport
 niet stilzwijgend gaat factureren.
 
@@ -57,7 +72,8 @@ bij **Doorvoeren** wordt er iets geschreven. Opgezegde abonnementen worden overg
 er direct op richt.
 
 <Aside type="caution">
-Bulk bewerken kan status, type en klant aanpassen, maar bewust niet de prijs. Een prijs gaat altijd
+Bulk bewerken kan status, type, klant, **Gefactureerd tot**, **Facturering** en **Notities op de
+factuur** aanpassen, maar bewust niet de prijs. Een prijs gaat altijd
 via **Prijsverhoging**, want die kent een ingangsdatum en respecteert de historie.
 </Aside>
 
@@ -80,7 +96,9 @@ zien wat er deze periode van de bundel verbruikt is en of je eroverheen zit.
 
 Eén keer per dag kijkt schakl. welke **actieve** abonnementen hun **Volgende factuur** bereikt
 hebben. Voor elk daarvan wordt de periode klaargezet met de prijs die op die datum gold, en schuift
-de volgende factuurdatum één periode door. Wat er vervolgens gebeurt, hangt af van **Automatisch
+de volgende factuurdatum één periode door. Ligt die datum meerdere periodes terug, dan worden ze in
+dezelfde run allemaal ingehaald, niet één per nacht. Wat de run gaat factureren staat vooraf al op
+*Nog te factureren*. Wat er vervolgens gebeurt, hangt af van **Automatisch
 factureren**:
 
 | Niveau | Wat er gebeurt |
@@ -93,6 +111,43 @@ factureren**:
 De cyclus schuift altijd door, ook op *Uit*: een periode die niemand factureerde blijft openstaan
 en wordt in de factuureditor aangeboden, dus je verliest hem niet. Een concept, een gepauzeerde en
 een opgezegde afspraak factureren niet.
+
+## Vooraf of achteraf
+
+Welke periode een factuur op zijn factuurdatum dekt, heet **Facturering**:
+
+- **Vooraf**: de periode ná de factuurdatum. Gebruikelijk voor hosting en licenties: je factureert
+  op 16 mei het jaar dat dan begint.
+- **Achteraf**: de periode vóór de factuurdatum. Gebruikelijk voor een retainer die wordt
+  gefactureerd als de maand geleverd is. Dit is de standaard.
+
+Je stelt het in op het **abonnementstype**. Een **standaardabonnement** mag het type overschrijven,
+en één **abonnement** mag voor zichzelf nog anders kiezen ("Volg het standaardabonnement of type"
+laat het weer volgen), voor een afspraak die met deze klant anders is gemaakt. Het abonnement
+toont welke kant het op factureert, en of dat op het abonnement zelf is ingesteld.
+
+<Aside type="caution">
+Omzetten leest de periodes opnieuw, ook de al gefactureerde: wat gefactureerd is blijft
+gefactureerd, maar de datums waarvoor het staat schuiven mee, zodat er niets dubbel wordt
+aangeboden. Het scherm meldt hoeveel abonnementen dat raakte.
+</Aside>
+
+Op de pagina van een abonnement staat het paneel **Gefactureerde termijnen**: welke periodes al op
+een factuur staan, en op welke.
+
+## Een abonnement aan een website koppelen
+
+Een hostingafspraak houdt een website online, en de website kan zeggen welke. Bij een type zet je
+**Dekt websites** aan (het meegeleverde type Hosting heeft het al aan); abonnementen van dat type
+kun je dan aan websites van dezelfde klant koppelen:
+
+- in het abonnementsformulier, bij **Websites**, dat alleen de websites van de gekozen klant
+  aanbiedt;
+- of op de websitepagina, in het paneel **Abonnementen**: kies een lopende afspraak van die klant,
+  of maak met ＋ een nieuwe aan met klant en website al ingevuld.
+
+Het abonnement toont onder **Dekt** welke websites erbij horen. Zet je het vinkje later uit bij het
+type, dan blijven bestaande koppelingen staan tot je ze zelf verwijdert.
 
 ## Standaardabonnementen en typen
 
@@ -118,20 +173,28 @@ ingevuld: `{{company_name}}`, `{{subscription_name}}`, `{{type}}`, `{{amount}}`,
 **Voorbeeld** onder het veld. In een standaardabonnement werken ze ook: daar worden ze ingevuld op
 elk abonnement dat het gebruikt.
 
+Notities zijn standaard intern. Zet je bij een standaardabonnement **Notities op de factuur** aan,
+dan worden ze onder de regels van elke factuur van zijn abonnementen afgedrukt, met de variabelen
+ingevuld op het moment dat de factuur ontstaat: een bedrag staat erin als `€ 25,00`, net als op
+de rest van de factuur, en een latere prijswijziging herschrijft geen verstuurde factuur. Eén
+abonnement kan het voor zichzelf anders instellen (*Op elke factuur afdrukken* of *Alleen
+intern*). Koppen, lijsten, tabellen en citaten uit de editor worden op papier netjes opgemaakt.
+
 ## Rechten
 
 Per rol in te stellen onder *Instellingen → Rollen*.
 
 | Recht | Wat het geeft | Standaard bij |
 | --- | --- | --- |
-| `subscriptions.subscription.read` | Abonnementen bekijken | Beheerder |
+| `subscriptions.subscription.read` | Abonnementen bekijken | Beheerder; Klant alleen de eigen |
 | `subscriptions.subscription.write` | Abonnementen beheren | Beheerder |
 | `subscriptions.subscription.delete` | Abonnementen verwijderen | Beheerder |
 | `subscriptions.type.manage` | Abonnementstypes beheren | Beheerder |
 | `subscriptions.template.manage` | Standaardabonnementen beheren | Beheerder |
 
 Lezen staat bewust niet standaard bij Medewerker: wat een klant betaalt is commercieel gevoelig. Je kunt
-het per rol verruimen. De rol Eigenaar heeft alles.
+het per rol verruimen. De rol Klant ziet in het portaal alleen de lopende abonnementen van zijn eigen
+bedrijf, zonder concepten en zonder je interne notities. De rol Eigenaar heeft alles.
 
 ## Goed om te weten
 

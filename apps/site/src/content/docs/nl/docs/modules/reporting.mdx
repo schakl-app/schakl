@@ -2,7 +2,7 @@
 title: Rapportage
 description: "De periodieke klantrapportage als document: cijfers bevroren in een momentopname, tekst in jullie eigen toon, een pdf in de huisstijl, en versturen met een mens ertussen."
 sidebar:
-  order: 17
+  order: 18
 ---
 
 import { Aside, Steps } from '@astrojs/starlight/components';
@@ -50,6 +50,41 @@ valt. Ze lezen dezelfde cijfers en verschillen alleen in tekst en in welke onder
 de website-audit, **Wat we deze maand oppakken** en **Open vragen** staan uitsluitend in de
 interne analyse. Die gaat nooit naar een klant en komt nooit in het klantportaal.
 
+## Wat een rapportage bevat
+
+De hoofdstukken komen uit de modules die aanstaan. De marketingmodule levert **Verkeerskanalen**,
+**Zoekmachines**, **Zoekwoordposities**, **Search Console**, **Verwijzend verkeer**,
+**Socialmediaverkeer**, **Conversies**, **Leads en formulierinzendingen**, **Zichtbaarheid in
+AI-zoekresultaten**, **Zichtbaarheid in AI-zoekmachines**, **Zichtbaarheid in AI-overzichten en
+AI-modus** en, alleen in de interne analyse, de **Website-audit**. Een hoofdstuk waar deze klant
+niets voor heeft, drukt niets af in plaats van een lege tabel:
+
+- **Leads en formulierinzendingen** leest het meetprofiel van de klant, net als het
+  leadsdashboard in [Marketing](/nl/docs/modules/marketing/). Zonder profiel geen hoofdstuk.
+- **Zichtbaarheid in AI-zoekmachines** zijn de AI Search-cijfers van SE Ranking, vorige maand
+  tegen de maand ervoor, alleen voor een klant bij wie je ze hebt aangezet.
+- **Zichtbaarheid in AI-overzichten en AI-modus** komt uit de geüploade export van het Generatieve
+  AI-rapport van Search Console, alleen als die er is.
+- **Zoekwoordposities** komen uit SE Ranking of uit Search Console, naar keuze per organisatie en
+  per klant (**Automatisch**, **SE Ranking**, **Search Console** of **Geen zoekwoordsectie**).
+
+Onder **Wat het rapport bevat** in het profiel van een klant zet je een hoofdstuk voor die ene
+klant aan of uit (**Altijd opnemen**, **Nooit opnemen**), zonder een eigen sjabloon; wat op
+**Volg sjabloon** blijft staan, volgt het sjabloon.
+
+## Hoe de tabellen lezen
+
+- **Een verandering staat naast het getal waar ze over gaat**: `1.240 ▲ +26,5%` in één cel, niet
+  een aparte kolom VERSCHIL aan het eind. De pijl is de richting waarin het getal bewoog, de kleur
+  is het oordeel, dus een gemiddelde positie die daalde krijgt een pijl omlaag in groen.
+- **Posities vergelijken met de maand ervoor**, niet met vorig jaar: waar een zoekterm een jaar
+  geleden stond, zegt niets over het werk van deze maand. Het hoofdstuk noemt die periode zelf
+  onder de tegels, en de kolommen dragen de dag waarop de positie gelezen is (**1 aug**,
+  **31 aug**).
+- **De kanalentabel heeft een kolom met doelen**: de belangrijke gebeurtenissen die elk kanaal
+  opleverde, met hun eigen verandering.
+- Dit gebeurt bij het afdrukken, dus rapportages die al gemaakt waren, lezen ook zo.
+
 ## Planning, toon en sjabloon
 
 Onder *Instellingen → Rapportage → Planning* staan de standaarden die elke klant erft: **Hoe
@@ -88,7 +123,8 @@ De status leest **Concept**, **Wordt gemaakt**, **Klaar om na te kijken**, **Ver
 
 Op het nakijkscherm lees je de samenvatting en elke sectiealinea. Je kunt de tekst met de hand
 aanpassen (die sectie krijgt het label **met de hand aangepast** en overleeft een regeneratie) of
-met **Opnieuw schrijven** één sectie opnieuw laten schrijven. **Het document** toont de preview
+met **Opnieuw schrijven** één sectie opnieuw laten schrijven. De tabellen dragen de getallen al,
+dus de tekst noemt er per alinea hooguit een paar en vertelt de rest in woorden. **Het document** toont de preview
 zoals de pdf hem afdrukt, **Pdf** downloadt hem, en bovenaan staat **Goed om te weten voordat je
 verstuurt**: de waarschuwingen van deze run, die de klant nooit ziet.
 
@@ -97,6 +133,10 @@ publiceren** maakt hem zichtbaar in het klantportaal, staat los van mailen en ka
 De begeleidende mail herschrijf je onder *Instellingen → E-mail*, sjabloon **Maandrapportage**,
 met de variabelen `{brand}`, `{client}`, `{contact}`, `{period}`, `{sender_name}` en `{link}`.
 De afzendernaam komt van de verantwoordelijke van die klant.
+
+Een klant die zijn rapportage in het portaal opent, krijgt het document: geen status, geen
+waarschuwingen, geen aantal waarschuwingen en geen nakijklink. Alleen gepubliceerde
+klantrapportages komen daar terecht.
 
 ## Rechten
 
@@ -129,11 +169,6 @@ knop om te versturen bij degene blijft die de relatie heeft.
   zonder tekst, met een waarschuwing die dat zegt.
 - **Bij een verlopen licentie gaat de module alleen-lezen** en staat de planning stil; al gemaakte
   rapportages blijven openen en downloaden.
-
-<Aside type="caution" title="Nog niet in een uitgebrachte versie">
-De rapportagemodule is nieuw en zit nog niet in een uitgebrachte versie: hij komt na v0.21.0. Op
-een installatie die op die versie draait, staat het menu-item *Rapportages* er dus nog niet.
-</Aside>
 
 ## Verder lezen
 

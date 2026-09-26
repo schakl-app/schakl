@@ -10,25 +10,29 @@
     "color": "#21759B"
   },
   "tagline": {
-    "nl": "Eén wachtwoord per website, vier deuren",
-    "en": "One password per website, four doors"
+    "nl": "Eén wachtwoord per website: cijfers, inhoud en agents",
+    "en": "One password per website: figures, content and agents"
   },
   "summary": {
-    "nl": "Eén WordPress-applicatiewachtwoord per website opent vier oppervlakken op dezelfde host: de gewone REST-API, de Abilities-API van WordPress 6.9, de MCP-server als die plugin er staat, en de eigen route van Rank Math voor AI-zichtbaarheid. Die laatste levert de vijfde marketingbron: hoe vaak een merk in AI-antwoorden genoemd en gelinkt wordt.",
-    "en": "One WordPress Application Password per website opens four surfaces on the same host: the ordinary REST API, WordPress 6.9's Abilities API, the MCP server where that plugin is installed, and Rank Math's own AI Visibility route. The last of those supplies the fifth marketing source: how often a brand is named and linked in AI answers."
+    "nl": "Eén WordPress-applicatiewachtwoord per website opent dezelfde host op meerdere manieren: de gewone REST-API, de Abilities-API van WordPress 6.9, de MCP-server als die plugin er staat, en de eigen route van Rank Math voor AI-zichtbaarheid. Die laatste levert een marketingbron: hoe vaak een merk in AI-antwoorden genoemd en gelinkt wordt. Onder hetzelfde wachtwoord leest en bewerkt een agent via de MCP-sectie wordpress de pagina's, media, formulieren en abilities van elke gekoppelde site, met de site als parameter in plaats van als eigen gereedschap.",
+    "en": "One WordPress Application Password per website opens the same host several ways: the ordinary REST API, WordPress 6.9's Abilities API, the MCP server where that plugin is installed, and Rank Math's own AI Visibility route. The last of those supplies a marketing source: how often a brand is named and linked in AI answers. Under the same password an agent reads and edits the pages, media, forms and abilities of every connected site through the wordpress MCP section, with the site as a parameter rather than a tool of its own."
   },
   "highlights": {
     "nl": [
-      "De koppeling hangt aan de website, niet aan de organisatie: elk klantsite heeft zijn eigen wachtwoord",
-      "Vijf losse proeven bij het controleren, en geen daarvan bepaalt de uitslag van de andere",
+      "De koppeling hangt aan de website, niet aan de organisatie: elke klantsite heeft zijn eigen wachtwoord",
+      "Zes losse proeven bij het controleren, en geen daarvan bepaalt de uitslag van de andere",
       "Rank Math AI-zichtbaarheid als marketingbron: score, vermeldingen, bronvermeldingen, sentiment en gemiddelde plaats",
-      "Elk cijfer draagt zijn eigen uitleg op het scherm, want geen marketeer kende deze vijf al"
+      "Eén MCP-sectie voor elke site: pagina's, berichten, media, Contact Form 7, abilities en een begrensde doorgang naar de hele REST-API",
+      "Met de breik. Bridge-plugin ook ACF-paginaopbouw, verborgen berichttypes, uploads en WPML-vertalingen",
+      "Wie een concept mag schrijven mag nog geen live pagina wijzigen: het publiek bepaalt het recht"
     ],
     "en": [
       "The connection hangs off the website, not off the organisation: every client site has its own password",
-      "Five independent probes on verify, and none of them decides the verdict of the others",
+      "Six independent probes on verify, and none of them decides the verdict of the others",
       "Rank Math AI Visibility as a marketing source: score, mentions, citations, sentiment and average rank",
-      "Every figure carries its own sentence on screen, because no marketeer already knew these five"
+      "One MCP section for every site: pages, posts, media, Contact Form 7, abilities and a bounded passthrough to the whole REST API",
+      "With the breik. Bridge plugin also ACF page builders, hidden post types, uploads and WPML translations",
+      "Who may write a draft may not thereby change a live page: the audience decides the permission"
     ]
   },
   "where": {
@@ -38,20 +42,22 @@
   "docs": "/docs/integrations/wordpress/",
   "page": {
     "lead": {
-      "nl": "De vraag was er twee: lees de AI-zichtbaarheid van Rank Math in de marketingmodule, en houd een WordPress-inlog per website vast zodat we die site later ook op andere manieren kunnen aansturen. Dat bleek hetzelfde wachtwoord tegen dezelfde host te zijn, en daarom is het één koppeling geworden in plaats van twee.",
-      "en": "The ask was two things: read Rank Math's AI Visibility into the marketing module, and hold a WordPress login per website so the site can be driven other ways later. Those turned out to be the same credential against the same host, which is why this is one integration rather than two."
+      "nl": "De vraag was er twee: lees de AI-zichtbaarheid van Rank Math in de marketingmodule, en houd een WordPress-inlog per website vast zodat we die site later ook op andere manieren kunnen aansturen. Dat bleek hetzelfde wachtwoord tegen dezelfde host te zijn, en daarom is het één koppeling geworden in plaats van twee. Dat later is inmiddels nu: dezelfde inlog is waarmee een agent de inhoud van veertig klantsites leest en bewerkt.",
+      "en": "The ask was two things: read Rank Math's AI Visibility into the marketing module, and hold a WordPress login per website so the site can be driven other ways later. Those turned out to be the same credential against the same host, which is why this is one integration rather than two. That later has arrived: the same login is how an agent reads and edits the content of forty client sites."
     },
     "requirements": {
       "nl": [
         "Een WordPress-site van 6.9 of nieuwer voor de Abilities-API (ouder werkt gewoon, alleen die ene deur blijft dicht)",
         "Een applicatiewachtwoord van een gebruiker met beheerdersrechten op die site",
         "Voor de AI-zichtbaarheid: de plugin Rank Math met de module AI Visibility aan, en een site die aan een Rank Math-account met Content AI is gekoppeld",
+        "Voor paginaopbouw met ACF-repeaters, berichttypes die niet in REST staan, uploads en WPML: de plugin breik. Bridge op de site",
         "Het recht wordpress.site.manage om een site te koppelen; standaard alleen beheerders"
       ],
       "en": [
         "A WordPress site on 6.9 or newer for the Abilities API (older works fine, only that one door stays shut)",
         "An Application Password from a user with administrator rights on that site",
         "For AI Visibility: the Rank Math plugin with its AI Visibility module active, and a site connected to a Rank Math account with Content AI",
+        "For ACF repeater page builders, post types not shown in REST, uploads and WPML: the breik. Bridge plugin on the site",
         "The wordpress.site.manage permission to connect a site; admin only by default"
       ]
     },
@@ -60,7 +66,7 @@
         "Maak in WordPress een <strong>applicatiewachtwoord</strong> aan onder <em>Gebruikers → Profiel</em>, onderaan. Geef het een naam waaraan je het later herkent. Let op wat dit is: elke route van Rank Math voor AI-zichtbaarheid vraagt om <code>manage_options</code>, dus dit wachtwoord hoort bij een beheerder. Een alleen-lezen variant bestaat niet.",
         "Zet <strong>WordPress</strong> aan onder <strong>Instellingen → Integraties</strong>. Hij heeft de module Websites nodig, want daar hangt de koppeling aan.",
         "Open de website in schakl. en vul op de kaart <strong>WordPress</strong> het adres van de site, de gebruikersnaam en het applicatiewachtwoord in. Het wachtwoord gaat versleuteld de opslag in en komt nooit meer terug uit de API, uit een logregel of uit het wijzigingsspoor.",
-        "Druk op <strong>Controleren</strong>. Er lopen vijf losse proeven: bereikt het wachtwoord de REST-API, is de gebruiker beheerder, kent deze site de Abilities-API, antwoordt Rank Math op AI-zichtbaarheid, en staat de MCP-plugin er. Elke uitkomst blijft staan met de eigen foutregel van de site erbij, onvertaald, want dat is een citaat.",
+        "Druk op <strong>Controleren</strong>. Er lopen zes losse proeven: bereikt het wachtwoord de REST-API, is de gebruiker beheerder, kent deze site de Abilities-API, antwoordt Rank Math op AI-zichtbaarheid, staat de MCP-plugin er, en staat de breik. Bridge-plugin er. Elke uitkomst blijft staan met de eigen foutregel van de site erbij, onvertaald, want dat is een citaat.",
         "Wil je de AI-zichtbaarheid op het dashboard, koppel dan onder <strong>Marketing</strong> op de klant een bron van het type <strong>Rank Math</strong> aan deze website. Zonder gekoppelde website weigert dat meteen, in plaats van pas de volgende ochtend als een rode regel.",
         "Vanaf dan haalt de nachtelijke synchronisatie één momentopname per dag op en groeit de trendlijn vanzelf."
       ],
@@ -68,7 +74,7 @@
         "In WordPress, create an <strong>Application Password</strong> under <em>Users → Profile</em>, at the bottom. Give it a name you will recognise later. Note what this is: every Rank Math AI Visibility route requires <code>manage_options</code>, so this password belongs to an administrator. There is no read-only shape to ask for.",
         "Switch <strong>WordPress</strong> on under <strong>Instellingen → Integraties</strong> (Settings → Integrations). It needs the Websites module, because that is what the connection hangs off.",
         "Open the website in schakl. and fill in the site address, the username and the application password on the <strong>WordPress</strong> card. The password is stored encrypted and never comes back out of the API, a log line or the activity trail.",
-        "Press <strong>Controleren</strong> (Verify). Five independent probes run: does the password reach the REST API, is the user an administrator, does this site know the Abilities API, does Rank Math answer on AI Visibility, and is the MCP plugin installed. Every outcome is kept, carrying the site's own error text untranslated, because it is a quote.",
+        "Press <strong>Controleren</strong> (Verify). Six independent probes run: does the password reach the REST API, is the user an administrator, does this site know the Abilities API, does Rank Math answer on AI Visibility, is the MCP plugin installed, and is the breik. Bridge plugin installed. Every outcome is kept, carrying the site's own error text untranslated, because it is a quote.",
         "For AI Visibility on the dashboard, link a source of type <strong>Rank Math</strong> to this website under <strong>Marketing</strong> on the client. Without a connected website it is refused straight away, rather than turning up as a red line the next morning.",
         "From then on the nightly sync takes one snapshot a day and the trend line grows by itself."
       ]
@@ -104,8 +110,8 @@
           "en": "A probe is evidence, never the gate"
         },
         "body": {
-          "nl": "De vijf proeven bepalen elkaars uitslag niet, want in het echt zijn die toestanden onafhankelijk: Rank Math ontbreekt gewoon vaak op een site waarvan de berichten-API kerngezond is, en MCP op een site waar Rank Math prima werkt. Een lezing die lukt weegt zwaarder dan een controle die weigert: een wachtwoord dat de gewone REST-API haalde is actief, ook als de andere vier niets opleverden, en pas als álle vijf weigeren heet de inlog geweigerd. Onbereikbaar en geen-WordPress zijn bovendien iets anders dan geweigerd, want die twee zeggen niets over het wachtwoord, en ze als inlogfout melden stuurt iemand een nieuw wachtwoord maken dat nooit fout was. Elk kruisje draagt de eigen fouttekst van de site, want een kruisje zonder uitleg is de enige toestand waar niemand iets mee kan.",
-          "en": "None of the five probes gates another, because in reality those states are independent: Rank Math is routinely absent from a site whose posts API is perfectly healthy, and MCP from a site where Rank Math works fine. A read that succeeds outranks a probe that refuses: a credential that reached the ordinary REST API is active even if the other four failed, and only one refused by every probe is called refused. Unreachable and not-WordPress are separate from refused as well, because neither says anything about the password, and reporting them as auth failures sends somebody off to re-mint a credential that was never wrong. Every ✗ carries the site's own error text, because a ✗ with no explanation is the one state nobody can act on."
+          "nl": "De zes proeven bepalen elkaars uitslag niet, want in het echt zijn die toestanden onafhankelijk: Rank Math ontbreekt gewoon vaak op een site waarvan de berichten-API kerngezond is, en MCP op een site waar Rank Math prima werkt. Een lezing die lukt weegt zwaarder dan een controle die weigert: een wachtwoord dat de gewone REST-API haalde is actief, ook als de andere niets opleverden, en pas als álle proeven weigeren heet de inlog geweigerd. Onbereikbaar en geen-WordPress zijn bovendien iets anders dan geweigerd, want die twee zeggen niets over het wachtwoord, en ze als inlogfout melden stuurt iemand een nieuw wachtwoord maken dat nooit fout was. Elk kruisje draagt de eigen fouttekst van de site, want een kruisje zonder uitleg is de enige toestand waar niemand iets mee kan.",
+          "en": "None of the six probes gates another, because in reality those states are independent: Rank Math is routinely absent from a site whose posts API is perfectly healthy, and MCP from a site where Rank Math works fine. A read that succeeds outranks a probe that refuses: a credential that reached the ordinary REST API is active even if the others failed, and only one refused by every probe is called refused. Unreachable and not-WordPress are separate from refused as well, because neither says anything about the password, and reporting them as auth failures sends somebody off to re-mint a credential that was never wrong. Every ✗ carries the site's own error text, because a ✗ with no explanation is the one state nobody can act on."
         }
       },
       {
@@ -143,6 +149,70 @@
             "Average rank: the brand's mean place among the brands an answer names, where 1 is best"
           ]
         }
+      },
+      {
+        "heading": {
+          "nl": "De site is een parameter, geen gereedschap",
+          "en": "The site is a parameter, never a tool"
+        },
+        "body": {
+          "nl": "Veertig klanten met elk hun eigen WordPress, bereikbaar voor het team vanuit de MCP-server van schakl., ook op sites die zelf geen abilities registreren. Een gereedschap per site zou een lijst opleveren die per klant verschilt, en een chatclient stopt elk gereedschap bij elke beurt in de context van het model. Dus zijn het gewone routes op de WordPress-koppeling met de site als parameter, en is de MCP-sectie wordpress hetzelfde rijtje gereedschappen of je nu vier sites beheert of vierhonderd. Wat per site verschilt (welke plugins, welke berichttypes, welke abilities) wordt beantwoord door de samenvatting van die site, niet in de gereedschapslijst gecodeerd. Wat niet in een vaste route past gaat via een begrensde doorgang naar de hele REST-API van de site: WPML, LiteSpeed, FileBird en wat er morgen bij komt.",
+          "en": "Forty clients each with their own WordPress, reachable by the team from schakl.'s MCP server, including sites that register no abilities of their own. A tool per site would be a list that differs per client, and a chat client puts every tool in the model's context on every turn. So these are ordinary routes on the WordPress connection with the site as a parameter, and the wordpress MCP section is the same set of tools whether you look after four sites or four hundred. What differs per site (which plugins, which post types, which abilities) is answered by that site's summary, never encoded in the tool list. Whatever no fixed route covers goes through a bounded passthrough to the site's whole REST API: WPML, LiteSpeed, FileBird and whatever arrives tomorrow."
+        },
+        "bullets": {
+          "nl": [
+            "Samenvatting per site: WordPress- en PHP-versie, berichttypes, plugin-namespaces, formulieren, abilities en of de site meertalig is",
+            "Pagina's, berichten en elk eigen berichttype lezen en bewerken, inclusief concepten, ACF-velden en de WPML-taal",
+            "Media lezen, zodat een ACF-afbeeldings-id iets betekent",
+            "Contact Form 7: sjabloon, veldnamen, beide mails en de meldingen",
+            "Abilities opsommen en uitvoeren; een ability die zichzelf niet als alleen-lezen aanmerkt telt als schrijven",
+            "De doorgang: GET voor elk teamlid, schrijven alleen voor een beheerder, gebruikers, plugins, thema's en instellingen voor niemand, en een antwoord dat bij 256 KB zegt wat het wegliet"
+          ],
+          "en": [
+            "A summary per site: WordPress and PHP version, post types, plugin namespaces, forms, abilities and whether the site is multilingual",
+            "Read and edit pages, posts and any custom post type, drafts, ACF fields and the WPML language included",
+            "Read media, so an ACF image id means something",
+            "Contact Form 7: the template, field names, both mails and the messages",
+            "List and run abilities; an ability that does not mark itself read-only counts as a write",
+            "The passthrough: GET for every member, writes for an admin only, users, plugins, themes and settings for nobody, and an answer that says what it left out at 256 KB"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Het publiek bepaalt het recht",
+          "en": "The audience decides the permission"
+        },
+        "body": {
+          "nl": "WordPress heeft geen testomgeving: een wijziging aan een gepubliceerde pagina is meteen de uitzending. De rechten zijn daarom niet verdeeld naar welk veld je aanraakt, maar naar wie het resultaat ziet. Een medewerker schrijft concepten en bewerkt wat nog niet live staat; alles wat een bezoeker kan zien bewerken, of een concept live zetten, is een apart recht dat standaard bij de beheerder ligt. Dat wordt besloten door het record te lezen vóór de wijziging, en de weigering komt voordat de site iets gevraagd wordt. Formulieren, menu's, optiepagina's en vertaalde teksten zijn live zodra ze opslaan en vallen dus onder publiceren, en verwijderen is weer een eigen recht, zodat een sleutel voor een assistent kan zeggen: mag bewerken, nooit verwijderen. Elke schrijfactie komt als regel in het wijzigingsspoor van de site bij schakl., want de WordPress van de klant legt niets over ons vast.",
+          "en": "WordPress has no staging: an edit to a published page is the broadcast. So the permissions are not split by which field you touch but by who sees the result. A member writes drafts and edits what is not yet live; editing anything a visitor can see, or setting a draft live, is a separate permission that sits with the admin by default. That is decided by reading the record before the write, and the refusal comes before the site is asked anything. Forms, menus, options pages and translated strings are live the moment they save and so fall under publish, and deleting is its own permission again, so a key held by an assistant can say: may edit, never delete. Every write is a line in the site's activity trail in schakl., because the client's WordPress records nothing about us."
+        }
+      },
+      {
+        "heading": {
+          "nl": "breik. Bridge: de paginaopbouw van de site zelf",
+          "en": "breik. Bridge: the site's own page builder"
+        },
+        "body": {
+          "nl": "Een pagina die uit een ACF-repeater van getypte blokken bestaat, met per bloktype een handvol zichtbare velden uit dertig, is via de REST-integratie van ACF niet te bewerken: die validatie negeert de voorwaardelijke logica, een repeater moet in zijn geheel terug en slaat op positie op, een berichttype dat niet in REST staat bestaat daar niet, en uploaden gaat alleen als multipart. Dat is niet vanaf de kant van het wachtwoord op te lossen, dus doet een WordPress-plugin het op de site: breik. Bridge. Die kent het schema van de veldgroepen inclusief de voorwaarden, leest per blok alleen de velden die de editor toont, valideert een wijziging zoals de editor dat doet en meldt elk probleem met het volledige pad, bewerkt één blok zonder de rest te raken, neemt een afbeelding mee als URL of base64, en regelt WPML: talen, een gekoppelde vertaling met vertaalde verwijzingen, en String Translation. schakl. bereikt de plugin via 22 bridge-routes onder dezelfde inlog, dezelfde 22 gereedschappen in de sectie wordpress hoeveel sites er ook zijn. Staat de plugin er niet, dan zegt de aanroep dat met de naam van de plugin erbij; de controle op de websitepagina toont de geïnstalleerde versie.",
+          "en": "A page built as an ACF repeater of typed blocks, each block type showing a handful of fields out of thirty, cannot be edited through ACF's REST integration: its validation ignores conditional logic, a repeater has to go back whole and saves by position, a post type not shown in REST does not exist there, and uploading only takes multipart. None of that is fixable from the password's side, so a WordPress plugin does it on the site: breik. Bridge. It knows the field groups' schema including the conditions, reads per block only the fields the editor shows, validates a change the way the editor does and reports every problem with its full path, edits one block without touching the others, takes an image as a URL or base64, and handles WPML: languages, a linked translation with its references translated, and String Translation. schakl. reaches the plugin through 22 bridge routes under the same login, the same 22 tools in the wordpress section however many sites there are. Where the plugin is not installed the call says so and names the plugin; the verify on the website page shows the installed version."
+        },
+        "bullets": {
+          "nl": [
+            "Het schema: welke velden er zijn, welke keuzes ze hebben en wanneer de editor ze verbergt",
+            "Records lezen, aanmaken, bewerken per pad en verwijderen, ook van berichttypes die niet in REST staan",
+            "Media uploaden als JSON, termen, ACF-optiepagina's en menu's",
+            "WPML: talen, vertalingen aanmaken of koppelen, en String Translation",
+            "Een weigering van de plugin komt ongewijzigd door, met het pad naar het veld en de rij"
+          ],
+          "en": [
+            "The schema: which fields exist, which choices they carry and when the editor hides them",
+            "Read, create, edit by path and delete records, including post types not shown in REST",
+            "Upload media as JSON, terms, ACF options pages and menus",
+            "WPML: languages, creating or connecting translations, and String Translation",
+            "A refusal from the plugin comes through unchanged, with the path to the field and the row"
+          ]
+        }
       }
     ],
     "permissions": [
@@ -155,6 +225,56 @@
         "key": "wordpress.site.read",
         "nl": "Zien of de site van deze klant gekoppeld is en wat de laatste controle opleverde. Ook voor medewerkers, want dat is een vraag die een accountmanager tijdens gewoon werk stelt.",
         "en": "See whether this client's site is connected and what the last verify found. Members too, because that is a question an account manager asks while doing ordinary work."
+      },
+      {
+        "key": "wordpress.content.read",
+        "nl": "Pagina's, berichten, media en bridge-records lezen op een gekoppelde site. Standaard beheerder en medewerker.",
+        "en": "Read pages, posts, media and bridge records on a connected site. Admin and member by default."
+      },
+      {
+        "key": "wordpress.content.write",
+        "nl": "Concepten schrijven en bewerken wat nog niet live staat, en media uploaden. Standaard beheerder en medewerker.",
+        "en": "Write drafts, edit what is not yet live, and upload media. Admin and member by default."
+      },
+      {
+        "key": "wordpress.content.publish",
+        "nl": "Alles bewerken wat een bezoeker ziet, iets live zetten, en optiepagina's, menu's en vertaalde teksten wijzigen. Standaard alleen beheerder.",
+        "en": "Edit anything a visitor sees, set something live, and change options pages, menus and translated strings. Admin only by default."
+      },
+      {
+        "key": "wordpress.content.delete",
+        "nl": "Records naar de prullenbak verplaatsen of verwijderen via de breik. Bridge. Standaard alleen beheerder.",
+        "en": "Trash or delete records through the breik. Bridge. Admin only by default."
+      },
+      {
+        "key": "wordpress.forms.read",
+        "nl": "Contact Form 7-formulieren lezen. Standaard beheerder en medewerker.",
+        "en": "Read Contact Form 7 forms. Admin and member by default."
+      },
+      {
+        "key": "wordpress.forms.write",
+        "nl": "Contact Form 7-formulieren bewerken; een formulier is live zodra het opslaat. Standaard alleen beheerder.",
+        "en": "Edit Contact Form 7 forms; a form is live the moment it saves. Admin only by default."
+      },
+      {
+        "key": "wordpress.ability.read",
+        "nl": "Abilities opsommen en de abilities uitvoeren die zichzelf als alleen-lezen aanmerken. Standaard beheerder en medewerker.",
+        "en": "List abilities and run the ones that mark themselves read-only. Admin and member by default."
+      },
+      {
+        "key": "wordpress.ability.run",
+        "nl": "Elke ability uitvoeren, ook schrijvende. Standaard alleen beheerder.",
+        "en": "Run any ability, writing ones included. Admin only by default."
+      },
+      {
+        "key": "wordpress.rest.read",
+        "nl": "Alles lezen via de REST-API van een gekoppelde site. Standaard beheerder en medewerker.",
+        "en": "Read anything through a connected site's REST API. Admin and member by default."
+      },
+      {
+        "key": "wordpress.rest.write",
+        "nl": "Schrijven via de REST-API van de site, met gebruikers, plugins, thema's en instellingen voor iedereen uitgesloten. Standaard alleen beheerder, en nooit op een standaardsleutel.",
+        "en": "Write through the site's REST API, with users, plugins, themes and settings excluded for everybody. Admin only by default, and never on a default key."
       }
     ],
     "limits": {
@@ -164,7 +284,9 @@
         "Rank Math houdt geen geschiedenis bij. Elk pad levert alleen de laatste stand, dus de trendlijn bestaat doordat wij momentopnamen bewaren. Er wordt één rij per dag geschreven en geen reeks identieke rijen, want een vlakke lijn die op meten lijkt is erger dan geen lijn.",
         "Analyses draaien op het tempo van het abonnement van Rank Math, standaard wekelijks. Twee opeenvolgende momentopnamen mogen dus gewoon hetzelfde getal bevatten; wanneer er voor het laatst geanalyseerd is, reist mee zodat een rapportage kan zeggen wat het eigenlijk vergelijkt.",
         "Vermeldingen en bronvermeldingen lijken tellingen en zijn het niet: het zijn lopende totalen op het moment van de laatste analyse. Ze worden daarom gemiddeld en nooit opgeteld.",
-        "Schrijven naar WordPress zit er nog niet in: geen merk aanmaken, geen vragen bewerken. Alleen lezen."
+        "Rank Math wordt alleen gelezen: geen merk aanmaken en geen vragen bewerken. Schrijven naar de site zelf gaat via de MCP-routes hierboven, onder hun eigen rechten.",
+        "Media uploaden via de gewone wp/v2-route kan niet, want die neemt alleen multipart aan en geen MCP-gereedschap kan dat versturen. Uploaden gaat via de breik. Bridge.",
+        "De breik. Bridge is op een testcontainer van begin tot eind gedraaid, nog niet op de productiesite van een klant. De WPML-kant is geschreven naar de documentatie van WPML en heeft nog geen echte site gezien."
       ],
       "en": [
         "This is a table of administrator credentials for client sites. That is a bigger blast radius than a Cloudflare token scoped to DNS reads, so the manage permission is admin only and neither permission ever goes to the Client role.",
@@ -172,7 +294,9 @@
         "Rank Math keeps no history. Every upstream path answers \"latest\" only, so the trend line exists because we store snapshots. One row is written per day rather than a range of identical rows, because a flat line that looks like measurement is worse than no line.",
         "Analyses run on the cadence of the Rank Math plan, weekly by default. Two consecutive snapshots may legitimately carry the same number; when it was last analysed travels with the figures so a report can say what it is actually comparing.",
         "Mentions and citations look like counts and are not: they are running totals as at the last analysis. So they are averaged and never summed.",
-        "Writing to WordPress is not included yet: no creating a brand, no editing prompts. Reading only."
+        "Rank Math is read only: no creating a brand and no editing prompts. Writing to the site itself goes through the MCP routes above, under their own permissions.",
+        "Uploading media through the ordinary wp/v2 route is not possible, because it takes multipart only and no MCP tool can send that. Uploads go through the breik. Bridge.",
+        "The breik. Bridge has run end to end on a test container, not yet on a client's production site. Its WPML half is written from WPML's documentation and has not met a real site yet."
       ]
     }
   }

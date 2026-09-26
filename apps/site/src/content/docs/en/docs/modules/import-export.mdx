@@ -1,8 +1,8 @@
 ---
 title: Import & export
-description: "Move clients, contacts, projects, tasks, timesheets, subscriptions, domains, websites and hosting in and out of schakl. as CSV, Excel or a pasted table."
+description: "Move clients, contacts, projects, tasks, timesheets, subscriptions, invoices, domains, websites and hosting in and out of schakl. as CSV, Excel or a pasted table."
 sidebar:
-  order: 26
+  order: 27
 ---
 
 You never have to retype anything. If your clients live in a spreadsheet, a bookkeeping package
@@ -11,7 +11,10 @@ column means, and see exactly what will happen before it happens.
 
 Everything sits together under *Instellingen → Import & export* (Settings → Import & export). The
 lists themselves carry the same buttons, beside their column picker, where the export follows the
-filters you have applied.
+filters you have applied. The invoice list is the exception: it carries only **Exporteren**
+(export), and importing invoices happens under *Instellingen → Facturatie → Bestaande facturen
+overnemen* (bringing existing invoices in), because that is a one-time move rather than a way of
+working the list.
 
 ## What you can import
 
@@ -62,6 +65,7 @@ differs per type:
 | Domains | the domain name, normalised (a pasted URL is reduced to its root first) |
 | Websites | the domain the site sits on; the client comes from that domain |
 | Hosting | name |
+| Invoices | invoice number |
 | Domain rates | always added; a row for a date that already exists is corrected in place |
 | Tasks, timesheets | always created |
 
@@ -70,6 +74,17 @@ arriving as a second company. If your file carries both, you can choose which on
 
 Where the table says "always created" there is no honest key to update on: task titles and time
 entries legitimately repeat. Exporting works for all of these either way.
+
+### Invoices from another package
+
+An invoice import brings in invoices issued elsewhere, from Moneybird, SnelStart, e-Boekhouden or
+a spreadsheet. Each row is one invoice with its totals, and those totals are taken as they stand;
+subtotal plus VAT must still equal the total to the cent. The payment columns describe a state: a
+paid amount needs a date and becomes an ordinary payment row. On an invoice that already exists a
+new file may only raise the paid amount, and an amount that differs from what is fixed is refused;
+an export you put back unchanged therefore changes nothing. All of those rules already run at
+**Check file**, naming the row and the column. You attach the original PDFs afterwards; see
+[Invoicing](/en/docs/modules/invoicing/).
 
 ## Check first, then import
 

@@ -359,6 +359,17 @@ const title = `${settings.brandName} · ${i.name}`;
     color: var(--muted);
   }
 
+  /* A grid or flex item's minimum width is its longest word, so one permission key, setting or URL
+     in a bullet or paragraph widened the whole column past a phone's edge. Let long tokens break instead. */
+  .ip__block p,
+  .check-list li,
+  .ip__steps li,
+  .ip__perms li,
+  .ip__limits li {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
   .ip__steps {
     list-style: none;
     counter-reset: step;

@@ -1,7 +1,7 @@
 {
   "name": "Maatwerkvelden",
   "slug": "customfields",
-  "order": 170,
+  "order": 180,
   "icon": "🎚️",
   "lucide": "customfields",
   "demo": "customfields",
@@ -77,8 +77,8 @@
           "en": "Everywhere, in your language"
         },
         "body": {
-          "nl": "Eén generieke veldweergave rendert je definities in de invoerformulieren, op de detailpagina en als kolom in de lijst; je hoeft nergens code aan te raken. Labels leg je per taal vast, dus een veld heet in het Nederlands anders dan in het Engels zonder dat het een tweede veld wordt. En omdat het gewoon data is, nemen de leestools voor AI je eigen velden mét hun labels mee in het antwoord.",
-          "en": "One generic field view renders your definitions in the input forms, on the detail page and as a column in the list; you touch no code anywhere. Labels are stored per language, so a field reads differently in Dutch and English without becoming a second field. And because it is just data, the read tools for AI carry your custom fields, with their labels, into the answer."
+          "nl": "Eén generieke veldweergave rendert je definities in de invoerformulieren, op de detailpagina en als kolom in de lijst; je hoeft nergens code aan te raken. Op facturen, offertes en abonnementen kan een veld ook op papier: vink Op het document tonen aan en de waarde staat onder de documentgegevens, of bij een abonnement op elke factuurregel die het oplevert. En een abonnementsveld kun je beperken tot één type of standaardabonnement, zodat het veld Website op de hosting staat en niet op de SEO-retainer; een waarde die elders al stond, blijft bewaard. Labels leg je per taal vast, dus een veld heet in het Nederlands anders dan in het Engels zonder dat het een tweede veld wordt. En omdat het gewoon data is, nemen de leestools voor AI je eigen velden mét hun labels mee in het antwoord.",
+          "en": "One generic field view renders your definitions in the input forms, on the detail page and as a column in the list; you touch no code anywhere. On invoices, quotes and subscriptions a field can reach paper as well: tick Op het document tonen and the value prints under the document details, or for a subscription on every invoice line it raises. And a subscription field can be narrowed to one type or standard subscription, so the Website field sits on the hosting and not on the SEO retainer; a value already stored elsewhere is kept. Labels are stored per language, so a field reads differently in Dutch and English without becoming a second field. And because it is just data, the read tools for AI carry your custom fields, with their labels, into the answer."
         }
       }
     ]

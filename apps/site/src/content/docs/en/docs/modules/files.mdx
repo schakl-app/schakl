@@ -1,8 +1,8 @@
 ---
 title: Files
-description: "Where attachments, logos and documents live in schakl., what you may upload, and who is allowed to open a file."
+description: "Where attachments, logos and documents live in schakl., pasting a screenshot, images inside the text, what you may upload, and who is allowed to open a file, clients included."
 sidebar:
-  order: 25
+  order: 26
 ---
 
 import { Aside, CardGrid, LinkCard } from '@astrojs/starlight/components';
@@ -19,7 +19,9 @@ icon have to render on the login screen, so they are served without a login.
 | Where | What you upload there |
 | --- | --- |
 | Project page, **Documenten** (Documents) block | Quotes, deliverables, anything belonging to the project |
-| Task page, **Links & bijlagen** (Links & attachments) block | Attachments on one task; uploading happens in edit mode |
+| Task page, **Links & bijlagen** (Links & attachments) block | Attachments on one task, such as a screenshot |
+| Client page, **Documenten** panel | Contracts, briefs and anything belonging to the client itself |
+| Descriptions and comments | Images in the middle of the text, see below |
 | Client page, **Logo** field | The client's own mark |
 | *Instellingen → Mijn account* (Settings → My account) | **Foto uploaden** (Upload photo): your own profile picture |
 | *Instellingen → Huisstijl* (Settings → Branding) | Your agency's logo, favicon and app icon |
@@ -31,13 +33,47 @@ e-mail, and the PDF of a generated report.
 
 ## Uploading and deleting
 
-The **Documenten** block has one button, **Bestand uploaden** (Upload file). Pick a file and it
-uploads immediately; there is no separate save step. Each row shows the filename, its size and a
-⋯ menu with **Verwijderen** (Delete), which asks to confirm: "Dit bestand verwijderen? Dit kan
-niet ongedaan worden gemaakt." (Delete this file? This cannot be undone.)
+The **Documenten** block (and **Links & bijlagen** on a task) carries the **Bestand uploaden**
+(Upload file) button. Three ways end up in the same place: the button, dragging a file onto it,
+or pasting a screenshot with **Ctrl+V** (⌘V on a Mac) while the page is open. A pasted image is
+named with the date and time on your organisation's clock. Several files at once works too. There
+is no separate save step: what you pick uploads immediately. A paste into a text field stays text;
+only an image becomes an upload.
 
-A task carries the same block under **Links & bijlagen**, and only staff see it. On a project, a
-client with a portal login sees the list but gets no upload button and no delete.
+Images show as thumbnails in the list, everything else by name and size. Each row carries a ⋯ menu
+with **Verwijderen** (Delete), which asks to confirm: "Dit bestand verwijderen? Dit kan niet
+ongedaan worden gemaakt." (Delete this file? This cannot be undone.) On the task page, adding
+attachments is simply using the task: nothing has to be opened for editing first.
+
+The **Documenten** panel sits on the client record beside the activity trail. While a client has
+no documents yet, the panel is folded into a ＋ in the strip of empty panels.
+
+## What the client sees
+
+Per attachment you decide whether a client with a portal login may see it: the eye on the row
+switches **Tonen aan de klant** (show to client) or **Verbergen voor de klant** (hide from
+client), and a visible file is marked **Zichtbaar voor de klant**. It is off by default, on tasks,
+projects and clients alike. A client therefore only sees the files you deliberately ticked, and
+then without an upload button or a delete. That holds for the list, the file itself and its
+thumbnail.
+
+An image in the middle of a description or comment follows the text: whoever may read that text
+sees the image too. The eye is about attachments only.
+
+## Images in the text
+
+In a task or project description and in comments on a task, paste an image (or drag it in, or use
+the toolbar button) and it lands where your cursor is, inside the text, not among the attachments.
+Select the image and the toolbar offers a width: 25, 50, 75 or 100%, or **Auto** (its own size,
+never wider than the column). That width is kept as you chose it.
+
+## Viewing
+
+Every image, attachment or picture in the text alike, opens in the same viewer over the page,
+never in a new tab. The arrows, a swipe or the thumbnail rail at the bottom move to the next image
+on that page. Zoom with the scroll wheel, a pinch or + and −; a double click toggles **Passend op
+scherm** (fit) and **Ware grootte** (actual size). **Origineel openen** (open original) and
+**Downloaden** stay available, and Escape closes only the viewer, not the dialog beneath it.
 
 ## What may go in
 
@@ -45,24 +81,24 @@ The defaults are **10 MB** per file, and only these types:
 
 - images: PNG, JPEG, WebP, GIF, SVG and ICO
 - PDF
-- plain text and CSV
+- plain text, Markdown and CSV
 - ZIP
-- Word and Excel
+- Word, Excel and PowerPoint
 
-What is missing is missing on purpose: PowerPoint, video and audio are refused by default. When
+What is missing is missing on purpose: video and audio are refused by default. When
 an upload fails the screen says why: "Dit bestandstype is niet toegestaan" (This file type is
 not allowed) or "Dit bestand is te groot" (This file is too large). Both limits are instance
 settings (`SCHAKL_UPLOAD_MAX_BYTES` and `SCHAKL_UPLOAD_ALLOWED_TYPES`), so whoever runs the
 server can widen them; there is no button for it inside the app.
 
-Images and PDFs open in a new tab; everything else downloads. SVG always downloads even though
-it is an image, and that is a deliberate security choice.
+Images open in the viewer and PDFs in a new tab; everything else downloads. SVG always downloads
+even though it is an image, and that is a deliberate security choice.
 
 ## Permissions
 
 | Permission | What it gives | Default |
 | --- | --- | --- |
-| `files.file.write` | Uploading and deleting attachments, and your own profile picture | Administrator and Member |
+| `files.file.write` | Uploading and deleting attachments, setting their visibility to the client, and your own profile picture | Administrator and Member |
 | none required | Opening a file belonging to your own organisation | Anyone signed in |
 
 Reading needs no permission of its own, which does not mean everything is open to everyone. The
@@ -95,8 +131,12 @@ file's record exists but its contents are missing from storage.) Always back up 
 - One record lists at most 200 attachments.
 - Images that are part of an e-mail's body belong to that text and therefore do not appear among
   the attachments. They render inside the message itself.
-- Files live on your own installation. There is no Google Drive integration for attachments yet;
-  the task screen says so itself.
+- Attachments live on your own installation, not at an external service; the task screen says so
+  itself. With the Google Workspace or Microsoft 365 integration a client, project or task can
+  also have its own Drive or OneDrive folder, in a separate panel.
+- **Through the API and MCP** you can upload too: beside the ordinary upload there is a variant
+  that sends the file as base64 inside JSON, so an AI client can hand over a screenshot. A
+  thumbnail can be requested in three sizes; the original is never re-encoded.
 - Whoever runs the installation chooses where the bytes live: a disk volume or S3-compatible
   object storage. Nothing changes for the people using the app. See
   [File storage](/en/docs/admin/storage/).

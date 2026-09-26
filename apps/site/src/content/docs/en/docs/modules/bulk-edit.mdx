@@ -2,7 +2,7 @@
 title: Editing many rows at once
 description: "Tick rows in a list and edit or delete them in one go, with exactly the checks you would have got by opening each record."
 sidebar:
-  order: 27
+  order: 28
 ---
 
 import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
@@ -75,9 +75,12 @@ a feature of its own, **Prijsverhoging** (Price increase).
 
 ## Deleting
 
-**Verwijderen** always asks to confirm, and the confirmation says what goes with it. For clients
-it reads: "12 klanten verwijderen? Alles wat eraan hangt gaat mee: contactpersonen, domeinen,
-abonnementen en facturen." (Delete 12 clients? Everything attached to them goes with them.) On
+**Verwijderen** always asks to confirm, and the confirmation says what goes with it. Clients go to
+the trash, where they can be restored for thirty days: "12 klanten naar de prullenbak verplaatsen?
+Een klant met een geschiedenis (facturen, domeinen, abonnementen, projecten, uren) wordt
+overgeslagen en gemeld — archiveer die in plaats daarvan." (Move 12 clients to the trash? A client
+with a history is skipped and reported — archive that one instead.) Such a client comes back in
+the outcome as a skipped row, with the reason (see [Clients](/en/docs/modules/companies/)). On
 tasks, comments, checklists and time entries go too; on projects the tasks and hours deliberately
 stay, without a project.
 
@@ -116,8 +119,9 @@ does. Reading always keeps working.
   term or the sorting, and the selection is dropped. To act on more rows at once, first raise
   **Per pagina** (Per page) under the list; the choices are 25, 50, 100 and 200.
 - On **Interacties** the three actions are **Goedkeuren** (Approve), **Toewijzen…** (Assign) and
-  **Afwijzen** (Reject). A number behind an action means it can do fewer rows than you ticked,
-  and says how many.
+  **Afwijzen** (Reject). A number behind an action means the number of messages differs from your
+  selection, and says how many it will be: a ticked conversation counts as all its waiting
+  messages, and an action that cannot apply to every row counts fewer.
 - Every bulk change lands in the record's activity trail with your name and the time on it,
   exactly like a change made through the form.
 - A row outside your company groups is not in the list, so it cannot be ticked either.

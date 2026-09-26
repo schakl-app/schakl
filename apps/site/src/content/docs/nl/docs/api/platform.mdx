@@ -7,7 +7,7 @@ sidebar:
 
 Alles wat overal doorheen loopt: de organisatiegegevens die een client als eerste ophaalt, bestanden, meldingen, automatiseringsregels, AI, eigen velden, spreadsheets en bulkbewerkingen.
 
-267 endpoints, verdeeld over 20 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
+279 endpoints, verdeeld over 20 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
 
 ## `ai`
 
@@ -2174,14 +2174,26 @@ Antwoord: `200` · `ImpexInspectReport`
 | `GET` `/meetings/{meeting_id}` | `meetings.meeting.read` |
 | `PATCH` `/meetings/{meeting_id}` | `meetings.meeting.write` |
 | `DELETE` `/meetings/{meeting_id}` | `meetings.meeting.delete` |
+| `POST` `/meetings/{meeting_id}/ai/revise` | `meetings.meeting.write` |
+| `POST` `/meetings/{meeting_id}/ai/transcribe` | `meetings.meeting.write` |
 | `DELETE` `/meetings/{meeting_id}/audio` | `meetings.meeting.write` |
 | `POST` `/meetings/{meeting_id}/chunks` | `meetings.meeting.write` |
 | `POST` `/meetings/{meeting_id}/confirm` | `meetings.meeting.write` |
 | `POST` `/meetings/{meeting_id}/finish` | `meetings.meeting.write` |
 | `PUT` `/meetings/{meeting_id}/minutes` | `meetings.meeting.write` |
+| `PUT` `/meetings/{meeting_id}/participants` | `meetings.meeting.write` |
+| `GET` `/meetings/{meeting_id}/pdf` | `meetings.meeting.read` |
+| `GET` `/meetings/{meeting_id}/preview` | `meetings.meeting.read` |
+| `POST` `/meetings/{meeting_id}/redraft` | `meetings.meeting.write` |
 | `POST` `/meetings/{meeting_id}/retry` | `meetings.meeting.write` |
-| `PUT` `/meetings/{meeting_id}/speakers` | `meetings.meeting.write` |
 | `GET` `/meetings/{meeting_id}/status` | `meetings.meeting.read` |
+| `GET` `/meetings/{meeting_id}/transcript` | `meetings.meeting.read` |
+| `GET` `/meetings/policy` | `meetings.meeting.write` |
+| `GET` `/meetings/settings` | `meetings.settings.manage` |
+| `PUT` `/meetings/settings` | `meetings.settings.manage` |
+| `GET` `/meetings/settings/designs/{design}/source` | `meetings.settings.manage` |
+| `POST` `/meetings/settings/preview` | `meetings.settings.manage` |
+| `GET` `/meetings/settings/sections` | `meetings.settings.manage` |
 
 <details>
 <summary>Parameters en schema's per endpoint</summary>
@@ -2248,6 +2260,30 @@ Padparameters: `meeting_id`
 
 Antwoord: `204`
 
+#### `POST /api/v1/meetings/{meeting_id}/ai/revise`
+
+**Revise Meeting With Ai** — One typed instruction, applied to the meeting as the caller: the title, client, project, kind and date, the roster and its speaker labels, and — while under review — every part of the minutes. The answer is a diff; what the instruction did not mention stays.
+
+Recht: `meetings.meeting.write`
+
+Padparameters: `meeting_id`
+
+Request body: `MeetingReviseRequest`
+
+Antwoord: `200` · `MeetingReviseResult`
+
+#### `POST /api/v1/meetings/{meeting_id}/ai/transcribe`
+
+**Transcribe Revise Instruction** — Speech to text for the revise box: an instruction spoken instead of typed. Nothing is written; the words come back to be read first.
+
+Recht: `meetings.meeting.write`
+
+Padparameters: `meeting_id`
+
+Request body: `MeetingTranscribeRequest`
+
+Antwoord: `200` · `TimeTranscribeResult`
+
 #### `DELETE /api/v1/meetings/{meeting_id}/audio`
 
 **Delete Audio** — Drop the recording now rather than at the retention date; the words stay.
@@ -2306,9 +2342,53 @@ Request body: `MinutesDraft`
 
 Antwoord: `200` · `MeetingDetail`
 
-#### `POST /api/v1/meetings/{meeting_id}/retry`
+#### `PUT /api/v1/meetings/{meeting_id}/participants`
 
-**Retry Meeting**
+**Set Participants** — Who was in the meeting — a colleague, a contact of the client, or a name — and which speaker label (S1, S2 …) each of them is. Replaces the whole roster.
+
+Recht: `meetings.meeting.write`
+
+Padparameters: `meeting_id`
+
+Request body: `MeetingParticipants`
+
+Antwoord: `200` · `MeetingDetail`
+
+#### `GET /api/v1/meetings/{meeting_id}/pdf`
+
+**Meeting Pdf** — The minutes as a PDF, with the chapters the caller ticked (the transcript is off unless asked for). A read, so it survives an expired licence.
+
+Recht: `meetings.meeting.read`
+
+Padparameters: `meeting_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `sections` | string | Comma-separated chapters; absent = the org's defaults |
+
+Antwoord: `200`
+
+#### `GET /api/v1/meetings/{meeting_id}/preview`
+
+**Preview Meeting** — The minutes document as HTML — the same artefact the PDF prints.
+
+Recht: `meetings.meeting.read`
+
+Padparameters: `meeting_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `sections` | string | Comma-separated chapters; absent = the org's defaults |
+
+Antwoord: `200`
+
+#### `POST /api/v1/meetings/{meeting_id}/redraft`
+
+**Redraft Meeting** — Draft the minutes again over the transcript already here — after naming the speakers, so the action items land on the people who took them on. No new transcription.
 
 Recht: `meetings.meeting.write`
 
@@ -2316,15 +2396,13 @@ Padparameters: `meeting_id`
 
 Antwoord: `200` · `MeetingDetail`
 
-#### `PUT /api/v1/meetings/{meeting_id}/speakers`
+#### `POST /api/v1/meetings/{meeting_id}/retry`
 
-**Set Speakers** — Name the provider's speaker labels — "S2 is Jan".
+**Retry Meeting**
 
 Recht: `meetings.meeting.write`
 
 Padparameters: `meeting_id`
-
-Request body: `MeetingSpeakers`
 
 Antwoord: `200` · `MeetingDetail`
 
@@ -2337,6 +2415,76 @@ Recht: `meetings.meeting.read`
 Padparameters: `meeting_id`
 
 Antwoord: `200` · `MeetingStatusRead`
+
+#### `GET /api/v1/meetings/{meeting_id}/transcript`
+
+**Meeting Transcript** — The transcript, whole: as JSON (every line with its speaker's name and the seconds it was said at — what an agent reads), or as a `.txt`, `.md`, `.srt` or `.vtt` file.
+
+Recht: `meetings.meeting.read`
+
+Padparameters: `meeting_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `format` | string |  (default `json`) |
+
+Antwoord: `200`
+
+#### `GET /api/v1/meetings/policy`
+
+**Meeting Policy** — What the recorder asks before it records: readable by whoever may record.
+
+Recht: `meetings.meeting.write`
+
+Antwoord: `200` · `MeetingPolicy`
+
+#### `GET /api/v1/meetings/settings`
+
+**Get Settings** — The org's meetings settings: the consent statement, the minutes document, the house writing instructions. No saved row means the defaults.
+
+Recht: `meetings.settings.manage`
+
+Antwoord: `200` · `MeetingSettingsRead`
+
+#### `PUT /api/v1/meetings/settings`
+
+**Update Settings**
+
+Recht: `meetings.settings.manage`
+
+Request body: `MeetingSettingsUpdate`
+
+Antwoord: `200` · `MeetingSettingsRead`
+
+#### `GET /api/v1/meetings/settings/designs/{design}/source`
+
+**Design Source** — A shipped design's own HTML and CSS, to start a custom minutes template from.
+
+Recht: `meetings.settings.manage`
+
+Padparameters: `design`
+
+Antwoord: `200` · `MeetingDesignSource`
+
+#### `POST /api/v1/meetings/settings/preview`
+
+**Preview Settings** — Render an unsaved design over the org's latest minuted meeting — the editor's preview.
+
+Recht: `meetings.settings.manage`
+
+Request body: `MeetingSettingsPreviewRequest`
+
+Antwoord: `200`
+
+#### `GET /api/v1/meetings/settings/sections`
+
+**Section Catalog** — Every chapter a minutes document can carry, with the org's default for each.
+
+Recht: `meetings.settings.manage`
+
+Antwoord: `200` · `MeetingSectionCatalogEntry[]`
 
 </details>
 

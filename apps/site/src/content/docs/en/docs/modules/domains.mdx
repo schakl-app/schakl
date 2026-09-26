@@ -2,7 +2,7 @@
 title: Domains
 description: "Your agency's domain register: registrar, DNS, e-mail, yearly renewals and the question of which domains you actually bill on."
 sidebar:
-  order: 13
+  order: 14
 ---
 
 import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
@@ -19,7 +19,8 @@ In the main menu under **Domeinen & websites → Domeinen** (Domains & websites 
 tabs sit above the list: *Domeinen* and *TLD-tarieven* (TLD rates). That second tab is also the
 screen behind *Instellingen → Domeinen* (Settings → Domains), "TLD-tarieven voor jaarlijkse
 verlengingsfacturen". Every client page carries a **Domeinen** panel with that client's domains,
-their price per year and their next renewal.
+their price per year and their next renewal, and under them what they add up to per year (see
+below).
 
 ## Recording a domain
 
@@ -34,7 +35,9 @@ their price per year and their next renewal.
   Leave it empty and the extension's rate is shown as a hint under the field.
 - **Facturatie** (Invoicing). Collapsed on a new domain, with the chosen answers in its header;
   open when you edit an existing one. It holds "Wel factureren / Niet factureren / Volg het
-  register" and **Automatisch factureren** (Automatic invoicing).
+  register", **Automatisch factureren** (Automatic invoicing), the **Verlengdatum** (renewal
+  date) and **Gefactureerd tot** (invoiced until): the date up to which the domain has already
+  been invoiced elsewhere, in your previous system for instance.
 - **Klant** (Client), **Status** (Actief, Doorverwijzing, Geparkeerd, Verlopen, Inactief) and,
   only on the Doorverwijzing status, **Doorverwijzen naar** (Redirect to).
 - **Registrar** and **DNS-provider**, both from your own provider list
@@ -65,7 +68,13 @@ The start date sets the renewal date: schakl. takes the next anniversary still a
 domain you registered years ago starts at its next birthday and never bills its history. A
 nightly job rolls that date a year forward and hands invoicing a line,
 `Domeinverlenging <name> (<period>)`. How far that invoice gets on its own is per domain, under **Automatisch
-factureren**, or left on the organisation's setting. Renewals that no invoice covers yet are
+factureren**, or left on the organisation's setting.
+
+A renewal is billed **in advance**: the invoice of 01-10-2026 pays the register for the year that
+begins then, so the period on the line is `01-10-2026 - 01-10-2027`. If the domain was already
+invoiced elsewhere, fill in **Gefactureerd tot**: years ending on or before that date are no
+longer offered and never created. On the domain page the **Gefactureerde termijnen** (invoiced
+periods) panel shows which years are already on an invoice, and on which one. Renewals that no invoice covers yet are
 picked in the invoice editor under *Nog te factureren domeinverlengingen* (Domain renewals still
 to invoice).
 
@@ -76,6 +85,8 @@ The price comes from the **TLD-tarieven** tab: one yearly rate per extension, wi
 1. Open *Domeinen → TLD-tarieven* (or *Instellingen → Domeinen*).
 2. **Prijs instellen** (Set price) asks for the **TLD**, the **Prijs per jaar** (Price per year)
    and **Geldig vanaf** (Valid from). Today changes it immediately; a future date schedules it.
+   An extension's first price also applies to renewals before that date, so a rate you enter
+   for the first time today also prices the renewals that were already waiting.
 3. For an across-the-board rise: **Prijsverhoging** (Price increase), with *Percentage erbij*,
    *Vast bedrag erbij* or *Nieuw bedrag instellen*, a **Bereik** (Scope: all TLDs or one) and an
    **Ingangsdatum** (Effective date).
@@ -84,9 +95,12 @@ The price comes from the **TLD-tarieven** tab: one yearly rate per extension, wi
 
 </Steps>
 
+A wrong price row is removed with **Prijsregel verwijderen** (delete price row) in the row's ⋯
+menu; that works for a scheduled row and for the row in force now.
+
 <Aside type="caution">
-Invoices already drafted keep their amount. Price history is the source: an invoice is priced at
-the rate that applied on its invoice date, not at today's rate.
+Invoices already drafted keep their amount. Price history is the source: a renewal is priced at
+the rate that applied on its renewal date, not at today's rate.
 </Aside>
 
 ## Bill it, don't bill it, or follow the register
@@ -112,14 +126,32 @@ Once a register *has* been fetched, the domains it does not hold stop drafting r
 themselves. Read that list once after the first sync before you rely on it for invoicing.
 </Aside>
 
+## What a client's domains add up to
+
+The domains you invoice and the ones you don't are added up separately, never netted against each
+other: your own agency's domains are usually set to not invoiced and still cost their renewal. The
+**Domeinen** panel on the client page ends with a line such as "12 domeinen · € 180,00 / jaar
+gefactureerd · 2 niet gefactureerd (€ 25,00 / jaar)", and says separately how many domains are
+**zonder prijs** (without a price) instead of counting them silently as zero. A not-invoiced
+domain says so under its price. The list carries the same figures above every client section,
+and at the foot of the table the total over everything you filtered, rows on other pages
+included.
+
 ## List, export and bulk
 
-The list is the shared table: you pick your own columns (Domeinnaam, Klant, Status, Registrar,
-DNS-provider, DNSSEC, E-mail actief, Volgende verlenging, Prijs, Gefactureerd, Aangemaakt, plus
-your own custom fields) and sort on them. Beside the column picker sit **Export/Import** and the
-**✎** that switches the checkboxes on. In bulk you can change Status, Klant, Registrar,
-DNS-provider, E-mailprovider and Facturatie; clearing Facturatie means "follow the register". The
-domain name is never bulk-editable — it *is* the record.
+The list is sectioned per client, and the sections fold: you usually know whose a domain is
+before you know what it is called. The Klant column stays, as the link to the client. Because the
+pager cuts the list into pages, a section counts the rows on this page; the screen says so.
+
+You pick your own columns (Domeinnaam, Klant, Status, Registrar, DNS-provider, DNSSEC, E-mail
+actief, Volgende verlenging, Prijs, Gefactureerd, Aangemaakt, plus your own custom fields) and
+sort on them, within each section. Beside the column picker sit **Export/Import** and the **✎**
+that switches the checkboxes on. In bulk you can change Status, Klant, Registrar, DNS-provider,
+E-mailprovider, Facturatie (clearing it means "follow the register"), the **Verlengdatum**,
+**Gefactureerd tot**, the **Startdatum** and the **Afwijkende prijs** (agreed price). A portfolio
+entered in one afternoon carries that afternoon as every start date; this is how you put it right
+in one go. The start date cannot be emptied, the agreed price can: the TLD rate then applies
+again. The domain name is never bulk-editable — it *is* the record.
 
 An import upserts on the domain name, normalised, so an export you edit and put back lands on the
 same rows. Nameservers, DNSSEC, MX, the next renewal date and the resolved price are export-only.
@@ -146,8 +178,10 @@ login did not see the Domeinen menu at all, take `domains.domain.read` off the *
 - Only the statuses Actief, Doorverwijzing and Geparkeerd renew. Verlopen and Inactief get no
   renewal date and therefore no invoice.
 - With no price at all (no TLD rate and no agreed price) nothing is drafted and the renewal stays
-  outstanding. The moment you price the TLD, billing resumes from the original due date; a year is
-  never silently skipped.
+  outstanding. It is still listed on *Nog te factureren*, at zero, labelled **geen prijs** (no
+  price), and the invoice editor names the period but refuses to add it as a € 0,00 line. The
+  moment you price the TLD, billing resumes from the original due date; a year is never silently
+  skipped.
 - Deleting a domain takes the website that sits on it with it. Not the other way round: deleting a
   website leaves the domain alone.
 - The **Doorverwijzing** status is a label on its own. The redirect itself is set up through the

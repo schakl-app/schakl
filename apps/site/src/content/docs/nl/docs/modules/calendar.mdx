@@ -1,13 +1,13 @@
 ---
 title: Agenda
-description: "Eén agenda over alle feeds die het platform heeft: ingeplande taakblokken, deadlines, teamverlof, beschikbaarheid, feestdagen en je Google Agenda."
+description: "Eén agenda over alle feeds die het platform heeft: ingeplande taakblokken, deadlines, teamverlof, beschikbaarheid, feestdagen en je Google- of Outlook-agenda, met gedeelde agenda's en een kleur per persoon."
 sidebar:
   order: 6
 ---
 
 import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
 
-Ingepland werk, deadlines, wie er weg is en wat er in je Google Agenda staat zijn vier
+Ingepland werk, deadlines, wie er weg is en wat er in je Google- of Outlook-agenda staat zijn vier
 verschillende vragen die een week alleen samen beantwoordt. De agenda zet ze allemaal op hetzelfde
 raster, elk als een feed die je kunt verbergen, verkleuren of per persoon uitsplitsen.
 
@@ -30,11 +30,20 @@ gebruikte.
 | Teamverlof | Goedgekeurde en aangevraagde afwezigheid, per collega |
 | Beschikbaarheid | De eigen afwijkingen van een freelancer op zijn basisweek |
 | Feestdagen | De feestdagen die jouw organisatie werkelijk aanhoudt |
-| Google Agenda | Je eigen gekoppelde Google Agenda |
+| Google Agenda | Je eigen gekoppelde Google-agenda, plus de gedeelde agenda's die je aanvinkt |
+| Outlook-agenda | Hetzelfde voor Microsoft 365: je standaardagenda plus de agenda's die je aanvinkt |
 
-Elke feed kun je **uitzetten**, **verkleuren** en, bij verlof en beschikbaarheid, **per persoon
-uitsplitsen**, zodat de afwezigheid van één collega een eigen kleur houdt terwijl de rest er samen
-een deelt. Die keuzes zijn van jou en worden bij je account bewaard.
+Elke feed kun je **uitzetten**, **verkleuren** en, bij ingeplande taken, verlof en
+beschikbaarheid, **per collega uitsplitsen** (**Per collega**), zodat de blokken of de afwezigheid
+van één collega een eigen kleur houden terwijl de rest er samen een deelt. Een eigen kleur per
+collega gaat voor de kleur van de hele feed. Die keuzes zijn van jou en worden bij je account
+bewaard. Een collega die uit dienst is, staat niet meer in die lijsten.
+
+Welke Google- of Outlook-agenda's meekomen, kies je op je eigen accountpagina onder **Agenda's**:
+je hoofd- of standaardagenda synchroniseert altijd, en elke gedeelde agenda die je aanvinkt krijgt
+in het feedmenu een eigen regel met een eigen kleur en een eigen schakelaar. Vink je er een uit,
+dan verdwijnen zijn afspraken meteen. Het feedmenu openen kost geen verzoek bij Google of
+Microsoft: de agenda leest uit de kopie die de koppeling bijhoudt.
 
 <Aside type="note" title="Een aanvraag die nog niet beslist is, staat er vaag bij, met een vraagteken">
 Verlof dat is aangevraagd en nog niet beoordeeld, staat al op de agenda: iets doorzichtiger en met
@@ -47,7 +56,10 @@ dezelfde donderdag ingepland raken.
 
 Een taak kan een **ingepland blok** dragen: een dag, een begintijd, een duur en voor wie het is.
 Dat blok verschijnt hier in de kleur van die persoon, en je kunt het naar een andere dag of tijd
-slepen; de taak gaat mee.
+slepen; de taak gaat mee. Je plant één taak in één keer voor meerdere collega's in: elk krijgt
+een eigen blok. Het inplanvenster toont die dag naast het formulier, met per persoon wat er al
+staat (geplande blokken, verlof, afspraken), zodat je een dubbele boeking ziet voordat je hem
+maakt. Van een collega zie je daar alleen **Bezet**, tenzij je zijn planning mag lezen.
 
 <Steps>
 1. Open een taak en geef hem met **Inplannen** een blok.
@@ -60,22 +72,23 @@ Inplannen is niet hetzelfde als boeken. Een blok zegt *wanneer je het van plan b
 apart vast, en een taak afronden biedt aan om de tijd te boeken op het blok dat ervoor was
 ingepland, zodat hetzelfde werk nooit dubbel geteld wordt.
 
-## Google Agenda, en welke kant het op loopt
+## Google en Outlook, en welke kant het op loopt
 
-Is de koppeling met Google Workspace per medewerker gelegd, dan verschijnt je eigen Google Agenda
-hier als feed, en gaat wat schakl. inplant de andere kant op: goedgekeurd verlof en ingeplande
-taakblokken worden naar Google geschreven.
+Is de koppeling met Google Workspace of Microsoft 365 per medewerker gelegd, dan verschijnt je
+eigen agenda hier als feed, en gaat wat schakl. inplant de andere kant op: goedgekeurd verlof en
+ingeplande taakblokken worden naar je agenda geschreven. Een taakblok heet daar "Klant: Taak", zodat
+je in je eigen agenda ziet voor wie het werk is. Heb je beide gekoppeld, dan komt een blok in allebei.
 
 <Aside type="caution" title="De agenda schrijft één kant op">
-Verlof en ingeplande taken gaan **naar** Google toe. Google-afspraken worden gelezen en getoond,
-nooit omgezet in records in schakl. Zo blijft er per soort ding één eigenaar, in plaats van twee
-systemen die allebei denken dat dezelfde afspraak van hen is.
+Verlof en ingeplande taken gaan **naar** Google en Outlook toe. Afspraken daar worden gelezen en
+getoond, nooit omgezet in records in schakl. Zo blijft er per soort ding één eigenaar, in plaats
+van twee systemen die allebei denken dat dezelfde afspraak van hen is.
 </Aside>
 
 Een verloftype bepaalt zelf hoe zijn afwezigheid getekend wordt: als chip voor de hele dag, of als
 blok tussen de uren waarop iemand ingeroosterd stond. Dat is een eigenschap van het *soort* verlof
 en niet van één aanvraag (of een afwezigheid leest als "vandaag weg" of als "weg tussen 08:30 en
-17:00" is elke keer hetzelfde antwoord), en de Google-spiegel volgt diezelfde instelling, zodat één
+17:00" is elke keer hetzelfde antwoord), en de spiegel in Google of Outlook volgt diezelfde instelling, zodat één
 afwezigheid nooit hier een uurblok is en daar een banner voor de hele dag.
 
 ## Rechten
@@ -90,6 +103,7 @@ agenda die weigert.
 | Teamverlof | `leave.request.read` |
 | Beschikbaarheid | `leave.availability.read` |
 | Google Agenda | Je eigen Google-koppeling |
+| Outlook-agenda | Je eigen Microsoft 365-koppeling |
 
 ## Verder lezen
 
@@ -97,4 +111,5 @@ agenda die weigert.
   <LinkCard title="Taken" href="/nl/docs/modules/tasks/" description="Waar een ingepland blok vandaan komt." />
   <LinkCard title="Verlof" href="/nl/docs/modules/leave/" description="De afwezigheid die de agenda tekent." />
   <LinkCard title="Google Workspace" href="/nl/docs/integrations/google-workspace/" description="De agenda koppelen, per medewerker." />
+  <LinkCard title="Microsoft 365" href="/nl/docs/integrations/microsoft-365/" description="De Outlook-agenda koppelen, per medewerker." />
 </CardGrid>
