@@ -1,16 +1,20 @@
 ---
 // Demo — "Meetings". The recorder runs (the clock ticks, "Opgeslagen tot" says what is already
-// safe on the server), the person stops it, the worker writes the minutes, and the draft lands
-// for review: a numbered decision with the transcript's own words under it, and the action items
+// safe on the server), the person stops it, the worker writes the minutes, and they land ready
+// and already filed on the client: a numbered decision with the transcript's own words under it, and the action items
 // grouped by side and then by person — exactly as the meeting page draws them.
 //
 // Faithful to apps/web/src/routes/(app)/meetings/new/+page.svelte (the live surface: the title,
 // one big clock, one sentence about what is saved, one red button — no waveform, because the app
 // draws none) and [id]/+page.svelte (the minutes card: summary, "Besluiten" with a brand-filled
 // number and the clock it was said at, "Actiepunten" with an uppercase side heading and the
-// owner's name above their items).
+// owner's name above their items). There is no confirm step: the page saves every edit by itself
+// and a task is made per action item ("Taak maken met schakl"), so the foot shows the autosave
+// word and the download, never a "Verslag bevestigen" button. The three labels that replaced the
+// old confirm/review ones are held here verbatim (meetings.status.ready,
+// meetings.review.make_task, meetings.review.autosave_saved) until labels.ts carries them.
 //
-// Base frame = the minutes, ready to review (motion contract in README.md): with no JS or
+// Base frame = the minutes, ready (motion contract in README.md): with no JS or
 // reduced motion this rests on the result, and the recorder and the progress line are hidden.
 import AppFrame from './AppFrame.astro';
 import Icon from './Icon.astro';
@@ -33,6 +37,10 @@ const s = {
   usItem: nl ? 'Planning en sitemap sturen' : 'Send the schedule and sitemap',
   client: 'Jan Jansen',
   clientItem: nl ? 'Teksten over de werkplaats aanleveren' : 'Supply the workshop copy',
+  // verbatim from messages/{nl,en}.json
+  ready: nl ? 'Verslag klaar' : 'Minutes ready',
+  makeTask: nl ? 'Taak maken met schakl' : 'Create task with schakl',
+  saved: nl ? 'Opgeslagen' : 'Saved',
 };
 const nav = ['dashboard', 'companies', 'projects', 'tasks', 'time', 'interactions', 'meetings'];
 ---
@@ -44,7 +52,7 @@ const nav = ['dashboard', 'companies', 'projects', 'tasks', 'time', 'interaction
     <div class="screen__head mt-head__rec"><span class="screen__title">{l.mtRecordTitle}</span></div>
     <div class="screen__head mt-head__meet">
       <span class="screen__title">{s.title}</span>
-      <span class="chip chip--pending mt-pill">{l.mtStReview}</span>
+      <span class="chip chip--ok mt-pill">{s.ready}</span>
     </div>
   </div>
 
@@ -83,11 +91,12 @@ const nav = ['dashboard', 'companies', 'projects', 'tasks', 'time', 'interaction
       <div class="mt-min__sub strong mt-act1">{l.mtActionItems}</div>
       <div class="mt-who mt-act1"><span class="mt-side muted">{l.mtSideAgency}</span><span class="mt-owner">{s.us}</span></div>
       <ul class="mt-items mt-act1"><li>{s.usItem} <span class="muted">— 03-10-2026</span></li></ul>
+      <div class="mt-act1"><span class="mt-task"><Icon name="sparkles" size={0.75} />{s.makeTask}</span></div>
       <div class="mt-who mt-act2"><span class="mt-side muted">{l.mtSideClient}</span><span class="mt-owner">{s.client}</span></div>
       <ul class="mt-items mt-act2"><li>{s.clientItem}</li></ul>
 
       <div class="mt-foot mt-act2">
-        <span class="btn btn--brand">{l.mtConfirm}</span>
+        <span class="muted mt-saved"><Icon name="check" size={0.75} />{s.saved}</span>
         <span class="btn"><Icon name="download" size={0.8} />{l.mtExport}</span>
       </div>
     </div>
@@ -133,11 +142,16 @@ const nav = ['dashboard', 'companies', 'projects', 'tasks', 'time', 'interaction
   .demo-meetings .mt-side { font-size: 0.72em; font-weight: 550; letter-spacing: 0.04em; text-transform: uppercase; }
   .demo-meetings .mt-owner { font-size: 0.9em; font-weight: 550; }
   .demo-meetings .mt-items { margin: 0.1em 0 0; padding-left: 1.2em; font-size: 0.9em; }
-  .demo-meetings .mt-foot { display: flex; gap: 0.5em; margin-top: 0.7em; }
+  .demo-meetings .mt-foot { display: flex; align-items: center; justify-content: space-between; gap: 0.5em; margin-top: 0.7em; }
+  .demo-meetings .mt-saved { display: inline-flex; align-items: center; gap: 0.3em; font-size: 0.8em; }
+  .demo-meetings .mt-task {
+    display: inline-flex; align-items: center; gap: 0.3em; margin: 0.2em 0 0 1.2em;
+    font-size: 0.78em; font-weight: 550; color: var(--b);
+  }
   .demo-meetings .mt-foot .btn { padding: 0.35em 0.7em; font-size: 0.82em; }
   .demo-meetings .stagefade { position: absolute; inset: 0; background: var(--sf); opacity: 0; pointer-events: none; z-index: 30; }
 
-  /* base = the minutes ready for review: recorder, progress and the recorder's header hidden;
+  /* base = the minutes, ready: recorder, progress and the recorder's header hidden;
      the clock reel rests on its last value */
   .demo-meetings .mt-swap > .mt-rec,
   .demo-meetings .mt-swap > .mt-proc,

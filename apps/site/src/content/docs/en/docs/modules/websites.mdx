@@ -1,6 +1,6 @@
 ---
 title: Websites
-description: "The site that sits on a domain: on @ or www, who manages it technically, and which hosting account it runs on."
+description: "A site at an address: on @ or www of a domain, optionally in a subfolder, whose client it is, who manages it technically, and which hosting account it runs on."
 sidebar:
   order: 15
 ---
@@ -8,8 +8,11 @@ sidebar:
 import { Aside, CardGrid, LinkCard } from '@astrojs/starlight/components';
 
 Not every domain is a website. The websites module records which of your domains actually carry a
-site: on the apex or on `www`, who manages it technically and which hosting account it runs on.
-One website per domain, and that domain settles at once whose client's site it is.
+site, and where: on the apex or on `www`, optionally in a subfolder, who manages it technically and
+which hosting account it runs on. A website is a site at an **address** (`klant.nl`,
+`www.klant.nl`, `breik.dev/nova`), so one domain can carry several: the dev installs you keep under
+one domain of your own, one per client. By default a site belongs to its domain's client, and it
+can say otherwise.
 
 ![Websites hang off their domain, with the hosting they run on beside them.](/img/docs/en-websites.png)
 
@@ -18,26 +21,33 @@ One website per domain, and that domain settles at once whose client's site it i
 In the main menu under **Domeinen & websites → Websites** (Domains & websites → Websites). That
 overview is the list; every row opens the website's own page, with its details and below them the
 panels attached to it: the **Abonnementen** (subscriptions) that keep it online and, with the
-WordPress and Uptime Kuma integrations, their own cards. The domain page still shows the website
-as a "Website" block too. Each client page carries a **Websites** panel listing that client's
+WordPress and Uptime Kuma integrations, their own cards. The domain page lists the sites on that
+domain, with **＋ Nieuwe website** (new website) to add one there. Each client page carries a **Websites** panel listing that client's
 sites, their host and their hosting account.
 
 ## Creating a website
 
 Because a website always hangs off a domain, creating one starts with that domain.
 
-- **Domein** (Domain). The picker only offers domains that do not already have a site. If the
-  domain does not exist yet, type it in the picker: the full domain-create dialog opens and the
-  new domain is selected for you afterwards.
+- **Domein** (Domain). The picker offers every domain, and under it says what is already on the
+  chosen one ("Already on this domain: breik.dev/nova"). If the domain does not exist yet, type
+  it in the picker: the full domain-create dialog opens and the new domain is selected for you
+  afterwards. Type a full address such as `breik.dev/client` and the path is filled in below.
 - **Host.** `@ (root)` or `www`. This is where the site lives, not where it redirects to.
+- **Pad** (Path). Empty for the root; `/folder` for an install in a subfolder. Each address holds
+  one site: a second site at the same address is refused, naming the address.
+- **Klant** (Client). Empty means the site follows its domain's client, which the field names.
+  Pick another client only for a site that is not the domain's client's, such as a client's dev
+  site on your own domain. That site then counts as the client's everywhere: on their client
+  page, in the client filter, and for a colleague limited to certain clients.
 - **Technisch beheerder** (Technical owner). Not free text but a reference: the agency, the
   client, an employee or a contact person. The agency by default.
 - **Hosting.** The hosting account the site runs on. Here too you can create a whole new hosting
   account from the picker; it is selected automatically once saved.
 - **Uptime-monitoring.** A toggle, shown as a green pill in the *Uptime* column.
 
-You can edit on the website's own page (through the ⋯ menu at the top), through the ⋯ menu behind
-a row in the list, or in the Website block on the domain page. Delete sits in that same ⋯ menu.
+You can edit on the website's own page (through the ⋯ menu at the top) or through the ⋯ menu
+behind a row in the list. Delete sits in that same ⋯ menu.
 
 <Aside type="caution">
 The Uptime-monitoring toggle itself is a recorded fact: it records which sites ought to be
@@ -59,7 +69,7 @@ See [Subscriptions](/en/docs/modules/subscriptions/).
 ## The overview
 
 The list is the shared table with your own column choice and server-side sorting: **Website**
-(the domain name, or `www.domain`), **Klant** (Client), **Hosting**, **Technisch beheerder**,
+(the address: `domain`, `www.domain` or `domain/path`), **Klant** (Client), **Hosting**, **Technisch beheerder**,
 **Uptime** and **Aangemaakt** (Created), plus your own custom fields. Client and hosting sort;
 the technical owner does not, because it can be four different kinds of party.
 
@@ -73,10 +83,14 @@ everyone by accident.
 
 ## Import and export
 
-A website is matched on the domain name it sits on, so an export you edit and put back lands on
-the same rows instead of colliding. The columns are `domain` (required, and not changeable on an
-existing row), `root` (`@` or `www`), `hosting`, `technical_owner` and `uptime_enabled`. The
-client travels out with the export but cannot be written: it follows from the domain.
+A website is matched on its address, so an export you edit and put back lands on the same rows
+instead of colliding. The columns are `address` (what the export writes; used for matching only),
+`domain` (required, and not changeable on an existing row), `root` (`@` or `www`), `path`,
+`company`, `hosting`, `technical_owner` and `uptime_enabled`. A file without an `address` column
+still matches on `domain`, as long as that domain carries one site; on a domain with several, a
+row is a new site, and one whose address is already taken is named in the preview. `company`
+exports the client the site belongs to; a cell naming the domain's own client stores nothing,
+and an emptied cell makes the site follow its domain again.
 
 ## Permissions
 
@@ -87,7 +101,8 @@ client travels out with the export but cannot be written: it follows from the do
 | `websites.website.delete` | Administrator |
 
 Editable per role under *Instellingen → Rollen* (Settings → Roles). A colleague limited to a
-subset of clients only sees those clients' websites; a site's client is its domain's. If you
+subset of clients only sees those clients' websites; a site's client is its domain's, unless the
+site names its own. If you
 would rather a client login did not see the Websites menu, take `websites.website.read` off the
 *Klant* role.
 
@@ -96,11 +111,12 @@ nothing to pick.
 
 ## Good to know
 
-- One site per domain. A domain that already has a site drops out of the picker.
+- One site per address. A domain may carry a site on the root, one on `www` and any number in
+  subfolders.
 - Deleting a website leaves the domain alone. Deleting the *domain* does take the website with
   it.
-- You cannot move an existing site to another domain, not even by import: the domain *is* the
-  website's identity.
+- You cannot move an existing site to another domain, not even by import. Within its domain you
+  can change the host and the path.
 - Hosting may stay empty. That is an honest state for a site whose server you have not (yet)
   recorded.
 - Websites carry custom fields too. Define them under *Instellingen → Aangepaste velden* (Settings →

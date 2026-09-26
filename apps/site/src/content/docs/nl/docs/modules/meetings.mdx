@@ -1,6 +1,6 @@
 ---
 title: Vergaderingen
-description: "Neem een overleg op in de browser; de spraakprovider van je organisatie schrijft het uit, je AI stelt het verslag op, en na jouw bevestiging worden de actiepunten taken en het verslag een contactmoment."
+description: "Neem een overleg op in de browser; de spraakprovider van je organisatie schrijft het uit, je AI stelt het verslag op, en dat komt als contactmoment bij de klant dat je blijft aanpassen, met een taak uit elk actiepunt dat je kiest."
 sidebar:
   order: 13
 ---
@@ -9,9 +9,10 @@ import { Aside, Steps } from '@astrojs/starlight/components';
 
 Een overleg met een klant levert afspraken op, en afspraken die niemand opschrijft zijn na een
 week weg. Met Vergaderingen neem je het overleg op; de spraakprovider van je organisatie schrijft
-het uit, je eigen AI stelt het verslag op met de besluiten en actiepunten, en jij kijkt het na.
-Pas als jij bevestigt, komt het verslag als contactmoment bij de klant en worden de aangevinkte
-actiepunten taken.
+het uit, je eigen AI stelt het verslag op met de besluiten en actiepunten, en het verslag staat
+meteen als contactmoment op de tijdlijn van de klant. Het blijft aan te passen zolang de
+vergadering bestaat: elke correctie wordt vanzelf opgeslagen en het contactmoment volgt mee. Een
+taak maak je per actiepunt, waarbij schakl. het formulier invult uit wat er gezegd is.
 
 ## Waar je het vindt
 
@@ -43,16 +44,23 @@ opnameknop maar een melding die zegt wat er ontbreekt:
   de recorder zegt dat boven de opnameknop, zodat je het niet pas na afloop ontdekt.
 
 Een opname die langer is dan de aanbieder in één verzoek aanneemt, wordt in delen geknipt en deel
-voor deel uitgeschreven. Een spreker kan dan per deel een ander label hebben (S1, S2 · S3, S4); het
-nakijkscherm zegt in hoeveel delen de opname is uitgeschreven.
+voor deel uitgeschreven. De delen overlappen anderhalve minuut, en waar het model dat kan
+(OpenAI's diarize-model) krijgt elk deel een kort fragment mee van elke stem die de eerdere delen
+al hoorden, zodat één persoon over de knippen heen één label houdt. Is een koppeling niet zeker,
+dan houdt een spreker een eigen label: het kan dus misgaan als één persoon onder twee labels, nooit
+als twee mensen samengevoegd tot één. De vergaderpagina zegt in hoeveel delen de opname is
+uitgeschreven en of de sprekers over de delen heen gekoppeld zijn. Met Voxtral is een vergadering
+tot drie uur één verzoek en speelt dit niet.
 
 ## Een vergadering opnemen
 
 <Steps>
 
 1. Open **Vergaderingen** en klik **Vergadering opnemen**.
-2. Vul de **Titel** in, de **Klant** (de actiepunten worden taken van deze klant) en eventueel het
-   **Project**.
+2. Vul de **Klant** in (de actiepunten worden taken van deze klant), eventueel het **Project**, en
+   een **Titel**. Laat je de titel leeg, dan noemt schakl. de vergadering naar de klant en de
+   datum, en daarna naar wat er besproken is zodra het verslag er is; een ✦ naast de titel zegt dat
+   schakl. hem koos, en een titel die je zelf typt, blijft altijd staan.
 3. Vul in **Wie zit er aan tafel**: collega's, contactpersonen van de klant, of onder *Anders* een
    naam. Jij staat er zelf al bij. Het verslag zet elk actiepunt op naam van wie het oppakte.
 4. Kies de **Soort** (*Op locatie* of *Online*) en **Wat wordt opgenomen**: *Microfoon* voor een
@@ -73,23 +81,38 @@ oranje *Verbinding herstellen…*. Pas als dat niet lukt, wordt de melding rood 
 opslaan**. Wil je de pagina verlaten terwijl er een opname loopt, dan vraagt schakl. eerst of dat
 de bedoeling is.
 
+Wordt de opname zelf onderbroken (een vergrendelde telefoon bevriest het tabblad, een inkomend
+gesprek neemt de microfoon over), dan vraagt schakl. de microfoon opnieuw zodra dat kan, tot tien
+minuten lang, en neemt verder op in dezelfde vergadering; het scherm zegt intussen in oranje dat
+de opname wordt hervat. Hoeveel er gemist is, wordt gemeten, staat op de vergaderpagina (*1 min 32
+s niet opgenomen vanaf 1:47:50*) en gaat mee naar het verslag, zodat een gat nooit stil blijft. Een
+opname van een browsertabblad kan niet zonder klik hervat worden en eindigt bij de onderbreking.
+
 <Aside type="tip">
-Houd het scherm open en aan. Een vergrendelde telefoon bevriest het tabblad en stopt de opname;
-wat is opgeslagen blijft bewaard. Stopt een opname zo, dan biedt de vergaderpagina **Verwerk wat
+Houd het scherm toch open en aan. Lukt hervatten niet, dan stopt de opname en blijft wat is
+opgeslagen bewaard. Stopt een opname zo, dan biedt de vergaderpagina **Verwerk wat
 is opgeslagen**, en gebeurt er niets, dan rondt schakl. hem binnen een half uur zelf af. Is er
 helemaal niets aangekomen, dan krijgt wie de opname startte daar bericht van, ook per mail.
 </Aside>
 
 Daarna doorloopt de vergadering de statussen *In de wachtrij*, *Wordt uitgeschreven* en *Verslag
-wordt geschreven*. Een lange vergadering duurt een paar minuten; je kunt de pagina verlaten. Staat
-het verslag klaar, dan krijg je een melding, standaard ook per mail: *De notulen van een
-vergadering die ik opnam staan klaar*. Gaat er iets mis, dan staat de vergadering op *Mislukt*
+wordt geschreven* tot *Verslag klaar*. Een lange vergadering duurt een paar minuten; je kunt de
+pagina verlaten. Is het verslag er, dan staat het al als contactmoment op de tijdlijn van de klant
+(*Afspraak op locatie* of *Online afspraak*), vastgelegd op naam van wie de vergadering opnam en
+met de contactpersonen van de klant die erbij waren, en krijg je een melding, standaard ook per
+mail: *De notulen van een vergadering die ik opnam staan klaar*. Gaat er iets mis, dan staat de vergadering op *Mislukt*
 met de reden en een knop **Opnieuw proberen**.
 
-## Nakijken en bevestigen
+## Aan het verslag werken
 
-Een vergadering op **Na te kijken** toont het concept naast het transcript en de opname. Elk
-tekstveld is opmaakbare tekst waarin je ook een afbeelding kunt plakken:
+Er is geen nakijkstap en geen bevestigknop: de vergaderpagina toont het verslag naast het
+transcript en de opname, en je past het aan waar je het leest, wanneer je maar wilt. Elke
+wijziging wordt vanzelf opgeslagen; naast de titel staat *Opslaan…*, *Opgeslagen* of, als opslaan
+mislukte, *Niet opgeslagen* met **Opnieuw proberen**. Het contactmoment bij de klant volgt elke
+wijziging van het verslag, de titel, waar het is vastgelegd en de deelnemers. Klant, project en
+soort worden opgeslagen zodra je ze kiest.
+
+Elk tekstveld is opmaakbare tekst waarin je ook een afbeelding kunt plakken:
 
 - **Samenvatting**: een korte weergave van het overleg.
 - **Besproken**: één veld met een kop per onderwerp en eronder wat erover is
@@ -97,14 +120,40 @@ tekstveld is opmaakbare tekst waarin je ook een afbeelding kunt plakken:
 - **Besluiten**, **Actiepunten** en **Open vragen**, elk met een knop om er een toe te voegen.
 - Onder elk besluit en actiepunt staat het citaat uit het transcript waarop het steunt, met het
   tijdstip. Staat dat citaat niet in het transcript, dan blijft het punt staan met het label *Niet
-  in het transcript gevonden*. Lees zulke punten na voordat je bevestigt; naast de knop staat
-  hoeveel het er zijn.
+  in het transcript gevonden*, en de pagina zegt hoeveel het er zijn. Lees zulke punten na voordat
+  je erop vertrouwt.
 
 De actiepunten staan per kant en per persoon: **Voor ons** onder elke collega, **Voor de klant**
 onder elke contactpersoon, en **Overig**. Per actiepunt kies je *Wie pakt het op*, een
-**Deadline** en een **Toelichting**, en het vinkje *Als taak aanmaken*. Een toezegging van de klant
-komt in het verslag, niet op jullie bord, tenzij je hem aanvinkt: dan wordt het een taak voor die
-contactpersoon (wachten op de klant).
+**Deadline** en een **Toelichting**. Een toezegging van de klant komt in het verslag, niet op
+jullie bord.
+
+### Een taak uit een actiepunt
+
+Naast een actiepunt opent **Taak maken met schakl** een paneel waarin schakl. de taak heeft
+ingevuld uit de woorden rond dat punt in het transcript: de titel, wat er moet gebeuren, de stappen
+die genoemd zijn, de deadline zoals die werd uitgesproken en wie het oppakt, met de klant en het
+project van de vergadering. Je controleert het naast het citaat en klikt **Taak aanmaken**; eerder
+wordt er niets aangemaakt. Een actiepunt van een contactpersoon van de klant wordt een taak voor
+die contactpersoon (wachten op de klant). De taak gaat door de module Taken, met haar eigen regels
+en rechten; het actiepunt toont daarna **Taak openen**, en het contactmoment noemt de taak. Van
+elk actiepunt wordt hooguit één taak gemaakt.
+
+### Uren en de kaart Vastgelegd
+
+**Uren registreren** boekt de vergadering op de urenstaat van de collega's die je aanvinkt: één
+urenregel per persoon, voor de lengte van de opname tenzij je een andere duur typt, met een regel
+die het verslag voorstelt, gekoppeld aan het contactmoment. Elke regel staat in het venster
+voordat je op de knop drukt, want uren die iemand anders boekte zijn anders een verrassing op je
+urenstaat.
+
+De kaart *Vastgelegd* naast het verslag toont de drie dingen die de vergadering elders vastlegde:
+het contactmoment (**Contactmoment openen**), de taken uit actiepunten en de uren. Werd het
+automatisch vastleggen geweigerd (bijvoorbeeld omdat die soort contactmoment uit staat), dan zegt
+de kaart *Staat nog niet op de tijdlijn van de klant* en biedt **Als contactmoment vastleggen**,
+dat zegt waarom als het opnieuw wordt geweigerd.
+
+### Sprekers, opnieuw opstellen en het AI-vak
 
 Naast het transcript koppel je de deelnemers aan hun sprekerlabel (S1, S2 …) en klik je
 **Deelnemers opslaan**. Het gewone geval is dat je dat pas na het eerste concept doet;
@@ -114,18 +163,8 @@ mensen erbij, zonder nieuwe transcriptie en dus zonder nieuwe audiokosten.
 Het vak **Deze vergadering in woorden aanpassen** past de vergadering aan in jouw woorden,
 bijvoorbeeld *zet de klant op Nova, S2 is Jan Jansen, voeg een actiepunt toe voor Sanne: logo
 sturen, deadline vrijdag*. Het wijzigt titel, klant, project, soort en datum, wie er waren en
-welk sprekerlabel ze zijn, en zolang het verslag op nakijken staat elke regel ervan. Alles wordt
-onder jouw naam doorgevoerd, net als een gewone bewerking.
-
-**Concept opslaan** bewaart je werk; **Verslag bevestigen** maakt er een record van:
-
-- Er wordt een contactmoment vastgelegd bij de klant (*Afspraak op locatie* of *Online afspraak*),
-  met de contactpersonen die erbij waren.
-- Elk aangevinkt actiepunt wordt een taak. Taken en contactmomenten gaan door hun eigen modules,
-  met hun eigen regels en rechten; een actiepunt dat geen taak kon worden, wordt na bevestigen
-  genoemd met de reden, in plaats van het hele verslag te blokkeren.
-
-Een bevestigd verslag toont de link *Contactmoment openen* en de aangemaakte taken.
+welk sprekerlabel ze zijn, en elke regel van het verslag. Alles wordt onder jouw naam doorgevoerd,
+net als een gewone bewerking.
 
 ## Downloaden
 
@@ -171,30 +210,33 @@ Per rol in te stellen onder *Instellingen → Rollen*. Standaard:
 | `meetings.meeting.delete` | Vergaderingen verwijderen | Beheerder |
 | `meetings.settings.manage` | Vergaderinstellingen beheren | Beheerder |
 
-Wat bevestigen oplevert, vraagt ook de rechten van die modules: een contactmoment vastleggen en
-taken aanmaken. Wie verslagen mag nakijken maar geen taken mag aanmaken, krijgt dat per actiepunt
-te horen.
+Wat de vergadering elders vastlegt, vraagt ook de rechten van die modules: het contactmoment
+wordt vastgelegd met de rechten op contactmomenten van wie opnam, een taak vraagt het recht om
+taken aan te maken, en uren boeken voor een collega vraagt het recht om diens uren te schrijven.
+Een weigering staat waar hij optreedt: op de kaart, in het takenpaneel of in het urenvenster.
 
 ## Privacy en bewaren
 
-- **De audio wordt 30 dagen na bevestigen verwijderd**; het transcript en het verslag blijven.
-  Wie verslagen mag nakijken, kan de audio eerder verwijderen met **Audio verwijderen**.
+- **De audio wordt 30 dagen nadat het verslag er is verwijderd** (het verslag opnieuw opstellen
+  start die termijn opnieuw); het transcript en het verslag blijven. Wie verslagen mag aanpassen,
+  kan de audio eerder verwijderen met **Audio verwijderen**.
 - **Een opname is te beluisteren door wie de vergadering mag zien**, en niet door iemand anders
   die toevallig het bestand zou kunnen aanwijzen.
 - **Een klant ziet nooit een vergadering.** Een klantportaal-login krijgt een lege lijst, geen
   paneel en geen opname of transcript, ook niet als iemand de rol Klant het leesrecht geeft. Wat
-  de klant toekomt is het bevestigde contactmoment, onder de regels van
+  de klant toekomt is het contactmoment, onder de regels van
   [Contactmomenten](/nl/docs/modules/interactions/).
 - Een medewerker die tot een klantgroep beperkt is, ziet alleen de vergaderingen van die klanten.
-- Een vergadering verwijderen haalt de audio, het transcript en het conceptverslag weg; een
-  contactmoment en taken die er al uit bevestigd zijn, blijven.
+- Een vergadering verwijderen haalt de audio, het transcript en het verslag weg; het
+  contactmoment, de taken en de uren die er al uit vastgelegd zijn, blijven.
 
 ## API en MCP
 
 Alles wat het scherm doet, gaat via de API onder `/api/v1/meetings`, en is daarmee ook een tool
 op de [MCP-server](/nl/docs/integrations/mcp/): een vergadering aanmaken, de opname in
-stukken posten (base64 in JSON, dus een AI-client kan dat ook), afronden, deelnemers zetten,
-opnieuw opstellen, bevestigen, de pdf en het transcript ophalen. Het transcript komt standaard als JSON met per regel het
+stukken posten (base64 in JSON, dus een AI-client kan dat ook), afronden, deelnemers zetten, het
+verslag opslaan, opnieuw opstellen, het contactmoment vastleggen, een taak uit een actiepunt laten
+opstellen en aanmaken, de uren registreren, de pdf en het transcript ophalen. Het transcript komt standaard als JSON met per regel het
 tijdstip en de naam van de spreker; `format=txt|md|srt|vtt` levert een bestand.
 
 Voor de assistent zijn er drie leestools: `meetings.find`, `meetings.transcript` en
@@ -202,6 +244,6 @@ Voor de assistent zijn er drie leestools: `meetings.find`, `meetings.transcript`
 
 ## Verder lezen
 
-- [Contactmomenten](/nl/docs/modules/interactions/): waar het bevestigde verslag terechtkomt
-- [Taken](/nl/docs/modules/tasks/): waar de actiepunten terechtkomen
+- [Contactmomenten](/nl/docs/modules/interactions/): waar het verslag terechtkomt
+- [Taken](/nl/docs/modules/tasks/): waar een taak uit een actiepunt terechtkomt
 - [AI](/nl/docs/modules/ai/): de provider, de spraakaanbieder en het budget

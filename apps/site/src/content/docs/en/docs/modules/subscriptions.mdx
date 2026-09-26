@@ -1,6 +1,6 @@
 ---
 title: Subscriptions
-description: "Recurring client agreements: price with history, included hours, the billing cycle, standard subscriptions and a bulk price increase."
+description: "Recurring client agreements and one-off sales: price with history, included hours, the billing cycle, standard subscriptions and a bulk price increase."
 sidebar:
   order: 9
 ---
@@ -9,7 +9,8 @@ import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components'
 
 A subscription is a recurring agreement with a client: hosting, maintenance, an SEO retainer. It
 records what it costs, how often it invoices and how many hours it includes, and it answers the
-question of what is running every month.
+question of what is running every month. Something sold once, such as a website build, is an
+agreement too, with the interval **Eenmalig** (one-off).
 
 ![Retainers with their period, amount and next invoice date.](/img/docs/en-subscriptions.png)
 
@@ -39,9 +40,11 @@ saving you are still on the client page. From the list it goes like this:
 <Steps>
 1. Click **Nieuw abonnement** (New subscription), optionally after choosing a **Vanuit
    standaardabonnement** (From standard subscription), which prefills the form.
-2. Fill in **Naam** (Name), **Klant** (Client) and **Type**.
+2. Fill in **Naam** (Name), **Klant** (Client) and **Type**. If the agreement sells something
+   from your price list, pick it under **Product**: that fills in the name and the amount, and
+   both stay yours to change.
 3. Set **Status** (Concept / Actief / Gepauzeerd / Opgezegd, i.e. draft / active / paused /
-   cancelled), **Interval** (Maandelijks, Per kwartaal or Jaarlijks), **Bedrag** (Amount),
+   cancelled), **Interval** (Maandelijks, Per kwartaal, Jaarlijks or Eenmalig), **Bedrag** (Amount),
    **Inbegrepen uren** (Included hours) and the **Startdatum** (Start date).
 4. Under **Automatisch factureren** (Automatic invoicing), choose how far invoicing goes on its
    own, or leave it on *Instelling van de organisatie volgen* (follow the organisation setting).
@@ -114,6 +117,22 @@ caught up in the same run, not one a night. What the run is going to bill is alr
 The cycle always advances, including on *Uit*: a period nobody invoiced stays outstanding and is
 offered in the invoice editor, so it is never lost. Draft, paused and cancelled agreements do not
 bill.
+
+## Sold once
+
+A one-off sale (a website build, a logo, a migration) is a subscription with the interval
+**Eenmalig**. It has no cycle: it is billed once, on its start date (or today, if that has
+passed), and it gets everything an agreement has: a standard subscription to start from, a type
+whose task templates roll out on activation, linked projects, notes with variables and your own
+fields. The moment an invoice bills it, whether the nightly run drafted it or you picked it in the
+invoice editor, it moves to **Afgerond** (completed) by itself. Delete, cancel or fully credit
+that invoice and it opens again. A one-off agreement never counts towards MRR or ARR.
+
+A standard subscription and an agreement can name the **Product** from your price list that they
+sell. That is a record of what is sold, not a link that keeps prices in step: re-pricing the
+product later changes nothing on the agreement. Under *Instellingen → Facturatie*, **Producten en
+diensten** has an **In gebruik** (in use) column counting the subscriptions and standard
+subscriptions that name each product.
 
 ## In advance or in arrears
 

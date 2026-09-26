@@ -56,7 +56,7 @@ and the MCP plugin from a site where Rank Math works fine.
 | `abilities` | WordPress 6.9's Abilities API is present | WordPress is older than 6.9 |
 | `rankmath_aiv` | Rank Math answers on AI Visibility | Plugin absent, or no Content AI subscription |
 | `mcp` | The MCP Adapter plugin is installed | It is not |
-| `bridge` | The breik. Bridge plugin is installed, with its version | It is not |
+| `bridge` | The schakl WordPress MCP Bridge plugin is installed, with its version | It is not |
 
 Two rules follow from that. **A read that succeeds outranks a probe that refuses**: a credential
 that reached the ordinary REST API is *active* even if the others failed, and only one refused
@@ -174,7 +174,7 @@ injection in a page the agent is reading is how that happens. The defence is not
 mint read-only keys by default, and give write access to a key somebody uses deliberately.
 </Aside>
 
-## breik. Bridge: page builders, hidden post types, uploads and WPML
+## schakl WordPress MCP Bridge: page builders, hidden post types, uploads, forms, menus and WPML
 
 Many agency sites build a page out of an ACF **repeater** of typed blocks, each block type showing
 a handful of fields out of thirty. That cannot be edited through ACF's REST integration, and none
@@ -186,34 +186,65 @@ of it is fixable from the password's side:
 - a post type not shown in REST does not exist there;
 - `wp/v2/media` only takes multipart, which no MCP tool can send.
 
-So a WordPress plugin does it on the site itself: **breik. Bridge** (its own repository, PHP 7.4+,
-GPL). It knows the field groups' **schema** including when the editor hides a field, **reads** per
+So a WordPress plugin does it on the site itself: the **schakl WordPress MCP Bridge** (its own
+repository, `schakl-wordpress-mcp-bridge`, PHP 7.4+, GPL). It knows the field groups' **schema** including when the editor hides a field, **reads** per
 block only the fields the editor shows, **writes** with conditional logic evaluated the way the
 editor does, reports every problem with its full path (`blokken[2].titel`) instead of stopping at
 the first, edits one block without touching the others, takes an image as a URL or base64, and
 handles **WPML**: languages, a linked translation with every reference swapped for its
 translation, and String Translation.
 
-schakl. reaches the plugin through **22 bridge routes** under the same login, and so through the
-same 22 tools in `/mcp/wordpress` however many sites there are:
+schakl. reaches the plugin through **33 bridge routes** under the same login, and so through the
+same 33 tools in `/mcp/wordpress` however many sites there are:
 
 | What | Permission |
 | --- | --- |
 | Versions, post types (including ones not shown in REST), taxonomies, options pages, menus, languages | `wordpress.site.read` |
-| The field schema; read records and terms | `wordpress.content.read` |
-| Create or edit records and terms, upload media, create a translation | `wordpress.content.write` (+ `publish` for what is live) |
-| Change ACF options pages, menus and translated strings: live the moment they save | `wordpress.content.publish` |
-| Trash or delete a record | `wordpress.content.delete` |
+| The field schema; read records, terms, options pages and menus | `wordpress.content.read` |
+| Create or edit records and terms, upload media, create or connect a translation | `wordpress.content.write` (+ `publish` for what is live) |
+| Change ACF options pages and translated strings: live the moment they save | `wordpress.content.publish` |
+| Create a menu, rename it or change which theme locations it fills; add, edit, move and remove items, and put them in order | `wordpress.content.publish` |
+| Trash or delete a record; delete a menu with all its items | `wordpress.content.delete` |
+| Read Contact Form 7 forms with the fields parsed from the template and CF7's own configuration errors | `wordpress.forms.read` |
+| Create or edit a form, or make its translation | `wordpress.forms.write` |
+| Delete a form | `wordpress.forms.delete` |
+
+A record, a term or an options page can also be read **as text** rather than as a field tree:
+the title, the body without markup and the ACF fields in order, with choices by their label. The
+record list takes the same option, so an agent pulls every FAQ item with its answer in one call,
+at a fraction of the size.
+
+**Menus** are edited in place: an item keeps whatever you do not send, can be pointed at another
+page or term, moved under another parent and positioned among its siblings, and a custom link's
+URL can be changed. Deleting a whole menu is permanent and sits under the delete permission, like
+deleting a record.
+
+**Contact Form 7** is reachable two ways. The plain form routes above go through CF7's own REST
+namespace and keep working on a site without the plugin. The bridge adds what that namespace never
+had: the fields CF7 parses off the template, its configuration validator's objections (CF7 sends
+nothing while a mail is misconfigured), mails and messages merged over what the form holds so a
+changed recipient does not blank the subject, a delete, and WPML. A form deletes permanently (CF7
+has no trash) and empties every page that embeds it, hence its own permission.
+
+WPML knows a form two ways, and both are served. Where forms are a translatable post type, each
+language gets a linked copy of its own, and the answer carries the shortcode a page in that
+language embeds. Where the *Contact Form 7 Multilingual* add-on serves every language from one
+form, its texts are String Translation strings, read and written on the form itself.
 
 Where the plugin is not installed the call says so itself, naming the plugin; on the **WordPress**
-card the verify shows which version is there. A refusal from the plugin comes through unchanged,
+card the verify shows which version is there, and under it whether the plugin can **update
+itself**: it updates itself (automatically, where WordPress is set to), a newer release is
+available, there is no GitHub token, or the update check failed. A site without a working token
+links to the plugin's settings screen. A plugin older than 1.3.1 does not report this, and the
+card says *not reported*, never *cannot update*. A refusal from the plugin comes through unchanged,
 with the path to the field and the row, because a translated sentence without the row index sends
 an agent hunting.
 
 <Aside type="note" title="What has been proven">
 The plugin has run end to end on a test container with WordPress and ACF PRO, including a post
-type not shown in REST. It has not yet run on a client's production site, and its WPML half is
-written from WPML's documentation: plan a rehearsal.
+type not shown in REST. It has not yet run on a client's production site, and its WPML half
+(records, strings and both ways of translating a form) is written from WPML's documentation:
+plan a rehearsal.
 </Aside>
 
 ## Permissions
@@ -225,8 +256,9 @@ written from WPML's documentation: plan a rehearsal.
 | `wordpress.content.read` | Read pages, posts, media and bridge records | Administrator, Member |
 | `wordpress.content.write` | Write drafts, edit what is not live, upload media | Administrator, Member |
 | `wordpress.content.publish` | Edit anything a visitor sees, set something live, options pages, menus and strings | Administrator |
-| `wordpress.content.delete` | Trash or delete records | Administrator |
+| `wordpress.content.delete` | Trash or delete records, delete menus | Administrator |
 | `wordpress.forms.read` / `wordpress.forms.write` | Read / edit Contact Form 7 | Member / Administrator |
+| `wordpress.forms.delete` | Delete Contact Form 7 forms through the bridge | Administrator |
 | `wordpress.ability.read` / `wordpress.ability.run` | Read-only abilities / any ability | Member / Administrator |
 | `wordpress.rest.read` / `wordpress.rest.write` | The REST passthrough: read / write | Member / Administrator |
 

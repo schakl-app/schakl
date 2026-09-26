@@ -139,14 +139,12 @@ export interface DemoLabels {
   mtSavedUntil: (clock: string) => string; // meetings.record.saved_until
   mtStop: string; // meetings.record.stop
   mtSummarising: string; // meetings.progress.summarising
-  mtStReview: string; // meetings.status.review
   mtMinutes: string; // meetings.review.minutes
   mtSummary: string; // meetings.review.summary
   mtDecisions: string; // meetings.review.decisions
   mtActionItems: string; // meetings.review.action_items
   mtSideAgency: string; // meetings.minutes.side_agency
   mtSideClient: string; // meetings.minutes.side_client
-  mtConfirm: string; // meetings.review.confirm
   mtExport: string; // meetings.export.button
   // White-label
   brandLabel: string;
@@ -260,14 +258,12 @@ export const labels: Record<Locale, DemoLabels> = {
     mtSavedUntil: (clock) => `Opgeslagen tot ${clock}`,
     mtStop: 'Stoppen en uitschrijven',
     mtSummarising: 'Het verslag wordt geschreven…',
-    mtStReview: 'Na te kijken',
     mtMinutes: 'Verslag',
     mtSummary: 'Samenvatting',
     mtDecisions: 'Besluiten',
     mtActionItems: 'Actiepunten',
     mtSideAgency: 'Voor ons',
     mtSideClient: 'Voor de klant',
-    mtConfirm: 'Verslag bevestigen',
     mtExport: 'Downloaden',
     brandLabel: 'Jouw merk',
   },
@@ -378,14 +374,12 @@ export const labels: Record<Locale, DemoLabels> = {
     mtSavedUntil: (clock) => `Saved up to ${clock}`,
     mtStop: 'Stop and transcribe',
     mtSummarising: 'Writing the minutes…',
-    mtStReview: 'To review',
     mtMinutes: 'Minutes',
     mtSummary: 'Summary',
     mtDecisions: 'Decisions',
     mtActionItems: 'Action items',
     mtSideAgency: 'For us to do',
     mtSideClient: 'For the client to do',
-    mtConfirm: 'Confirm minutes',
     mtExport: 'Download',
     brandLabel: 'Your brand',
   },

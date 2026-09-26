@@ -10,8 +10,8 @@
     "en": "Meetings"
   },
   "description": {
-    "nl": "Neem een overleg op in de browser en krijg het transcript, het verslag, de besluiten en de actiepunten als taken, na jouw controle.",
-    "en": "Record a meeting in the browser and get the transcript, the minutes, the decisions and the action items as tasks, once you have checked them."
+    "nl": "Neem een overleg op in de browser en krijg het transcript, het verslag als contactmoment bij de klant, de besluiten en per actiepunt een taak die schakl. voor je invult.",
+    "en": "Record a meeting in the browser and get the transcript, the minutes as a contact moment on the client, the decisions, and a task per action item that schakl. fills in for you."
   },
   "page": {
     "eyebrow": {
@@ -23,8 +23,8 @@
       "en": "From meeting to minutes and tasks"
     },
     "lead": {
-      "nl": "Neem een overleg op met je microfoon, een browsertabblad of een bestand dat je al hebt. De spraakprovider van je organisatie schrijft het uit, je eigen AI stelt het verslag op, en elk besluit en actiepunt citeert het transcript. Pas als jij bevestigt, worden de actiepunten taken en komt het verslag als contactmoment bij de klant.",
-      "en": "Record a meeting from your microphone, a browser tab or a file you already have. Your organisation's speech provider transcribes it, your own AI drafts the minutes, and every decision and action item quotes the transcript. Only when you confirm do the action items become tasks and the minutes land on the client as a contact moment."
+      "nl": "Neem een overleg op met je microfoon, een browsertabblad of een bestand dat je al hebt. De spraakprovider van je organisatie schrijft het uit, je eigen AI stelt het verslag op, en elk besluit en actiepunt citeert het transcript. Het verslag staat meteen als contactmoment bij de klant en blijft aan te passen; van een actiepunt maak je een taak met één klik en een controle.",
+      "en": "Record a meeting from your microphone, a browser tab or a file you already have. Your organisation's speech provider transcribes it, your own AI drafts the minutes, and every decision and action item quotes the transcript. The minutes land on the client as a contact moment straight away and stay editable; an action item becomes a task in one click and a check."
     },
     "sections": [
       {
@@ -33,19 +33,21 @@
           "en": "Recording without worrying"
         },
         "body": {
-          "nl": "Onder Vergaderingen → Vergadering opnemen kies je wat er wordt opgenomen: de microfoon voor een overleg in de ruimte, een browsertabblad voor een Meet-, Teams- of Zoom-gesprek (plus je microfoon), of een opname die je al hebt. Tijdens het opnemen stuurt de browser elke minuut een stuk naar de server; het scherm zegt tot waar de opname is opgeslagen. Een vastgelopen tabblad kost dus hooguit een minuut, niet de vergadering. Valt de verbinding weg, of wordt schakl. net bijgewerkt, dan probeert de browser het tien minuten lang stilletjes opnieuw terwijl de opname doorloopt. En blijft een opname hangen omdat een telefoon op slot ging, dan rondt de server hem zelf af met wat er binnen is, en krijgt degene die opnam bericht als er niets is aangekomen.",
-          "en": "Under Meetings → Record a meeting you choose what to record: the microphone for a meeting in the room, a browser tab for a Meet, Teams or Zoom call (plus your microphone), or a recording you already have. While it records, the browser sends a piece to the server every minute, and the screen says up to where the recording is saved. A crashed tab costs a minute at most, not the meeting. If the connection drops, or schakl. is being updated at that moment, the browser quietly retries for ten minutes while the recording carries on. And if a recording stalls because a phone was locked, the server finishes it with whatever arrived, and the person who recorded is told if nothing arrived at all."
+          "nl": "Onder Vergaderingen → Vergadering opnemen kies je wat er wordt opgenomen: de microfoon voor een overleg in de ruimte, een browsertabblad voor een Meet-, Teams- of Zoom-gesprek (plus je microfoon), of een opname die je al hebt. Tijdens het opnemen stuurt de browser elke minuut een stuk naar de server; het scherm zegt tot waar de opname is opgeslagen. Een vastgelopen tabblad kost dus hooguit een minuut, niet de vergadering. Valt de verbinding weg, of wordt schakl. net bijgewerkt, dan probeert de browser het tien minuten lang stilletjes opnieuw terwijl de opname doorloopt. Wordt de opname zelf onderbroken, omdat een telefoon op slot ging of een gesprek de microfoon overnam, dan neemt schakl. verder op in dezelfde vergadering zodra het kan, en meet het hoeveel er gemist is. Lukt dat niet, dan rondt de server de opname zelf af met wat er binnen is, en krijgt degene die opnam bericht als er niets is aangekomen.",
+          "en": "Under Meetings → Record a meeting you choose what to record: the microphone for a meeting in the room, a browser tab for a Meet, Teams or Zoom call (plus your microphone), or a recording you already have. While it records, the browser sends a piece to the server every minute, and the screen says up to where the recording is saved. A crashed tab costs a minute at most, not the meeting. If the connection drops, or schakl. is being updated at that moment, the browser quietly retries for ten minutes while the recording carries on. If the capture itself is interrupted, because a phone was locked or a call took the microphone, schakl. carries on recording into the same meeting as soon as it can and measures how much was missed. If that fails, the server finishes the recording with whatever arrived, and the person who recorded is told if nothing arrived at all."
         },
         "bullets": {
           "nl": [
             "Microfoon, browsertabblad of een bestand uploaden",
             "Elke minuut opgeslagen, met 'Opgeslagen tot' op het scherm",
-            "Een netwerkhapering of een update wordt vanzelf opnieuw geprobeerd"
+            "Een netwerkhapering of een update wordt vanzelf opnieuw geprobeerd",
+            "Een onderbroken opname wordt hervat, en het gat wordt gemeten"
           ],
           "en": [
             "Microphone, a browser tab, or upload a file",
             "Saved every minute, with 'Saved up to' on screen",
-            "A network blip or an update is retried on its own"
+            "A network blip or an update is retried on its own",
+            "An interrupted capture is resumed, and the gap is measured"
           ]
         }
       },
@@ -65,8 +67,8 @@
           "en": "Transcribed by your own provider"
         },
         "body": {
-          "nl": "De opname gaat naar de spraakprovider die je organisatie onder Instellingen → AI heeft ingesteld, met je eigen sleutel. Mistral Voxtral neemt drie uur in één verzoek en onderscheidt sprekers, in het Nederlands; OpenAI kan het ook. Een opname die langer is dan de provider in één keer aanneemt, wordt in delen geknipt en deel voor deel uitgeschreven. Onderscheidt het ingestelde model geen sprekers, dan zegt de recorder dat al voordat je op opnemen drukt.",
-          "en": "The recording goes to the speech provider your organisation set up under Instellingen → AI, on your own key. Mistral Voxtral takes three hours in one request and tells speakers apart, in Dutch; OpenAI works too. A recording longer than the provider accepts at once is cut into parts and transcribed part by part. If the configured model does not tell speakers apart, the recorder says so before you press record."
+          "nl": "De opname gaat naar de spraakprovider die je organisatie onder Instellingen → AI heeft ingesteld, met je eigen sleutel. Mistral Voxtral neemt drie uur in één verzoek en onderscheidt sprekers, in het Nederlands; OpenAI kan het ook. Een opname die langer is dan de provider in één keer aanneemt, wordt in overlappende delen geknipt en deel voor deel uitgeschreven; waar het model het kan, krijgt elk deel de stemmen mee die al gehoord waren, zodat één persoon één label houdt. Onderscheidt het ingestelde model geen sprekers, dan zegt de recorder dat al voordat je op opnemen drukt.",
+          "en": "The recording goes to the speech provider your organisation set up under Instellingen → AI, on your own key. Mistral Voxtral takes three hours in one request and tells speakers apart, in Dutch; OpenAI works too. A recording longer than the provider accepts at once is cut into overlapping parts and transcribed part by part; where the model supports it, each part is handed the voices already heard, so one person keeps one label. If the configured model does not tell speakers apart, the recorder says so before you press record."
         }
       },
       {
@@ -93,12 +95,24 @@
       },
       {
         "heading": {
-          "nl": "Pas een record als jij het zegt",
-          "en": "A record only when you say so"
+          "nl": "Meteen vastgelegd, altijd aan te passen",
+          "en": "On the record at once, editable for good"
         },
         "body": {
-          "nl": "Elk veld van het concept is aan te passen, met opmaak en afbeeldingen. Of je beschrijft in het AI-vak wat er moet veranderen ('S2 is Jan Jansen, voeg een actiepunt toe voor Sanne: logo sturen, deadline vrijdag') en het wordt onder jouw naam doorgevoerd. 'Verslag bevestigen' legt het vast als contactmoment bij de klant, met de contactpersonen erbij, en maakt van elk aangevinkt actiepunt een taak: voor een collega, of voor een contactpersoon als 'wachten op de klant'. Taken en contactmomenten gaan door hun eigen modules, met hun eigen regels. Je krijgt bericht, ook per mail, zodra het verslag klaarstaat om na te kijken.",
-          "en": "Every field of the draft can be edited, with formatting and images. Or describe the change in the AI box ('S2 is Jan Jansen, add an action item for Sanne: send the logo, due Friday') and it is applied in your name. 'Confirm minutes' files them as a contact moment on the client, with the contacts attached, and turns every ticked action item into a task: for a colleague, or for a contact as 'waiting on the client'. Tasks and contact moments go through their own modules, with their own rules. You are told, by mail too, as soon as the minutes are ready to review."
+          "nl": "Er is geen bevestigstap. Zodra het verslag er is, staat het als contactmoment op de tijdlijn van de klant, met de contactpersonen erbij, vastgelegd op naam van wie opnam, en je krijgt bericht, ook per mail. Elk veld blijft aan te passen, met opmaak en afbeeldingen; elke wijziging wordt vanzelf opgeslagen en het contactmoment volgt mee. Of je beschrijft in het AI-vak wat er moet veranderen ('S2 is Jan Jansen, voeg een actiepunt toe voor Sanne: logo sturen, deadline vrijdag') en het wordt onder jouw naam doorgevoerd. Naast elk actiepunt vult 'Taak maken met schakl' de taak in uit de woorden eromheen: titel, stappen, de uitgesproken deadline en wie het oppakt. Jij controleert hem naast het citaat voordat hij wordt aangemaakt: voor een collega, of voor een contactpersoon als 'wachten op de klant'. En 'Uren registreren' zet de vergadering op de urenstaat van de collega's die erbij waren.",
+          "en": "There is no confirm step. As soon as the minutes are in, they are on the client's timeline as a contact moment, with the contacts attached, filed in the name of whoever recorded, and you are told, by mail too. Every field stays editable, with formatting and images; every change is saved by itself and the contact moment follows it. Or describe the change in the AI box ('S2 is Jan Jansen, add an action item for Sanne: send the logo, due Friday') and it is applied in your name. Beside every action item, 'Create task with schakl' fills in the task from the words around it: title, steps, the deadline as spoken and who took it on. You check it beside the quote before it is created: for a colleague, or for a contact as 'waiting on the client'. And 'Record hours' puts the meeting on the timesheets of the colleagues who were there."
+        },
+        "bullets": {
+          "nl": [
+            "Het verslag staat meteen als contactmoment bij de klant",
+            "Elke wijziging vanzelf opgeslagen, het contactmoment volgt mee",
+            "Per actiepunt een taak, ingevuld door schakl. en gecontroleerd door jou"
+          ],
+          "en": [
+            "The minutes land on the client as a contact moment at once",
+            "Every change saved by itself, and the contact moment follows",
+            "A task per action item, filled in by schakl. and checked by you"
+          ]
         }
       },
       {
@@ -117,8 +131,8 @@
           "en": "Yours, not the client's"
         },
         "body": {
-          "nl": "De audio wordt 30 dagen na bevestigen bewaard en dan verwijderd; het transcript en het verslag blijven. Wie verslagen mag nakijken, kan de audio eerder verwijderen. Een opname is alleen te beluisteren door wie de vergadering mag zien, en een klantportaal-login ziet nooit een vergadering, een transcript of een opname: wat de klant toekomt is het bevestigde contactmoment. Via de API en MCP zoekt een assistent vergaderingen op en leest transcript en notulen, met dezelfde rechten. Vergaderingen is een uitbreidingsmodule met een eigen licentie; verloopt die, dan blijft alles leesbaar.",
-          "en": "The audio is kept for 30 days after confirming and then deleted; the transcript and the minutes stay. Whoever may review minutes can delete the audio sooner. A recording can only be played by whoever may see the meeting, and a client portal login never sees a meeting, a transcript or a recording: what the client is owed is the confirmed contact moment. Through the API and MCP an assistant finds meetings and reads transcripts and minutes, under the same permissions. Meetings is an extension module with a licence of its own; when it lapses, everything stays readable."
+          "nl": "De audio wordt bewaard tot 30 dagen nadat het verslag er is en dan verwijderd; het transcript en het verslag blijven. Wie verslagen mag aanpassen, kan de audio eerder verwijderen. Een opname is alleen te beluisteren door wie de vergadering mag zien, en een klantportaal-login ziet nooit een vergadering, een transcript of een opname: wat de klant toekomt is het contactmoment. Via de API en MCP zoekt een assistent vergaderingen op en leest transcript en notulen, met dezelfde rechten. Vergaderingen is een uitbreidingsmodule met een eigen licentie; verloopt die, dan blijft alles leesbaar.",
+          "en": "The audio is kept for 30 days after the minutes land and then deleted; the transcript and the minutes stay. Whoever may edit minutes can delete the audio sooner. A recording can only be played by whoever may see the meeting, and a client portal login never sees a meeting, a transcript or a recording: what the client is owed is the contact moment. Through the API and MCP an assistant finds meetings and reads transcripts and minutes, under the same permissions. Meetings is an extension module with a licence of its own; when it lapses, everything stays readable."
         }
       }
     ]

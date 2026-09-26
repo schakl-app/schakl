@@ -125,11 +125,23 @@ aanmaken of de klant niet mag zien, wordt hier net zo geweigerd.
   in de taak genoemd.
 - Met de AI-functie **E-mail naar taakadres** aan vult schakl. in wat je eigen woorden openlieten
   (een klant, een collega, een deadline, stappen en links) en overschrijft het nooit wat jij
-  schreef.
+  schreef. De omschrijving is dan de samenvatting die schakl. van je woorden maakt, niet de
+  woorden zelf.
+- **Eén mail kan meerdere taken worden.** Leeg je een telefoontje in één mail ("de DNS voor Nova,
+  de nieuwsbrief voor Klokuus, en Jan moet het contract nog nakijken"), dan maakt schakl. een taak
+  per stuk werk dat los toe te wijzen, te plannen en af te ronden is, tot acht. Werk voor
+  verschillende klanten wordt altijd gesplitst; de stappen van één klus blijven één taak met een
+  checklist; bij twijfel één taak. Wat je zelf typte (`klant:`, `voor:`, `deadline:`, `[Klant]`)
+  geldt voor elke taak. De doorgestuurde mail komt één keer aan al die taken te hangen, en een
+  bijlage gaat mee met de taak die hem noemt. Splitsen is de keuze van het model, dus daarvoor
+  staat de AI-functie aan.
 
 Is de klant niet te bepalen, dan wacht de mail onder **Taken → E-mailinbox**. Die tab verschijnt
-alleen zolang er iets wacht; je kiest de klant en maakt de taak af. In beide gevallen krijg je een
-melding die zegt voor welke klant, voor wie en met welke deadline de taak is gemaakt, en wat
+alleen zolang er iets wacht; je kiest de klant en maakt de taak af. Een mail die meerdere taken
+werd, wacht in zijn geheel zodra één daarvan geen klant heeft: de kaart toont de geplande taken,
+de klant die je kiest vult alleen de taken die er nog geen hadden, **Maak er toch één taak van**
+voegt ze samen tot één taak met elk als stap, en **3 taken aanmaken** maakt ze allemaal aan. In
+beide gevallen krijg je een melding die zegt voor welke klant, voor wie en met welke deadline de taak is gemaakt, en wat
 schakl. daarvan zelf koos. Een mail die alleen naar het taakadres ging, wordt geen contactmoment;
 een klantmail met het taakadres in cc wordt allebei.
 

@@ -1,6 +1,6 @@
 ---
 title: Abonnementen
-description: "Terugkerende klantafspraken: prijs met historie, inbegrepen uren, factuurcyclus, standaardabonnementen en een prijsverhoging in bulk."
+description: "Terugkerende klantafspraken en eenmalige verkoop: prijs met historie, inbegrepen uren, factuurcyclus, standaardabonnementen en een prijsverhoging in bulk."
 sidebar:
   order: 9
 ---
@@ -9,7 +9,8 @@ import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components'
 
 Een abonnement is een terugkerende afspraak met een klant: hosting, onderhoud, een SEO-retainer.
 Het legt vast wat het kost, hoe vaak het factureert en hoeveel uren erin zitten, en het beantwoordt
-de vraag wat er maandelijks doorloopt.
+de vraag wat er maandelijks doorloopt. Iets wat je één keer verkoopt, zoals de bouw van een
+website, is ook een afspraak, met het interval **Eenmalig**.
 
 ![Abonnementen met hun periode, bedrag en eerstvolgende factuurdatum.](/img/docs/nl-subscriptions.png)
 
@@ -38,9 +39,10 @@ Na opslaan sta je nog steeds op de klantpagina. Vanuit de lijst werkt het zo:
 <Steps>
 1. Klik **Nieuw abonnement**, eventueel na een keuze bij **Vanuit standaardabonnement**: dat vult
    het formulier voor.
-2. Vul **Naam**, **Klant** en **Type** in.
+2. Vul **Naam**, **Klant** en **Type** in. Verkoopt de afspraak iets uit je prijslijst, kies het
+   dan bij **Product**: dat vult de naam en het bedrag in, en die blijven allebei aan te passen.
 3. Zet **Status** (Concept, Actief, Gepauzeerd of Opgezegd), **Interval** (Maandelijks, Per
-   kwartaal of Jaarlijks), **Bedrag**, **Inbegrepen uren** en de **Startdatum**.
+   kwartaal, Jaarlijks of Eenmalig), **Bedrag**, **Inbegrepen uren** en de **Startdatum**.
 4. Kies bij **Automatisch factureren** hoe ver de facturatie zelf gaat, of laat het op *Instelling
    van de organisatie volgen*.
 5. Koppel bij **Gekoppelde projecten** de projecten waarvan de uren tegen de bundel tellen.
@@ -111,6 +113,23 @@ factureren**:
 De cyclus schuift altijd door, ook op *Uit*: een periode die niemand factureerde blijft openstaan
 en wordt in de factuureditor aangeboden, dus je verliest hem niet. Een concept, een gepauzeerde en
 een opgezegde afspraak factureren niet.
+
+## Eenmalig verkocht
+
+Een eenmalige verkoop (de bouw van een website, een logo, een migratie) is een abonnement met het
+interval **Eenmalig**. Het heeft geen cyclus: het wordt één keer gefactureerd, op de startdatum (of
+vandaag, als die al voorbij is), en het krijgt alles wat een afspraak heeft: een
+standaardabonnement om vanuit te beginnen, een type waarvan de taaksjablonen bij activatie
+uitrollen, gekoppelde projecten, notities met variabelen en je eigen velden. Zodra een factuur het
+in rekening brengt, of de nachtelijke run hem klaarzette of jij hem in de factuureditor koos, gaat
+het vanzelf naar **Afgerond**. Verwijder, annuleer of crediteer je die factuur volledig, dan gaat
+het weer open. Een eenmalige afspraak telt nooit mee in MRR of ARR.
+
+Een standaardabonnement en een afspraak kunnen het **Product** uit je prijslijst noemen dat ze
+verkopen. Dat legt vast wat er verkocht wordt, het is geen koppeling die prijzen gelijk houdt: een
+nieuwe prijs voor het product verandert later niets aan de afspraak. Onder *Instellingen →
+Facturatie* heeft **Producten en diensten** een kolom **In gebruik** die telt hoeveel abonnementen
+en standaardabonnementen elk product noemen.
 
 ## Vooraf of achteraf
 

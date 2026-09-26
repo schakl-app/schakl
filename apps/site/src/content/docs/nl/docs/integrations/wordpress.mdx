@@ -60,7 +60,7 @@ berichten-API kerngezond is, en de MCP-plugin op een site waar Rank Math prima w
 | `abilities` | De Abilities-API van WordPress 6.9 is aanwezig | WordPress is ouder dan 6.9 |
 | `rankmath_aiv` | Rank Math antwoordt op AI-zichtbaarheid | Plugin afwezig, of geen Content AI-abonnement |
 | `mcp` | De MCP Adapter-plugin staat er | Die staat er niet |
-| `bridge` | De breik. Bridge-plugin staat er, met zijn versie | Die staat er niet |
+| `bridge` | De plugin schakl WordPress MCP Bridge staat er, met zijn versie | Die staat er niet |
 
 Daar volgen twee regels uit. **Een lezing die lukt weegt zwaarder dan een proef die weigert**: een
 inlog die de gewone REST-API haalde is *actief*, ook als de andere niets opleverden, en pas
@@ -186,7 +186,7 @@ route: maak standaard alleen-lezen sleutels aan, en geef schrijfrecht aan een sl
 bewust gebruikt.
 </Aside>
 
-## breik. Bridge: paginaopbouw, verborgen berichttypes, uploads en WPML
+## schakl WordPress MCP Bridge: paginaopbouw, verborgen berichttypes, uploads, formulieren, menu's en WPML
 
 Veel bureausites bouwen een pagina op uit een ACF-**repeater** van getypte blokken, met per
 bloktype een handvol zichtbare velden uit dertig. Via de REST-integratie van ACF is dat niet te
@@ -199,34 +199,67 @@ bewerken, en niets daaraan is op te lossen vanaf de kant van het wachtwoord:
 - een berichttype dat niet in REST staat bestaat daar niet;
 - `wp/v2/media` neemt alleen multipart aan, en dat kan geen MCP-gereedschap versturen.
 
-Daarom doet een WordPress-plugin het op de site zelf: **breik. Bridge** (een eigen repository,
-PHP 7.4+, GPL). Hij kent het **schema** van de veldgroepen inclusief wanneer de editor een veld
+Daarom doet een WordPress-plugin het op de site zelf: de **schakl WordPress MCP Bridge** (een eigen
+repository, `schakl-wordpress-mcp-bridge`, PHP 7.4+, GPL). Hij kent het **schema** van de veldgroepen inclusief wanneer de editor een veld
 verbergt, **leest** per blok alleen de velden die de editor toont, **schrijft** met de
 voorwaardelijke logica geëvalueerd zoals de editor dat doet, meldt elk probleem met het volledige
 pad (`blokken[2].titel`) in plaats van te stoppen bij het eerste, bewerkt één blok zonder de rest
 te raken, neemt een afbeelding mee als URL of base64, en regelt **WPML**: talen, een gekoppelde
 vertaling waarin elke verwijzing naar zijn vertaling is omgezet, en String Translation.
 
-schakl. bereikt de plugin via **22 bridge-routes** onder dezelfde inlog, en dus via dezelfde 22
+schakl. bereikt de plugin via **33 bridge-routes** onder dezelfde inlog, en dus via dezelfde 33
 gereedschappen in `/mcp/wordpress` hoeveel sites er ook zijn:
 
 | Wat | Recht |
 | --- | --- |
 | Versies, berichttypes (ook die niet in REST staan), taxonomieën, optiepagina's, menu's, talen | `wordpress.site.read` |
-| Het veldschema; records en termen lezen | `wordpress.content.read` |
-| Records en termen aanmaken of bewerken, media uploaden, een vertaling maken | `wordpress.content.write` (+ `publish` voor wat live staat) |
-| ACF-optiepagina's, menu's en vertaalde teksten wijzigen: live zodra ze opslaan | `wordpress.content.publish` |
-| Een record naar de prullenbak of verwijderen | `wordpress.content.delete` |
+| Het veldschema; records, termen, optiepagina's en menu's lezen | `wordpress.content.read` |
+| Records en termen aanmaken of bewerken, media uploaden, een vertaling maken of koppelen | `wordpress.content.write` (+ `publish` voor wat live staat) |
+| ACF-optiepagina's en vertaalde teksten wijzigen: live zodra ze opslaan | `wordpress.content.publish` |
+| Een menu aanmaken, hernoemen of de themalocaties ervan wijzigen; items toevoegen, bewerken, verplaatsen en verwijderen, en ze op volgorde zetten | `wordpress.content.publish` |
+| Een record naar de prullenbak of verwijderen; een menu met al zijn items verwijderen | `wordpress.content.delete` |
+| Contact Form 7-formulieren lezen, met de velden uit het sjabloon en de eigen configuratiefouten van CF7 | `wordpress.forms.read` |
+| Een formulier aanmaken of bewerken, of de vertaling ervan maken | `wordpress.forms.write` |
+| Een formulier verwijderen | `wordpress.forms.delete` |
+
+Een record, een term of een optiepagina is ook **als tekst** te lezen in plaats van als veldboom:
+de titel, de inhoud zonder opmaak en de ACF-velden op volgorde, met keuzes bij hun label. De
+lijst met records neemt dezelfde optie aan, dus een agent haalt elk FAQ-item met zijn antwoord op
+in één aanroep, voor een fractie van de omvang.
+
+**Menu's** worden ter plekke bewerkt: een item houdt alles wat je niet meestuurt, kan naar een
+andere pagina of term wijzen, onder een ander bovenliggend item komen en een plek tussen zijn
+broertjes krijgen, en van een eigen link is de URL te wijzigen. Een heel menu verwijderen is
+definitief en valt onder het verwijderrecht, net als een record verwijderen.
+
+**Contact Form 7** is op twee manieren bereikbaar. De gewone formulierroutes hierboven gaan via de
+eigen REST-namespace van CF7 en blijven werken op een site zonder de plugin. De bridge voegt toe
+wat die namespace nooit had: de velden die CF7 uit het sjabloon haalt, de bezwaren van zijn
+configuratiecontrole (CF7 verstuurt niets zolang een mail verkeerd ingesteld is), mails en
+meldingen die over wat het formulier al heeft heen worden gelegd zodat een gewijzigde ontvanger
+het onderwerp niet leegmaakt, verwijderen, en WPML. Een formulier verwijderen is definitief (CF7
+heeft geen prullenbak) en maakt elke pagina leeg die het insluit, vandaar een eigen recht.
+
+WPML kent een formulier op twee manieren, en beide worden bediend. Waar formulieren een
+vertaalbaar berichttype zijn, krijgt elke taal een eigen gekoppelde kopie, en het antwoord bevat
+de shortcode die een pagina in die taal insluit. Waar de add-on *Contact Form 7 Multilingual* elke
+taal uit één formulier bedient, zijn de teksten String Translation-teksten, gelezen en geschreven
+op het formulier zelf.
 
 Staat de plugin er niet, dan zegt de aanroep dat zelf, met de naam van de plugin erbij; op de kaart
-**WordPress** toont de controle welke versie er staat. Een weigering van de plugin komt ongewijzigd
+**WordPress** toont de controle welke versie er staat, en daaronder of de plugin **zichzelf kan
+bijwerken**: hij werkt zichzelf bij (automatisch, waar WordPress dat zo ingesteld heeft), er is
+een nieuwere versie beschikbaar, er is geen GitHub-token, of de updatecontrole is mislukt. Een
+site zonder werkend token linkt naar de instellingen van de plugin. Een plugin ouder dan 1.3.1
+meldt dit niet, en dan zegt de kaart *niet gemeld*, nooit *kan niet bijwerken*. Een weigering van de plugin komt ongewijzigd
 door, met het pad naar het veld en de rij, want een vertaalde zin zonder rijnummer stuurt een agent
 zoeken.
 
 <Aside type="note" title="Wat al bewezen is">
 De plugin is van begin tot eind gedraaid op een testcontainer met WordPress en ACF PRO, inclusief
 een berichttype dat niet in REST staat. Op de productiesite van een klant heeft hij nog niet
-gedraaid, en de WPML-kant is geschreven naar de documentatie van WPML: reken op een proefrun.
+gedraaid, en de WPML-kant (records, teksten en beide manieren om een formulier te vertalen) is
+geschreven naar de documentatie van WPML: reken op een proefrun.
 </Aside>
 
 ## Rechten
@@ -238,8 +271,9 @@ gedraaid, en de WPML-kant is geschreven naar de documentatie van WPML: reken op 
 | `wordpress.content.read` | Pagina's, berichten, media en bridge-records lezen | Beheerder, Medewerker |
 | `wordpress.content.write` | Concepten schrijven, bewerken wat niet live staat, media uploaden | Beheerder, Medewerker |
 | `wordpress.content.publish` | Alles bewerken wat een bezoeker ziet, iets live zetten, optiepagina's, menu's en teksten | Beheerder |
-| `wordpress.content.delete` | Records naar de prullenbak of verwijderen | Beheerder |
+| `wordpress.content.delete` | Records naar de prullenbak of verwijderen, menu's verwijderen | Beheerder |
 | `wordpress.forms.read` / `wordpress.forms.write` | Contact Form 7 lezen / bewerken | Medewerker / Beheerder |
+| `wordpress.forms.delete` | Contact Form 7-formulieren verwijderen via de bridge | Beheerder |
 | `wordpress.ability.read` / `wordpress.ability.run` | Alleen-lezen abilities / elke ability | Medewerker / Beheerder |
 | `wordpress.rest.read` / `wordpress.rest.write` | De doorgang naar de REST-API: lezen / schrijven | Medewerker / Beheerder |
 

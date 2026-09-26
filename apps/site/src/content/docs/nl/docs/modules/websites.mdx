@@ -1,6 +1,6 @@
 ---
 title: Websites
-description: "De site die op een domein staat: op @ of www, wie hem technisch beheert en op welk hostingaccount hij draait."
+description: "Een site op een adres: op @ of www van een domein, eventueel in een submap, van welke klant hij is, wie hem technisch beheert en op welk hostingaccount hij draait."
 sidebar:
   order: 15
 ---
@@ -8,8 +8,11 @@ sidebar:
 import { Aside, CardGrid, LinkCard } from '@astrojs/starlight/components';
 
 Niet elk domein is een website. De websitesmodule legt vast wélke van je domeinen echt een site
-dragen: op het hoofddomein of op `www`, wie hem technisch beheert en op welk hostingaccount hij
-draait. Eén website per domein, en dat domein bepaalt meteen van welke klant de site is.
+dragen, en waar: op het hoofddomein of op `www`, eventueel in een submap, wie hem technisch beheert
+en op welk hostingaccount hij draait. Een website is een site op een **adres** (`klant.nl`,
+`www.klant.nl`, `breik.dev/nova`), dus één domein kan er meerdere dragen: de dev-installaties die
+je onder één eigen domein bijhoudt, één per klant. Standaard is een site van de klant van zijn
+domein, en hij kan anders zeggen.
 
 ![Websites hangen aan hun domein, met de hosting waar ze op draaien ernaast.](/img/docs/nl-websites.png)
 
@@ -18,25 +21,34 @@ draait. Eén website per domein, en dat domein bepaalt meteen van welke klant de
 In het hoofdmenu onder **Domeinen & websites → Websites**. Dat overzicht is de lijst; elke rij
 opent de eigen pagina van de website, met zijn gegevens en daaronder de panelen die eraan hangen:
 de **Abonnementen** die hem online houden, en met de koppelingen aan WordPress en Uptime Kuma hun
-eigen kaarten. Op de domeinpagina staat de website ook nog als blok "Website". Op een klantpagina
+eigen kaarten. De domeinpagina toont de sites op dat domein, met **＋ Nieuwe website** om er daar
+een toe te voegen. Op een klantpagina
 staat het paneel **Websites** met de sites van die klant, hun host en hun hostingaccount.
 
 ## Een website aanmaken
 
 Omdat een website altijd aan een domein hangt, begint aanmaken met dat domein.
 
-- **Domein.** De keuzelijst toont alleen domeinen die nog geen site hebben. Bestaat het domein
-  nog niet, typ het dan in de lijst: het volledige aanmaakformulier voor een domein opent in een
-  dialoog en de nieuwe domeinnaam staat daarna meteen geselecteerd.
+- **Domein.** De keuzelijst toont elk domein, en zegt eronder wat er al op het gekozen domein staat
+  ("Al op dit domein: breik.dev/nova"). Bestaat het domein nog niet, typ het dan in de lijst: het
+  volledige aanmaakformulier voor een domein opent in een dialoog en de nieuwe domeinnaam staat
+  daarna meteen geselecteerd. Typ je een volledig adres zoals `breik.dev/klant`, dan wordt het pad
+  hieronder ingevuld.
 - **Host.** `@ (root)` of `www`. Dit is waar de site woont, niet waar hij naartoe omleidt.
+- **Pad.** Leeg voor de hoofdpagina; `/map` voor een installatie in een submap. Op elk adres staat
+  één site: een tweede site op hetzelfde adres wordt geweigerd, met het adres erbij.
+- **Klant.** Leeg betekent dat de site de klant van zijn domein volgt, en het veld noemt die. Kies
+  alleen een andere klant voor een site die niet van de klant van het domein is, zoals een
+  dev-site van een klant op je eigen domein. Die site telt dan overal als van die klant: op zijn
+  klantpagina, in het klantfilter en voor een collega die tot bepaalde klanten beperkt is.
 - **Technisch beheerder.** Geen vrij tekstveld maar een verwijzing: het bureau, de klant, een
   medewerker of een contactpersoon. Standaard het bureau.
 - **Hosting.** Het hostingaccount waarop de site draait. Ook hier kun je vanuit de keuzelijst
   een compleet nieuw hostingaccount aanmaken; het wordt na opslaan automatisch geselecteerd.
 - **Uptime-monitoring.** Een schakelaar, zichtbaar als groene pil in de kolom *Uptime*.
 
-Bewerken kan op de pagina van de website (via het ⋯-menu bovenaan), via het ⋯-menu achter een
-regel in de lijst, of op de domeinpagina in het blok Website. Verwijderen zit in datzelfde ⋯-menu.
+Bewerken kan op de pagina van de website (via het ⋯-menu bovenaan) of via het ⋯-menu achter een
+regel in de lijst. Verwijderen zit in datzelfde ⋯-menu.
 
 <Aside type="caution">
 De schakelaar Uptime-monitoring zelf is een vastgelegd gegeven: hij legt vast welke sites bewaakt
@@ -58,7 +70,7 @@ paneel vraagt leesrecht op abonnementen, en de module Abonnementen moet aan staa
 ## Het overzicht
 
 De lijst is de gedeelde tabel met je eigen kolomkeuze en serverzijdige sortering: **Website**
-(de domeinnaam, of `www.domein`), **Klant**, **Hosting**, **Technisch beheerder**, **Uptime** en
+(het adres: `domein`, `www.domein` of `domein/pad`), **Klant**, **Hosting**, **Technisch beheerder**, **Uptime** en
 **Aangemaakt**, plus je eigen velden. De klant en de hosting zijn sorteerbaar; de technisch
 beheerder niet, omdat dat vier verschillende soorten partij kan zijn.
 
@@ -72,11 +84,15 @@ ongeluk iedereen overschrijven.
 
 ## Import en export
 
-Een website wordt bijgewerkt op de domeinnaam waar hij op staat. Een geëxporteerd bestand dat je
-bewerkt en terugzet raakt dus dezelfde rijen in plaats van te botsen. De kolommen zijn `domain`
-(verplicht en niet te wijzigen op een bestaande rij), `root` (`@` of `www`), `hosting`,
-`technical_owner` en `uptime_enabled`. De klant gaat wel mee naar buiten maar is niet te
-schrijven: die volgt uit het domein.
+Een website wordt bijgewerkt op zijn adres. Een geëxporteerd bestand dat je bewerkt en terugzet
+raakt dus dezelfde rijen in plaats van te botsen. De kolommen zijn `address` (wat de export
+schrijft; alleen om te matchen), `domain` (verplicht en niet te wijzigen op een bestaande rij),
+`root` (`@` of `www`), `path`, `company`, `hosting`, `technical_owner` en `uptime_enabled`. Een
+bestand zonder kolom `address` matcht nog steeds op `domain`, zolang dat domein één site draagt;
+op een domein met meerdere is een rij een nieuwe site, en een rij waarvan het adres al bezet is
+wordt in de voorvertoning genoemd. `company` exporteert de klant van wie de site is; een cel met
+de eigen klant van het domein slaat niets op, en een lege cel laat de site het domein weer
+volgen.
 
 ## Rechten
 
@@ -88,7 +104,7 @@ schrijven: die volgt uit het domein.
 
 Aan te passen per rol onder *Instellingen → Rollen*. Een collega die tot een deel van de klanten
 beperkt is, ziet alleen de websites van die klanten; de klant van een site is die van zijn
-domein. Wil je niet dat een klantlogin het menu Websites ziet, haal dan `websites.website.read`
+domein, tenzij de site een eigen klant noemt. Wil je niet dat een klantlogin het menu Websites ziet, haal dan `websites.website.read`
 bij de rol *Klant* weg.
 
 Het aanmaken van een website vraagt ook leesrecht op domeinen: zonder domein om aan te koppelen
@@ -96,11 +112,12 @@ is er niets te kiezen.
 
 ## Goed om te weten
 
-- Eén site per domein. Een domein dat al een site heeft, staat niet meer in de keuzelijst.
+- Eén site per adres. Een domein kan een site op de root dragen, een op `www` en zoveel als je wilt
+  in submappen.
 - Een website verwijderen laat het domein staan. Een *domein* verwijderen neemt de website wel
   mee.
-- Het domein van een bestaande site kun je niet wisselen, ook niet via een import: het domein
-  ís de identiteit van de website.
+- Het domein van een bestaande site kun je niet wisselen, ook niet via een import. Binnen zijn
+  domein kun je de host en het pad wel aanpassen.
 - De hosting mag leeg blijven. Dat is een eerlijke stand voor een site waarvan je (nog) niet
   vastlegt waar hij draait.
 - Websites hebben ook eigen velden. Definieer ze onder *Instellingen → Aangepaste velden* voor het
