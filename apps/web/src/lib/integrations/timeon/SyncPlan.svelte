@@ -68,7 +68,11 @@
     };
   });
 
-  const idle = $derived(account.hours_direction === "off" && account.projects_direction === "off");
+  const idle = $derived(
+    account.hours_direction === "off" &&
+      account.projects_direction === "off" &&
+      (account.customers_direction ?? "off") === "off",
+  );
 
   /**
    * The schedule as a sentence, resolved from what the form currently says (#388).
@@ -134,6 +138,28 @@
       if (account.create_missing_projects && (direction === "push" || direction === "two_way")) {
         out.push({ icon: directionIcon.push, text: t("timeon.plan.push_projects") });
       }
+    }
+
+    // Clients, in the same two halves as projects: which way a change travels, and what is
+    // made where it is missing. While the direction is off the line still says what happens —
+    // clients are paired on their number — because "off" here was never "ignored".
+    const customers = account.customers_direction ?? "off";
+    if (customers !== "off") {
+      out.push({
+        icon: directionIcon[customers],
+        text: t(`timeon.plan.customers_${customers}`),
+      });
+      if (account.create_missing_customers && (customers === "pull" || customers === "two_way")) {
+        out.push({ icon: directionIcon.pull, text: t("timeon.plan.create_customers") });
+      }
+      if (account.create_missing_customers && (customers === "push" || customers === "two_way")) {
+        out.push({ icon: directionIcon.push, text: t("timeon.plan.push_customers") });
+      }
+      if (customers === "pull" || customers === "two_way") {
+        out.push({ icon: ShieldCheck, text: t("timeon.plan.customers_blank") });
+      }
+    } else {
+      out.push({ icon: directionIcon.off, text: t("timeon.plan.customers_off") });
     }
 
     if (account.history_floor) {

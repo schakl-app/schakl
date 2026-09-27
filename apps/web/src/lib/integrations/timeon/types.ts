@@ -55,6 +55,12 @@ export const RUN_TILES: { key: string; tone: "good" | "warn" | "plain" }[] = [
   { key: "projects_created", tone: "good" },
   { key: "projects_pushed", tone: "good" },
   { key: "projects_pulled", tone: "good" },
+  // Clients. For months a run could only ever say one thing about them — "Timeon-klant waarvan
+  // het klantnummer hier niet bestaat" — because pairing was all it did (docs/TIMEON.md §5b).
+  { key: "customers_pushed_new", tone: "good" },
+  { key: "customers_created", tone: "good" },
+  { key: "customers_pushed", tone: "good" },
+  { key: "customers_pulled", tone: "good" },
   { key: "deleted_local", tone: "warn" },
   { key: "deleted_remote", tone: "warn" },
   { key: "conflicts", tone: "warn" },
@@ -66,6 +72,8 @@ export const RUN_TILES: { key: string; tone: "good" | "warn" | "plain" }[] = [
   { key: "in_step", tone: "plain" },
   { key: "projects_drift", tone: "plain" },
   { key: "projects_in_step", tone: "plain" },
+  { key: "customers_drift", tone: "plain" },
+  { key: "customers_in_step", tone: "plain" },
   { key: "tolerated", tone: "plain" },
   { key: "remote_read", tone: "plain" },
   { key: "local_read", tone: "plain" },
@@ -80,15 +88,20 @@ export function runChanged(run: TimeonRun): boolean {
 }
 
 /**
- * Did the run leave a project field undecided — one that differs with nothing on record saying
- * which side moved? Read off the counters rather than the warning list, because the list is
- * capped at the API and the counters are not.
+ * What the run left undecided, as the kinds of run that can settle it.
+ *
+ * Per kind rather than one flag, because the answer is per kind: "schakl is right about these
+ * budgets" says nothing about whose spelling of a client's name is right, and one button that
+ * applied a single answer to both would overwrite a register to settle a budget.
  */
-export function projectsUndecided(run: TimeonRun): boolean {
+export function undecidedKinds(run: TimeonRun): ("customers" | "projects")[] {
   const counts = (run.counts ?? {}) as Record<string, number>;
-  return Object.entries(counts).some(
-    ([key, value]) => key.startsWith("warn_project_differs_") && value > 0,
-  );
+  const has = (prefix: string) =>
+    Object.entries(counts).some(([key, value]) => key.startsWith(prefix) && value > 0);
+  return [
+    ...(has("warn_customer_differs_") ? (["customers"] as const) : []),
+    ...(has("warn_project_differs_") ? (["projects"] as const) : []),
+  ];
 }
 
 /** `44100` → `12:15`. A start-of-day second, as a wall clock. */

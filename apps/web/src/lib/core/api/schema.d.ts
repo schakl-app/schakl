@@ -36996,6 +36996,11 @@ export interface components {
                 [key: string]: number;
             };
             /**
+             * Create Missing Customers
+             * @default false
+             */
+            create_missing_customers: boolean;
+            /**
              * Create Missing Projects
              * @default false
              */
@@ -37005,6 +37010,8 @@ export interface components {
              * @default false
              */
             create_missing_users: boolean;
+            /** @default off */
+            customers_direction: components["schemas"]["SyncDirection"];
             /** History Floor */
             history_floor?: string | null;
             hours_direction: components["schemas"]["SyncDirection"];
@@ -37088,10 +37095,13 @@ export interface components {
             /** Base Url */
             base_url?: string | null;
             conflict_policy?: components["schemas"]["ConflictPolicy"] | null;
+            /** Create Missing Customers */
+            create_missing_customers?: boolean | null;
             /** Create Missing Projects */
             create_missing_projects?: boolean | null;
             /** Create Missing Users */
             create_missing_users?: boolean | null;
+            customers_direction?: components["schemas"]["SyncDirection"] | null;
             /** History Floor */
             history_floor?: string | null;
             hours_direction?: components["schemas"]["SyncDirection"] | null;
@@ -37182,10 +37192,12 @@ export interface components {
          * TimeonLinkKind
          * @description Which of schakl's records a pairing is about.
          *
-         *     ``user`` and ``customer`` are pairings too, even though nothing is ever written to either
-         *     side for them: they are *resolution*, and storing them is what stops every run re-deriving
-         *     "which schakl user is Timeon user 2004392" from an e-mail address that somebody may since
-         *     have changed. A resolution that is only ever recomputed is a resolution that silently moves.
+         *     ``user`` is a pairing even though nothing is ever written to either side for it: it is
+         *     *resolution*, and storing it is what stops every run re-deriving "which schakl user is
+         *     Timeon user 2004392" from an e-mail address that somebody may since have changed. A
+         *     resolution that is only ever recomputed is a resolution that silently moves. ``customer``
+         *     was the same until ``customers_direction`` existed; with a direction set it is a synced
+         *     record, and its link carries the per-field record of what the two sides last agreed on.
          * @enum {string}
          */
         TimeonLinkKind: "hour" | "project" | "customer" | "user";
@@ -37264,7 +37276,7 @@ export interface components {
          * @description What a run set out to do. One vocabulary for the cron, the button and the screen.
          * @enum {string}
          */
-        TimeonSyncKind: "verify" | "adopt" | "users" | "projects" | "hours" | "full";
+        TimeonSyncKind: "verify" | "adopt" | "users" | "projects" | "customers" | "hours" | "full";
         /**
          * TimeonSyncRequest
          * @description What one manual run should do.

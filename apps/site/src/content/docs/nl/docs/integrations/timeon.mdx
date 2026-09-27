@@ -1,6 +1,6 @@
 ---
 title: Timeon
-description: "Houd uren en projecten gelijk met de urenregistratie Timeon zolang je overstap duurt: per soort een richting, gefactureerde uren beschermd, conflicten als beslissing."
+description: "Houd uren, projecten en klanten gelijk met de urenregistratie Timeon zolang je overstap duurt: per soort een richting, gefactureerde uren beschermd, conflicten als beslissing."
 sidebar:
   order: 14
 ---
@@ -34,7 +34,7 @@ De koppeling heeft de module **Uren** nodig. Projecten koppelen gaat beter met d
 1. Zet **Timeon** aan onder *Instellingen → Integraties* en open *Instellingen → Timeon*. Kies
    **Organisatie koppelen**, geef de koppeling een **Naam** en plak de **API-sleutel** (in Timeon
    te vinden onder Instellingen). De sleutel wordt versleuteld bewaard en nooit teruggetoond.
-   Beide richtingen staan na het koppelen uit.
+   Alle richtingen staan na het koppelen uit.
 2. Druk op **Controleren**. Het antwoord noemt de organisatie en haar omvang ("7 medewerkers, 108
    klanten, 159 projecten"). Een sleutel die werkt is het antwoord niet; welke administratie hij
    opent wel.
@@ -56,9 +56,9 @@ tweede run. Die hoort vrijwel niets te doen.
 
 ## Richtingen, per soort
 
-Uren en projecten krijgen elk hun eigen richting, omdat het eerlijke antwoord meestal per soort
-verschilt: halverwege een overstap haal je uren op (mensen schrijven daar nog) terwijl projecten
-naar Timeon gaan (die worden hier nu aangemaakt).
+Uren, projecten en klanten krijgen elk hun eigen richting, omdat het eerlijke antwoord meestal per
+soort verschilt: halverwege een overstap haal je uren op (mensen schrijven daar nog) terwijl
+projecten en klanten naar Timeon gaan (die worden hier nu aangemaakt).
 
 | Richting | Wat het doet |
 | --- | --- |
@@ -76,8 +76,10 @@ niet kunt controleren.
 De eerste run tegen een omgeving die al Timeon-historie heeft, bijvoorbeeld na een import, moet
 die uren **herkennen** en koppelen zonder iets te schrijven. Een synchronisatie die eerst aanmaakte
 zou drie jaar urenstaten verdubbelen, en daar bestaat geen ongedaan maken voor. Klanten worden
-gekoppeld op hun **klantnummer**, nooit op naam: twee klanten met dezelfde naam komen gewoon voor,
-en een koppeling op naam is juist dubbelzinnig waar hij het veiligst lijkt.
+gekoppeld op hun **klantnummer**. Een naam koppelt twee klanten alleen waar hij aan beide kanten
+één keer voorkomt en de nummers elkaar niet tegenspreken: twee klanten met dezelfde naam komen
+gewoon voor, en een koppeling op naam is juist dubbelzinnig waar hij het veiligst lijkt. Eenmaal
+gekoppeld blijft een klant gekoppeld, ook als zijn nummer of naam wordt verbeterd.
 
 ## Het venster is de synchronisatie
 
@@ -127,6 +129,35 @@ de projecten daarna één keer met dat antwoord. Er wordt niet gegokt.
 
 Timeon kent alleen een totaalbudget. Een budget dat hier per periode opnieuw begint, gaat daarom
 niet mee en wordt gemeld.
+
+## Klanten
+
+Staat **Klanten** op **Uit**, dan worden klanten alleen gekoppeld: aan geen van beide kanten
+verandert er iets aan. Met een richting gekozen reizen tien velden mee: naam, klantnummer, actief
+of niet, factuur-e-mailadres, telefoonnummer, straat en huisnummer, postcode, plaats, land en
+btw-nummer. Met **Ontbrekende klanten aanmaken** wordt een klant die maar aan één kant bestaat
+ook aan de andere kant aangemaakt, in de richting waarin klanten reizen. Gearchiveerde klanten
+gaan niet naar Timeon, en een klant die je hier hebt verwijderd wordt niet opnieuw aangemaakt: dat
+wordt gemeld.
+
+Velden worden één voor één samengevoegd, net als bij projecten. Eén regel geldt alleen voor
+klanten: **een leeg veld maakt een ingevuld veld nooit leeg.** Een klant met hier een factuuradres
+en in Timeon geen houdt dat adres, ook als je alleen ophaalt; de lege kant wordt ingevuld waar de
+richting dat toestaat. Een veld wordt pas leeg als iemand het heeft leeggemaakt nadat beide kanten
+gelijk waren. Waar twee ingevulde waarden verschillen en nergens staat welke kant is gewijzigd,
+vraagt de synchronisatiepagina welke kant klopt, apart voor klanten en voor projecten.
+
+| Hier | In Timeon |
+| --- | --- |
+| Naam (de naam in lijsten, niet de juridische naam) | Naam. Een persoon in Timeon wordt hier aangemaakt onder voor- en achternaam |
+| Klantnummer | Klantnummer |
+| Elke status behalve gearchiveerd | Actief |
+| Factuur-e-mailadres | E-mailadres |
+| Telefoon, straat en huisnummer, postcode, plaats, land | Telefoon en de adresregels |
+| Btw-nummer | Btw-nummer |
+
+De contactpersonen, opmerkingen, het inkoopnummer en de klantgroep van een klant in Timeon hebben
+hier geen tegenhanger; ze blijven precies zoals ze zijn wanneer een klant wordt opgeslagen.
 
 ## Wat nooit overschreven wordt
 
@@ -181,10 +212,12 @@ vraagt ook het schrijfrecht op uren.
   gefactureerd wordt; doe je dat wel, dan kan een uur hier nog een keer op **Nog te factureren**
   verschijnen.
 - **Wat bewezen is.** Het lezen, het koppelen, een proefrun en echte ophaalruns zijn tegen een
-  echte Timeon-organisatie gedraaid. Versturen is alleen tegen een nabootsing getest. Doe voor de
-  eerste echte verzending een proefrun op een periode met **één** uur waar niemand last van heeft,
-  vergelijk dat uur in Timeon veld voor veld, en maak het venster pas daarna groter.
-- **Klaar met overstappen?** Zet beide richtingen op **Uit**, of verwijder de koppeling: de sleutel,
+  echte Timeon-organisatie gedraaid. Versturen, en het aanmaken of bijwerken van klanten en
+  projecten, is alleen tegen een nabootsing getest. Doe voor de eerste echte verzending een
+  proefrun op een periode met **één** uur waar niemand last van heeft, vergelijk dat uur in Timeon
+  veld voor veld, en maak het venster pas daarna groter. Voor klanten: laat eerst één klant in elke
+  richting aanmaken en vergelijk beide met de hand.
+- **Klaar met overstappen?** Zet alle richtingen op **Uit**, of verwijder de koppeling: de sleutel,
   de koppelingen en de runs verdwijnen, de uren die al zijn overgenomen blijven staan. Trek daarna
   de API-sleutel in bij Timeon.
 

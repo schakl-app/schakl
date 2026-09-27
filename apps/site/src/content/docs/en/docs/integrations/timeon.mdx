@@ -1,6 +1,6 @@
 ---
 title: Timeon
-description: "Keep hours and projects in step with the Timeon time registration for as long as your cutover lasts: a direction per kind, invoiced hours protected, conflicts as decisions."
+description: "Keep hours, projects and clients in step with the Timeon time registration for as long as your cutover lasts: a direction per kind, invoiced hours protected, conflicts as decisions."
 sidebar:
   order: 14
 ---
@@ -34,7 +34,7 @@ The integration needs the **Uren** (time) module. Pairing projects works better 
 1. Switch **Timeon** on under *Instellingen → Integraties* and open *Instellingen → Timeon*. Choose
    **Organisatie koppelen** (connect organisation), give the connection a **Naam** (name) and paste
    the **API-sleutel** (API key; in Timeon under Settings). The key is stored encrypted and never
-   shown again. Both directions start off.
+   shown again. Every direction starts off.
 2. Press **Controleren** (verify). The answer names the organisation and its size ("7 employees,
    108 clients, 159 projects"). A key that works is not the answer; which books it opens is.
 3. If you imported hours from Timeon earlier, set **Niets aanraken tot en met** (touch nothing up
@@ -57,9 +57,9 @@ next to nothing.
 
 ## Directions, per kind
 
-Hours and projects each get their own direction, because the honest answer usually differs per
-kind: halfway through a cutover you pull hours (people still log there) while projects go to
-Timeon (they are created here now).
+Hours, projects and clients each get their own direction, because the honest answer usually
+differs per kind: halfway through a cutover you pull hours (people still log there) while projects
+and clients go to Timeon (they are created here now).
 
 | Direction | What it does |
 | --- | --- |
@@ -77,8 +77,10 @@ loud is one you cannot check.
 The first run against an environment that already holds Timeon history, after an import for
 example, must **recognise** those hours and pair them without writing anything. A sync that created
 first would double three years of timesheets, and there is no undo for that. Clients are paired on
-their **client number**, never on name: two clients with the same name happen, and a match on name
-is ambiguous exactly where it looks safest.
+their **client number**. A name only pairs two clients where it occurs once on both sides and the
+numbers do not contradict each other: two clients with the same name happen, and a match on name
+is ambiguous exactly where it looks safest. Once paired, a client stays paired when its number or
+name is corrected.
 
 ## The window is the sync
 
@@ -126,6 +128,34 @@ or "Timeon is right") and then syncs the projects once with that answer. Nothing
 Timeon only knows a total budget. A budget that restarts per period here therefore does not travel,
 and that is reported.
 
+## Clients
+
+With **Klanten** (clients) set to **Uit**, clients are only paired: nothing about them changes on
+either side. With a direction chosen, ten fields travel: name, client number, active or not,
+invoice e-mail address, phone number, street and number, postal code, city, country and VAT
+number. With **Ontbrekende klanten aanmaken** (create missing clients), a client that exists on
+one side only is created on the other, in whichever direction clients travel. Archived clients are
+not sent to Timeon, and a client you deleted here is not made again: that is reported instead.
+
+Fields are merged one by one, as for projects. One rule is specific to clients: **an empty field
+never empties a filled one.** A client with an invoice address here and none in Timeon keeps it,
+also when you only pull; the empty side gets filled where the direction allows it. A field is
+emptied only when somebody emptied it after both sides agreed. Where two filled values differ and
+nothing on record says which side changed, the sync page asks which side is right, separately for
+clients and for projects.
+
+| Here | In Timeon |
+| --- | --- |
+| Name (the label, not the legal name) | Name. A person in Timeon is created here under first and last name |
+| Client number | Customer number |
+| Every status except archived | Active |
+| Invoice e-mail address | E-mail address |
+| Phone, street and house number, postal code, city, country | Phone and the address lines |
+| VAT number | VAT number |
+
+A client's contact persons, remarks, PO number and customer group in Timeon have no counterpart
+here; they are left exactly as they are when a client is saved.
+
 ## What is never overwritten
 
 | Setting | Default | What it does |
@@ -166,7 +196,7 @@ for the write permission on hours.
 
 ## Good to know
 
-- **Not carried**: contacts, Timeon invoices as documents, tasks, categories, mileage, rates and
+- **Not carried**: contact persons, Timeon invoices as documents, tasks, categories, mileage, rates and
   the separately billable duration. An hour billed for less than was worked in Timeon arrives here
   with its full worked duration.
 - **A push sends the whole hour.** Timeon replaces an hour whole when it saves. Mileage, expenses
@@ -177,10 +207,11 @@ for the write permission on hours.
   it. That holds as long as nobody invoices in Timeon any more; if you do, an hour could appear on
   **Nog te factureren** (still to invoice) here a second time.
 - **What has been proven.** Reading, pairing, a dry run and real pull runs have been run against a
-  real Timeon organisation. Pushing has only been tested against a stand-in. Before the first real
-  push, do a dry run on a period holding **one** hour nobody minds, compare that hour in Timeon
-  field by field, and only then widen the window.
-- **Done with the cutover?** Set both directions to **Uit**, or delete the connection: the key, the
+  real Timeon organisation. Pushing, and creating or updating clients and projects, has only been
+  tested against a stand-in. Before the first real push, do a dry run on a period holding **one**
+  hour nobody minds, compare that hour in Timeon field by field, and only then widen the window.
+  For clients: let it create one client in each direction first and compare both by hand.
+- **Done with the cutover?** Set every direction to **Uit**, or delete the connection: the key, the
   pairings and the runs go, the hours already carried over stay. Then revoke the API key in Timeon.
 
 ## Read next

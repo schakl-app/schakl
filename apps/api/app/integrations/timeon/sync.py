@@ -55,14 +55,28 @@ import logging
 import uuid
 from collections import Counter
 from datetime import UTC, date, datetime, timedelta
-from typing import Any
+from typing import Any, NamedTuple
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 
+from app.core.region import org_default_country
 from app.core.tenancy import RequestContext
 from app.core.timezone import day_start, org_today, org_zoneinfo
 from app.integrations.timeon.client import TimeonClient, TimeonError
+from app.integrations.timeon.customer_mapping import (
+    ARCHIVED,
+    CUSTOMER_FIELDS,
+    company_values,
+    country_maps,
+    created_fields,
+    customer_create_payload,
+    customer_update_payload,
+    display_name,
+    is_blank,
+    neutral_from_company,
+    neutral_from_customer_row,
+)
 from app.integrations.timeon.mapping import (
     UNRESOLVED,
     Resolver,
@@ -131,6 +145,31 @@ def _shown(token: str) -> str:
     if token.startswith("e:"):
         return f"€ {token[2:]}"
     return token or "—"
+
+
+class _CustomerShared(NamedTuple):
+    """What every client in one run is read against."""
+
+    iso_by_id: dict[str, str]
+    id_by_iso: dict[str, str]
+    region: str | None
+
+
+_NO_SHARED = _CustomerShared(iso_by_id={}, id_by_iso={}, region=None)
+
+
+def _refusal(exc: Any) -> str:
+    """A service's refusal as the i18n key that says most: the field's own where it named one
+    (``errors.companies.client_number_taken``), the envelope's otherwise. Keys, so the screen
+    translates them — never a sentence of ours in a column a Dutch reader opens."""
+    fields = getattr(exc, "fields", None) or {}
+    return " · ".join(dict.fromkeys(fields.values())) if fields else exc.message_key
+
+
+def _invalid(exc: Any) -> str:
+    """A schema's refusal, as the field names only — never pydantic's own English prose."""
+    names = sorted({str(error["loc"][0]) for error in exc.errors() if error.get("loc")})
+    return " · ".join(["errors.validation", *names])
 
 
 class RunReport:
@@ -236,6 +275,7 @@ class TimeonSyncService:
             await self._sync_references(
                 dry_run=dry_run,
                 create_projects=kind in (TimeonSyncKind.FULL, TimeonSyncKind.PROJECTS),
+                sync_customers=kind in (TimeonSyncKind.FULL, TimeonSyncKind.CUSTOMERS),
             )
             if kind in (TimeonSyncKind.FULL, TimeonSyncKind.HOURS, TimeonSyncKind.ADOPT):
                 await self._sync_hours(
@@ -285,14 +325,26 @@ class TimeonSyncService:
         )
         if not dry_run:
             values: dict[str, Any] = {"last_pull_at": now}
-            if self.report.counts.get("pushed") or self.report.counts.get("pushed_new"):
+            if any(
+                self.report.counts.get(key)
+                for key in (
+                    "pushed",
+                    "pushed_new",
+                    "projects_pushed",
+                    "projects_pushed_new",
+                    "customers_pushed",
+                    "customers_pushed_new",
+                )
+            ):
                 values["last_push_at"] = now
             values["last_error"] = message
             await self.ctx.repo(TimeonAccount).update(self.account, **values)
         return run
 
     # ------------------------------------------------------------------ references
-    async def _sync_references(self, *, dry_run: bool, create_projects: bool = False) -> None:
+    async def _sync_references(
+        self, *, dry_run: bool, create_projects: bool = False, sync_customers: bool = False
+    ) -> None:
         """Pair the three things every hour row points at: a person, a client, a project.
 
         Read even on an hours-only run, because an hour that cannot name its owner cannot be
@@ -302,14 +354,23 @@ class TimeonSyncService:
         holds.
         """
         await self._pair_users(dry_run=dry_run)
-        await self._pair_customers(dry_run=dry_run)
+        await self._pair_customers(dry_run=dry_run, sync=sync_customers)
         await self._pair_projects(dry_run=dry_run, create=create_projects)
 
     async def _existing_links(self, kind: TimeonLinkKind) -> dict[str, TimeonLink]:
+        """Every stored pairing of one kind — **including those of a client in the trash**.
+
+        The scoped read leaves out a row that belongs to a trashed client (docs/TRASH.md), which
+        is right for a screen and wrong here: a pairing that cannot be seen reads as a customer
+        nobody has paired, so the run would offer to make that client a second time — and a
+        restore thirty days later would find two. Seen, it is what it is: paired once, and the
+        schakl half is gone.
+        """
+        links = self.ctx.repo(TimeonLink, include_trashed=True)
         rows = (
             (
                 await self.ctx.session.execute(
-                    self.links.scoped_select()
+                    links.scoped_select()
                     .where(TimeonLink.account_id == self.account.id)
                     .where(TimeonLink.kind == kind.value)
                 )
@@ -374,13 +435,22 @@ class TimeonSyncService:
                 existing=links.get(ext),
             )
 
-    async def _pair_customers(self, *, dry_run: bool) -> None:
-        """Timeon customer ↔ schakl company, on the client number.
+    async def _pair_customers(self, *, dry_run: bool, sync: bool = False) -> None:
+        """Timeon customer ↔ schakl company: pair, create what is missing, keep ten fields in step.
 
-        ``customerNumber`` ↔ ``client_number``: unique on both sides, no fuzzy matching, and the
-        one field both systems agree is an identifier. All 108 of the migration's customers
-        joined on it with no misses. Timeon's own ``externalID`` holds UUIDs from some earlier
-        system and resolves to nothing here — it is ignored rather than guessed at.
+        For its first months this method did the first of those and nothing else
+        (``docs/TIMEON.md`` §5b), which is still exactly what it does while
+        ``customers_direction`` is ``off`` or the run is not one that syncs clients.
+
+        **Paired by stored link first, by client number second, by name last.**
+        ``customerNumber`` ↔ ``client_number`` is the one field both systems agree is an
+        identifier, and all 108 of the migration's customers joined on it. But a number is how
+        two clients are *recognised*; matching on it every run meant a number corrected on either
+        side read as "unknown client". The name is a last resort with three conditions, because
+        *Maatschap Mini Camping Boudewijnskerke* exists twice in both systems: it must be unique
+        on **both** sides, the two numbers must not contradict each other, and the company must
+        not already answer for another customer. Timeon's own ``externalID`` holds UUIDs from
+        some earlier system and resolves to nothing here — it is ignored rather than guessed at.
         """
         remote = await self.client.customers()
         companies = (
@@ -388,32 +458,441 @@ class TimeonSyncService:
             .scalars()
             .all()
         )
+        by_id = {c.id: c for c in companies}
         by_number = {
             str(c.client_number).strip(): c for c in companies if c.client_number
         }
+        local_names = Counter((c.name or "").strip().lower() for c in companies)
+        by_name = {(c.name or "").strip().lower(): c for c in companies}
+        remote_numbers = Counter(
+            number for row in remote if (number := str(row.get("customerNumber") or "").strip())
+        )
+        remote_names = Counter(display_name(row).lower() for row in remote)
+
         links = await self._existing_links(TimeonLinkKind.CUSTOMER)
-        for customer in remote:
-            ext = str(customer.get("customerID"))
-            number = str(customer.get("customerNumber") or "").strip()
-            match = by_number.get(number)
+        direction = self._direction(self.account.customers_direction)
+        active = sync and direction != SyncDirection.OFF.value
+        pull = active and direction in ("pull", "two_way")
+        push = active and direction in ("push", "two_way")
+        may_create = active and self.account.create_missing_customers
+        if pull and not self.ctx.can("companies.company.write"):
+            # Asked once, before the walk: a permission the caller lacks is one sentence, not a
+            # refusal per client (§18 — a bad call is the call's, a bad row is the row's).
+            self.report.warn("customer_write_forbidden")
+            pull = False
+        if may_create and getattr(self.ctx, "company_scope", None) is not None:
+            # A caller who sees part of the register cannot know what is missing from it: every
+            # client outside their horizon would read as absent and be made a second time.
+            self.report.warn("customer_scope_restricted")
+            may_create = False
+        shared = await self._customer_shared() if active else _NO_SHARED
+
+        #: Companies some Timeon customer already answers for. Seeded from the stored links, so
+        #: a number or a name can never hand one client to two rows over there — which the
+        #: unique index on a link's schakl half would answer with a 500.
+        claimed = {link.local_id for link in links.values() if link.local_id in by_id}
+        seen: set[str] = set()
+
+        for row in remote:
+            ext = str(row.get("customerID"))
+            seen.add(ext)
+            number = str(row.get("customerNumber") or "").strip()
+            name = display_name(row)
             self.report.counts["customers_read"] += 1
-            if match is None:
-                self.report.warn(
-                    "customer_unmapped",
-                    name=customer.get("name"),
-                    number=number or None,
-                    external_id=ext,
-                )
+            link = links.get(ext)
+            match = by_id.get(link.local_id) if link is not None and link.local_id else None
+            created = False
+            if match is None and link is not None and link.local_id is not None:
+                # Paired once, and the schakl half is gone — deleted, or in the trash. That is
+                # somebody's decision; making the client again would be the sync overruling it.
+                self.report.warn("customer_gone_here", name=name, number=number or None)
                 continue
-            await self._upsert_link(
+            if match is None and number:
+                if remote_numbers[number] > 1:
+                    self.report.warn("customer_duplicate_number", name=name, number=number)
+                else:
+                    candidate = by_number.get(number)
+                    if candidate is not None and candidate.id not in claimed:
+                        match = candidate
+            if match is None and name and remote_numbers.get(number, 0) <= 1:
+                key = name.lower()
+                candidate = by_name.get(key)
+                if (
+                    candidate is not None
+                    and candidate.id not in claimed
+                    and local_names[key] == 1
+                    and remote_names[key] == 1
+                    and (not number or not candidate.client_number)
+                ):
+                    match = candidate
+            if match is None:
+                if not (pull and may_create) or not name:
+                    self.report.warn(
+                        "customer_unmapped",
+                        name=name or None,
+                        number=number or None,
+                        external_id=ext,
+                    )
+                    continue
+                self.report.counts["customers_created"] += 1
+                if dry_run:
+                    continue
+                match = await self._create_company(row, shared)
+                if match is None:
+                    self.report.counts["customers_created"] -= 1
+                    continue
+                by_id[match.id] = match
+                created = True
+            claimed.add(match.id)
+            link = await self._upsert_link(
                 TimeonLinkKind.CUSTOMER,
                 external_id=ext,
                 local_id=match.id,
                 company_id=match.id,
-                external_name=customer.get("name"),
+                external_name=name or None,
                 dry_run=dry_run,
-                existing=links.get(ext),
+                existing=link,
             )
+            if not active:
+                continue
+            if created:
+                if link is not None:
+                    # What Timeon said is the record on **both** sides: anything schakl's own
+                    # service then allocated or normalised — a client number for a customer that
+                    # had none — reads as schakl having moved, and travels back on its own.
+                    told = self._customer_row(row, shared)
+                    await self._stamp_base(link, told, dict(told), CUSTOMER_FIELDS, CUSTOMER_FIELDS)
+                continue
+            await self._reconcile_customer(
+                match, row, link, shared, pull=pull, push=push, dry_run=dry_run
+            )
+
+        for ext, link in links.items():
+            if ext not in seen and link.local_id in by_id:
+                # Still paired, so the client is not offered to Timeon a second time below.
+                self.report.warn("customer_gone_there", name=by_id[link.local_id].name)
+
+        if push and may_create:
+            await self._push_new_customers(
+                [c for c in companies if c.id not in claimed], remote, shared, dry_run=dry_run
+            )
+
+    async def _customer_shared(self) -> _CustomerShared:
+        """What every client in a run is read against: Timeon's country table and the org's own
+        country. The table is a nicety that fails alone — without it a country simply does not
+        travel (it canonicalises to the sentinel) and everything else does."""
+        try:
+            iso_by_id, id_by_iso = country_maps(await self.client.countries())
+        except TimeonError as exc:
+            logger.info("timeon: country table unreadable: %s", exc)
+            iso_by_id, id_by_iso = {}, {}
+        region = await org_default_country(self.ctx.session, self.ctx.org.id)
+        return _CustomerShared(iso_by_id=iso_by_id, id_by_iso=id_by_iso, region=region)
+
+    def _customer_local(self, company: Company, shared: _CustomerShared) -> dict[str, Any]:
+        local = neutral_from_company(company, region=shared.region)
+        if local["country"] and local["country"] not in shared.id_by_iso:
+            # A country Timeon's table cannot name cannot be said there.
+            local["country"] = UNRESOLVED
+        return local
+
+    def _customer_row(self, row: dict[str, Any], shared: _CustomerShared) -> dict[str, Any]:
+        return neutral_from_customer_row(
+            row, iso_by_id=shared.iso_by_id, region=shared.region
+        )
+
+    async def _create_company(
+        self, row: dict[str, Any], shared: _CustomerShared
+    ) -> Company | None:
+        """Make the client here, through the companies module's own service — so it gets the
+        validation, the client number, the trail line and the ``company.created`` event a form
+        submit would. In a SAVEPOINT (§18): a number the trash still holds is one client's line
+        in the report, not the end of the run."""
+        from pydantic import ValidationError
+
+        from app.errors import AppError
+        from app.modules.companies.schemas import CompanyCreate
+        from app.modules.companies.service import CompanyService
+
+        remote = self._customer_row(row, shared)
+        values = company_values(row, remote, CUSTOMER_FIELDS)
+        values["name"] = display_name(row)
+        try:
+            async with self.ctx.session.begin_nested():
+                return await CompanyService(self.ctx).create(CompanyCreate(**values))
+        except AppError as exc:
+            self.report.error(
+                "customer_create_failed", name=values["name"], detail=_refusal(exc)
+            )
+        except ValidationError as exc:
+            self.report.error(
+                "customer_create_failed", name=values["name"], detail=_invalid(exc)
+            )
+        return None
+
+    def _customer_winner(
+        self,
+        field: str,
+        local: dict[str, Any],
+        remote: dict[str, Any],
+        base: dict[str, Any],
+        *,
+        pull: bool,
+        push: bool,
+    ) -> str:
+        """Which side one differing field should follow: ``push``, ``pull``, ``drift`` or ``ask``.
+
+        :meth:`_project_winner`'s rule with one addition, and the addition is the reason this is
+        not the same function. **A blank holds nobody's opinion.** Where nothing on record says
+        who moved — every pairing made before clients were synced, which is all of them — a
+        filled field facing an empty one fills it, in whichever direction is allowed, and is
+        *never* emptied by it: a one-way pull that read "Timeon has no e-mail address" as an
+        instruction would wipe the invoice address off a hundred clients on its first run. A
+        field is emptied only by somebody emptying it, which the record can show.
+        """
+        recorded_local, recorded_remote = base.get("local") or {}, base.get("remote") or {}
+        known = field in recorded_local and field in recorded_remote
+        local_moved = known and recorded_local[field] != local[field]
+        remote_moved = known and recorded_remote[field] != remote[field]
+        if local_moved and not remote_moved:
+            return "push" if push else "drift"
+        if remote_moved and not local_moved:
+            return "pull" if pull else "drift"
+        if not known:
+            if is_blank(local[field]) and not is_blank(remote[field]):
+                return "pull" if pull else "drift"
+            if is_blank(remote[field]) and not is_blank(local[field]):
+                return "push" if push else "drift"
+        if push and not pull:
+            return "push"
+        if pull and not push:
+            return "pull"
+        choice = self.prefer or {
+            ConflictPolicy.SCHAKL_WINS.value: "schakl",
+            ConflictPolicy.TIMEON_WINS.value: "timeon",
+        }.get(self.account.conflict_policy)
+        return {"schakl": "push", "timeon": "pull"}.get(choice or "", "ask")
+
+    async def _reconcile_customer(
+        self,
+        company: Company,
+        row: dict[str, Any],
+        link: TimeonLink | None,
+        shared: _CustomerShared,
+        *,
+        pull: bool,
+        push: bool,
+        dry_run: bool,
+    ) -> None:
+        """Bring one paired client's ten fields into step, field by field."""
+        local = self._customer_local(company, shared)
+        remote = self._customer_row(row, shared)
+        base = dict((link.observed or {}).get("base") or {}) if link is not None else {}
+        diffs = differences(local, remote, CUSTOMER_FIELDS)
+        verdicts = {
+            field: self._customer_winner(field, local, remote, base, pull=pull, push=push)
+            for field in diffs
+        }
+        to_push = [f for f in CUSTOMER_FIELDS if verdicts.get(f) == "push"]
+        to_pull = [f for f in CUSTOMER_FIELDS if verdicts.get(f) == "pull"]
+        for field in (f for f in CUSTOMER_FIELDS if verdicts.get(f) == "ask"):
+            self._warn_customer_differs(company, field, local, remote)
+        if any(v == "drift" for v in verdicts.values()):
+            self.report.counts["customers_drift"] += 1
+        if not diffs:
+            self.report.counts["customers_in_step"] += 1
+        if to_push:
+            self.report.counts["customers_pushed"] += 1
+        if to_pull:
+            self.report.counts["customers_pulled"] += 1
+        if dry_run or link is None:
+            return
+
+        agreed = [f for f in CUSTOMER_FIELDS if f not in diffs]
+        if to_push:
+            pushed = await self._apply_customer_push(company, row, local, to_push, shared)
+            agreed += pushed
+            if not pushed:
+                self.report.counts["customers_pushed"] -= 1
+        if to_pull:
+            pulled = await self._apply_customer_pull(company, row, remote, to_pull)
+            agreed += pulled
+            if pulled:
+                local = self._customer_local(company, shared)
+            else:
+                self.report.counts["customers_pulled"] -= 1
+        moved = set(to_push) | set(to_pull)
+        settled = {f: local[f] for f in agreed}
+        await self._stamp_base(
+            link,
+            settled,
+            {f: (settled[f] if f in moved else remote[f]) for f in agreed},
+            tuple(agreed),
+            CUSTOMER_FIELDS,
+            pushed=bool(to_push),
+            pulled=bool(to_pull),
+        )
+
+    def _warn_customer_differs(
+        self, company: Company, field: str, local: dict[str, Any], remote: dict[str, Any]
+    ) -> None:
+        """One undecided field, as a sentence somebody can act on."""
+        if field == "active":
+            side = "here" if local[field] else "there"
+            self.report.warn(f"customer_differs_active_{side}", name=company.name)
+            return
+        self.report.warn(
+            f"customer_differs_{field}",
+            name=company.name,
+            schakl=local[field] or "—",
+            timeon=remote[field] or "—",
+        )
+
+    async def _apply_customer_push(
+        self,
+        company: Company,
+        row: dict[str, Any],
+        local: dict[str, Any],
+        fields: list[str],
+        shared: _CustomerShared,
+    ) -> list[str]:
+        """Write the named fields to Timeon. Answers the ones that landed.
+
+        One save, preceded by a read: the list row is a summary and the save replaces, so what
+        goes back is the customer as Timeon itself just described it, with our fields changed.
+        """
+        ext = int(row["customerID"])
+        try:
+            current = await self.client.customer(ext)
+            payload, written = customer_update_payload(
+                {**row, **current, "customerID": ext},
+                company,
+                local,
+                fields,
+                id_by_iso=shared.id_by_iso,
+            )
+            if written:
+                await self.client.save_customer(payload)
+        except TimeonError as exc:
+            self.report.error(
+                "customer_push_failed", name=company.name, detail=str(exc)[:200]
+            )
+            return []
+        return written
+
+    async def _apply_customer_pull(
+        self,
+        company: Company,
+        row: dict[str, Any],
+        remote: dict[str, Any],
+        fields: list[str],
+    ) -> list[str]:
+        """Take the named fields over from Timeon, through the companies module's own service.
+
+        In a SAVEPOINT (§18): the service refuses for reasons of its own — a client number
+        another client holds — and that is one client's line in the report, not the run's end.
+        """
+        from pydantic import ValidationError
+
+        from app.errors import AppError
+        from app.modules.companies.schemas import CompanyUpdate
+        from app.modules.companies.service import CompanyService
+
+        values = company_values(row, remote, fields)
+        if "status" in values and values["status"] != ARCHIVED and company.status != ARCHIVED:
+            # "Active" over there is every status here but archived: a lead stays a lead.
+            values.pop("status")
+        written = [f for f in fields if not (f == "name" and is_blank(remote["name"]))]
+        if not values:
+            return written
+        try:
+            async with self.ctx.session.begin_nested():
+                await CompanyService(self.ctx).update(company.id, CompanyUpdate(**values))
+        except AppError as exc:
+            self.report.error(
+                "customer_pull_failed", name=company.name, detail=_refusal(exc)
+            )
+            return []
+        except ValidationError as exc:
+            self.report.error(
+                "customer_pull_failed", name=company.name, detail=_invalid(exc)
+            )
+            return []
+        await self.ctx.session.refresh(company)
+        return written
+
+    async def _push_new_customers(
+        self,
+        unpaired: list[Company],
+        remote: list[dict[str, Any]],
+        shared: _CustomerShared,
+        *,
+        dry_run: bool,
+    ) -> None:
+        """schakl clients Timeon has never seen. Create each there.
+
+        Every client that is not archived — a lead's hours are hours too — and never one from
+        the trash, which the scoped read that produced this list already left out. A create that
+        is interrupted after Timeon made the customer is safe to meet again: the next run finds
+        that number (or that name) over there and *pairs* it.
+        """
+        for company in sorted(unpaired, key=lambda c: (c.created_at, str(c.id))):
+            if company.status == ARCHIVED or not (company.name or "").strip():
+                continue
+            local = self._customer_local(company, shared)
+            payload = customer_create_payload(
+                company, local, id_by_iso=shared.id_by_iso, fallback_country=shared.region
+            )
+            self.report.counts["customers_pushed_new"] += 1
+            if dry_run:
+                continue
+            try:
+                ext = await self._create_remote_customer(payload)
+            except TimeonError as exc:
+                self.report.counts["customers_pushed_new"] -= 1
+                self.report.error(
+                    "customer_push_failed", name=company.name, detail=str(exc)[:200]
+                )
+                continue
+            link = await self._upsert_link(
+                TimeonLinkKind.CUSTOMER,
+                external_id=ext,
+                local_id=company.id,
+                company_id=company.id,
+                external_name=company.name,
+                dry_run=False,
+                existing=None,
+                origin=TimeonLinkOrigin.SCHAKL,
+            )
+            if link is not None:
+                await self._stamp_base(
+                    link,
+                    local,
+                    dict(local),
+                    created_fields(payload, local),
+                    CUSTOMER_FIELDS,
+                    pushed=True,
+                )
+
+    async def _create_remote_customer(self, payload: dict[str, Any]) -> str:
+        """Make the customer in Timeon and answer its id. What the create *answers* is written
+        down nowhere, so an answer carrying no id is followed by a look at the list rather than
+        by a second create."""
+        created = await self.client.create_customer(payload)
+        ext = created.get("customerID")
+        if not ext:
+            number = str(payload.get("customerNumber") or "").strip()
+            wanted = (payload.get("name") or "").strip().lower()
+            for row in await self.client.customers():
+                if (number and str(row.get("customerNumber") or "").strip() == number) or (
+                    not number and display_name(row).lower() == wanted
+                ):
+                    ext = row.get("customerID")
+        if not ext:
+            raise TimeonError(
+                "Timeon created the customer and did not say which", path="/api/customer"
+            )
+        return str(ext)
 
     async def _pair_projects(self, *, dry_run: bool, create: bool) -> None:
         """Timeon project ↔ schakl project: pair, create what is missing, keep four fields in step.
@@ -544,8 +1023,9 @@ class TimeonSyncService:
 
         Only **open, named** ones: a project closed here that never existed there is history
         nobody will book on again, and a create-then-edit placeholder (#230) is a row nobody has
-        named yet. A client Timeon does not know is reported rather than invented — clients are
-        paired on their number and never created by this integration in either direction.
+        named yet. A client Timeon does not know is reported here rather than invented here —
+        creating it is the client phase's job (§5b), which runs first and only where
+        ``customers_direction`` and ``create_missing_customers`` say so.
 
         A create that is interrupted after Timeon made the project is safe to meet again: the
         next run finds a project of that name under that client and *pairs* it.
@@ -833,8 +1313,37 @@ class TimeonSyncService:
         pushed: bool = False,
         pulled: bool = False,
     ) -> None:
+        await self._stamp_base(
+            link, local, remote, fields, PROJECT_FIELDS, pushed=pushed, pulled=pulled,
+            keep_unresolved=True,
+        )
+
+    async def _stamp_base(
+        self,
+        link: TimeonLink,
+        local: dict[str, Any],
+        remote: dict[str, Any],
+        fields: tuple[str, ...],
+        compared: tuple[str, ...],
+        *,
+        pushed: bool = False,
+        pulled: bool = False,
+        keep_unresolved: bool = False,
+    ) -> None:
         """Record what the two sides agree on. Written only when it changed — the first run
-        stamps every pairing once, and a quiet run after it writes nothing."""
+        stamps every pairing once, and a quiet run after it writes nothing.
+
+        A client field that is the sentinel on either side is **not** recorded: "we could not
+        read it" is not something the two sides agreed on, and recording it would make the day
+        the value becomes readable look like the day somebody changed it — which, where the
+        readable value turns out to be empty, is an instruction to blank the other side.
+        (Projects keep their sentinel on record, as they always have: a budget that resets is a
+        stated fact about the project, not an unread one.)
+        """
+        if not keep_unresolved:
+            fields = tuple(
+                f for f in fields if local[f] != UNRESOLVED and remote[f] != UNRESOLVED
+            )
         before = dict((link.observed or {}).get("base") or {})
         base = {
             "local": {**(before.get("local") or {}), **{f: local[f] for f in fields}},
@@ -845,8 +1354,8 @@ class TimeonSyncService:
             values.update(
                 observed={**(link.observed or {}), "base": base},
                 observed_at=datetime.now(UTC),
-                local_hash=fingerprint(base["local"], PROJECT_FIELDS),
-                remote_hash=fingerprint(base["remote"], PROJECT_FIELDS),
+                local_hash=fingerprint(base["local"], compared),
+                remote_hash=fingerprint(base["remote"], compared),
             )
         if pushed:
             values["pushed_at"] = datetime.now(UTC)
@@ -1694,9 +2203,9 @@ class TimeonSyncService:
         origin: TimeonLinkOrigin = TimeonLinkOrigin.TIMEON,
     ) -> TimeonLink | None:
         """A reference pairing (user / customer / project). Answers the stored row, or ``None``
-        on a dry run that would have made one. People and clients carry no fingerprints —
-        nothing about them is ever written by the sync — while a project's are kept by
-        :meth:`_stamp_project`.
+        on a dry run that would have made one. People carry no fingerprints — nothing about
+        them is ever written by the sync — while a project's and a client's are kept by
+        :meth:`_stamp_base`.
 
         Recorded on :attr:`_pairs` **before** the dry-run guard, so a dry run resolves ids exactly
         as the real run would — see :meth:`resolver`.

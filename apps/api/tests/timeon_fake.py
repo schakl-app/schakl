@@ -53,6 +53,12 @@ class FakeTimeon:
         self.users: list[dict[str, Any]] = []
         self.customers: list[dict[str, Any]] = []
         self.projects: list[dict[str, Any]] = []
+        #: Timeon's country table. The code is spelled ``isO2`` on the wire.
+        self.countries: list[dict[str, Any]] = [
+            {"countryID": 1, "isO2": "NL"},
+            {"countryID": 2, "isO2": "BE"},
+            {"countryID": 3, "isO2": "DE"},
+        ]
         #: ``budgetID -> Budget``. **A resource of its own**, as on the live API: the ``budget``
         #: object on a project list row is a computed summary of one of these, and a fake that
         #: kept the budget *on* the project would let a push that never calls ``/api/budget``
@@ -81,10 +87,19 @@ class FakeTimeon:
         self.users.append(row)
         return row
 
-    def add_customer(self, customer_id: int, name: str, number: str) -> dict[str, Any]:
-        row = {"customerID": customer_id, "name": name, "customerNumber": number}
+    def add_customer(
+        self, customer_id: int, name: str | None, number: str | None, **extra: Any
+    ) -> dict[str, Any]:
+        """A customer row. Only the keys handed in exist on it, which is deliberate: what a
+        ``customer/list`` row carries is known from Timeon's screens and not from its document,
+        so the sync has to treat an absent key as *unknown* — and a fake that always served
+        every key could not show that it does."""
+        row = {"customerID": customer_id, "name": name, "customerNumber": number, **extra}
         self.customers.append(row)
         return row
+
+    def customer(self, customer_id: int) -> dict[str, Any] | None:
+        return next((c for c in self.customers if c["customerID"] == customer_id), None)
 
     def add_project(
         self,
@@ -241,6 +256,8 @@ class FakeTimeon:
             "/api/hour/disapprove": self._hour_disapprove,
             "/api/project/create": self._project_create,
             "/api/project/save": self._project_save,
+            "/api/customer": self._customer_create,
+            "/api/customer/save": self._customer_save,
         }.get(path)
         if handler is None:
             return httpx.Response(404, json={"message": f"no route {path}"})
@@ -326,6 +343,11 @@ class FakeTimeon:
                 return _refused("project not found")
             row["statusID"] = body.get("statusID")
             return _ok(row)
+        if method == "GET" and path == "/api/system/countries":
+            return _ok(list(self.countries))
+        if method == "GET" and parts[:2] == ["api", "customer"] and len(parts) == 3:
+            row = self.customer(int(parts[2])) if parts[2].isdigit() else None
+            return _ok(dict(row)) if row is not None else _refused("customer not found")
         if method == "POST" and path == "/api/project/getnextnumber":
             return _ok(str(len(self.projects) + 1).zfill(4))
         if method == "GET" and parts[:2] == ["api", "project"] and len(parts) == 3:
@@ -479,5 +501,44 @@ class FakeTimeon:
         if not (body.get("name") or "").strip():
             return _refused("name is required")
         for key in self._SAVED:
+            row[key] = body.get(key)
+        return _ok(row)
+
+    #: What ``customer/save`` writes — **wholesale**, like every save here: a key the body
+    #: leaves out is blanked, so a push that sent only the field it changed would be caught
+    #: wiping the client's remark.
+    _CUSTOMER_SAVED = ("name", "isActive", "addressLine1", "addressLine2", "addressLine3",
+                       "firstname", "lastname", "phoneNumber", "customerNumber", "emailAddress",
+                       "remark", "vatNumber", "countryID", "defaultBillable", "internalRemark",
+                       "poNumber")
+
+    #: ``CreateCustomer`` — narrower than the save, and closed (``additionalProperties: false``).
+    _CUSTOMER_CREATED = ("name", "addressLine1", "addressLine2", "addressLine3", "emailAddress",
+                         "countryID", "customerGroupID", "firstname", "lastname", "phoneNumber",
+                         "customerNumber", "defaultBillable")
+
+    def _customer_create(self, body: dict[str, Any]) -> httpx.Response:
+        if not (body.get("name") or body.get("lastname") or "").strip():
+            return _refused("name is required")
+        unknown = sorted(set(body) - set(self._CUSTOMER_CREATED))
+        if unknown:
+            return _refused(f"unknown field {unknown[0]}")
+        row = self.add_customer(
+            max([c["customerID"] for c in self.customers], default=2_110_000) + 1,
+            body.get("name"),
+            body.get("customerNumber"),
+            **{key: None for key in self._CUSTOMER_SAVED if key not in ("name", "customerNumber")},
+        )
+        row.update({key: body.get(key) for key in self._CUSTOMER_CREATED if key in body})
+        row["isActive"] = True
+        return _ok(row)
+
+    def _customer_save(self, body: dict[str, Any]) -> httpx.Response:
+        row = self.customer(int(body.get("customerID") or 0))
+        if row is None:
+            return _refused("customer not found")
+        if not (body.get("name") or body.get("lastname") or "").strip():
+            return _refused("name is required")
+        for key in self._CUSTOMER_SAVED:
             row[key] = body.get(key)
         return _ok(row)

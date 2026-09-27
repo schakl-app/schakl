@@ -43,7 +43,19 @@
   function detailOf(entry: Record<string, unknown>): string {
     return Object.entries(entry)
       .filter(([key, value]) => key !== "code" && value !== null && value !== undefined)
-      .map(([, value]) => String(value))
+      .map(([, value]) => said(String(value)))
+      .join(" · ");
+  }
+
+  /**
+   * A refusal from one of schakl's own services arrives as the i18n key it named — "this client
+   * number is taken" — and a key printed at somebody is a database dump wearing a screen's
+   * clothes (#300). Timeon's own words stay verbatim: they are not ours to translate.
+   */
+  function said(value: string): string {
+    return value
+      .split(" · ")
+      .map((part) => (/^errors(\.[a-z0-9_]+)+$/.test(part) ? t(part) : part))
       .join(" · ");
   }
 
