@@ -129,6 +129,9 @@ async def list_meetings(
     project_id: uuid.UUID | None = Query(None),
     status: str | None = Query(None, description="Comma-separated set; absent means every status"),
     q: str | None = Query(None, max_length=200),
+    sort: str | None = Query(
+        None, description="title | kind | occurred_at | duration | status | owner | created_at"
+    ),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     count: bool = Query(True),
@@ -141,6 +144,7 @@ async def list_meetings(
         project_id=project_id,
         status=status,
         q=q,
+        sort=sort,
         count=count,
     )
 

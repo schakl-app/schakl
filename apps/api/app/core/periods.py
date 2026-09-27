@@ -124,6 +124,39 @@ def _quarter_span(year: int, quarter: int) -> tuple[date, date]:
     return date(year, first, 1), _month_span(year, first + 2)[1]
 
 
+class CalendarUnit(StrEnum):
+    """A whole calendar period something is settled per: a month, a quarter or a year.
+
+    Distinct from :class:`PeriodPreset` on purpose. A preset is a span a *chart* is drawn over,
+    so it ends yesterday — a day still running has no complete numbers. A unit is a span
+    something is **accounted** in (a VAT return), and that one is whole by definition: the
+    return for Q3 covers 30 September whether or not 30 September has happened yet.
+    """
+
+    MONTH = "month"
+    QUARTER = "quarter"
+    YEAR = "year"
+
+
+def calendar_span(unit: CalendarUnit | str, day: date) -> tuple[date, date]:
+    """The whole calendar ``unit`` that ``day`` falls in, both ends inclusive.
+
+    ``day`` is the org's own day (``org_today``) wherever "now" is meant — §8.
+    """
+    unit = CalendarUnit(unit)
+    if unit is CalendarUnit.MONTH:
+        return _month_span(day.year, day.month)
+    if unit is CalendarUnit.QUARTER:
+        return _quarter_span(day.year, quarter_of(day))
+    return date(day.year, 1, 1), date(day.year, 12, 31)
+
+
+def previous_calendar_span(unit: CalendarUnit | str, day: date) -> tuple[date, date]:
+    """The whole calendar ``unit`` before the one ``day`` falls in."""
+    start, _ = calendar_span(unit, day)
+    return calendar_span(unit, start - _ONE_DAY)
+
+
 def _previous_month(value: date) -> tuple[date, date]:
     """The whole calendar month before the one ``value`` is in."""
     last = value.replace(day=1) - _ONE_DAY

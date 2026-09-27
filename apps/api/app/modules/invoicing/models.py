@@ -122,6 +122,19 @@ class LineKind(StrEnum):
     DOMAIN = "domain"
 
 
+class VatPeriod(StrEnum):
+    """How often this agency files its VAT return — vocabulary, not law (§14's rule).
+
+    The Dutch default is the quarter; a business the tax office moved to monthly returns, or one
+    allowed a yearly one, says so here. It decides only which span the overview's VAT figure is
+    summed over, so the values are :class:`app.core.periods.CalendarUnit`'s own.
+    """
+
+    MONTH = "month"
+    QUARTER = "quarter"
+    YEAR = "year"
+
+
 class TaxCategory(StrEnum):
     """How a rate behaves on a document — vocabulary, not law. ``REVERSE_CHARGE`` prints its
     mandatory notice and charges 0; ``EXEMPT`` charges nothing and reports nothing. What a
@@ -212,6 +225,17 @@ class InvoicingSettings(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Bas
         nullable=False,
         default=AutoInvoiceMode.DRAFT.value,
         server_default=text("'draft'"),
+    )
+
+    # --- VAT return ------------------------------------------------------------- #
+    #: The span the agency files VAT over (:class:`VatPeriod`). ``quarter`` is the seeded value
+    #: because it is what most Dutch businesses file; nothing but the overview's VAT figure
+    #: reads it, so an instance that upgrades and sets nothing gains one tile and loses nothing.
+    vat_period: Mapped[str] = mapped_column(
+        String(10),
+        nullable=False,
+        default=VatPeriod.QUARTER.value,
+        server_default=text("'quarter'"),
     )
 
     # --- reminders (issue #207: automatic, opt-in) ------------------------------ #

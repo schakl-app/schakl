@@ -7,7 +7,7 @@ sidebar:
 
 Facturen en offertes die uit het werk zelf komen, terugkerende afspraken, de betaalprovider die ze vereffent en het boekhoudpakket waar ze in belanden.
 
-112 endpoints, verdeeld over 4 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
+113 endpoints, verdeeld over 4 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
 
 ## `invoicing`
 
@@ -68,6 +68,7 @@ Facturen en offertes die uit het werk zelf komen, terugkerende afspraken, de bet
 | `GET` `/invoicing/settings` | `invoicing.invoice.read:any` |
 | `PUT` `/invoicing/settings` | `invoicing.settings.manage` |
 | `GET` `/invoicing/stats/revenue` | `invoicing.invoice.read:any` |
+| `GET` `/invoicing/stats/vat` | `invoicing.invoice.read:any` |
 | `GET` `/invoicing/summary` | `invoicing.invoice.read` |
 | `GET` `/invoicing/tax-rates` | `invoicing.invoice.read:any` |
 | `POST` `/invoicing/tax-rates` | `invoicing.settings.manage` |
@@ -437,6 +438,8 @@ Queryparameters:
 | Naam | Type | Betekenis |
 | --- | --- | --- |
 | `include_inactive` | boolean |  (default `false`) |
+| `q` | string | matches name, article code and description |
+| `usage` | boolean | attach how many agreements and standard subscriptions name each product (default `false`) |
 
 Antwoord: `200` · `ProductRead[]`
 
@@ -717,6 +720,20 @@ Queryparameters:
 | `year` | integer · verplicht |  |
 
 Antwoord: `200` · `InvoicingRevenueStats`
+
+#### `GET /api/v1/invoicing/stats/vat`
+
+**Invoicing Vat Stats** — The VAT charged on what was invoiced in the current return period, and in the one before it. Sales only: nothing the agency bought is recorded here, so no input VAT is deducted and this is the top line of a return, not the amount to transfer.
+
+Recht: `invoicing.invoice.read:any`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `period` | VatPeriod | month \| quarter \| year. Absent: the org's own VAT return period. |
+
+Antwoord: `200` · `InvoicingVatStats`
 
 #### `GET /api/v1/invoicing/summary`
 

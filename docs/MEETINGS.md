@@ -443,6 +443,20 @@ the minutes states three facts with one control each: the contact moment (a link
 that files it where the automatic filing was refused), the tasks made from action items, and the
 hours (with *Uren registreren*). Nothing on the page decides something on a later press.
 
+## The register
+
+`/meetings` is the shared `DataTable` (docs/UX.md): columns the viewer picks and orders, a sort
+the API applies (`GET /meetings?sort=`, an allow-list — the client is named through the directory
+seam and is therefore not sortable), the shared `FilterBar` and the shared pager.
+
+The selection (✎) offers **delete and nothing else**: a title, a client and a day are each that
+meeting's own, so there is nothing a selection could share and the module mounts no bulk update
+route (CLAUDE.md §18, `meetings/bulk.py`). Every row goes through `MeetingService.delete`, so the
+audio is dropped with it and a meeting a worker is still reading is refused by name — the bar
+counts those out before anyone presses ("Verwijderen (2)" over three ticks) and the banner reports
+the one that stayed. A batch the API refuses whole (an expired licence) is said on the page: a
+confirm that closes over an unchanged list reads as a button that did nothing.
+
 ## Costs
 
 A one-hour meeting: about €0.20 of transcription on Voxtral (~€0.35 on `gpt-4o-transcribe`),

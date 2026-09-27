@@ -129,7 +129,12 @@
         >
           <!-- The one place uppercase survives the #404 scale: this label is genuinely
                subordinate to the figure under it, and wants to recede rather than rank. -->
-          <span class="block truncate uppercase tracking-wide {FIELD_LABEL}">
+          <!-- `title` on both clipped lines: the tiles share the row, so a label or a hint is cut
+               wherever there are six of them, and a cut sentence must stay readable on hover. -->
+          <span
+            class="block truncate uppercase tracking-wide {FIELD_LABEL}"
+            title={t(tile.label_key)}
+          >
             {t(tile.label_key)}
           </span>
           <span
@@ -143,7 +148,7 @@
             <span class="min-w-0 truncate">{body}</span>
           </span>
           {#if hint}
-            <span class="block truncate text-xs text-text-muted">{hint}</span>
+            <span class="block truncate text-xs text-text-muted" title={hint}>{hint}</span>
           {/if}
         </svelte:element>
       </li>

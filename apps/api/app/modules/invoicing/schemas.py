@@ -25,6 +25,7 @@ from app.modules.invoicing.models import (
     PaymentIntentStatus,
     QuoteStatus,
     TaxCategory,
+    VatPeriod,
 )
 from app.modules.invoicing.render.engine import MAX_CUSTOM_CSS, MAX_CUSTOM_HTML
 
@@ -87,6 +88,8 @@ class InvoicingSettingsWrite(BaseModel):
     quote_next_seq: int | None = Field(default=None, ge=1)
     number_reset_yearly: bool | None = None
     auto_invoice_mode: AutoInvoiceMode | None = None
+    #: How often the agency files VAT: the span the overview's VAT figure is summed over.
+    vat_period: VatPeriod | None = None
     reminders_enabled: bool | None = None
     reminder_days: list[int] | None = None
     #: Whether an issued invoice gets a public address at all (#304). Turning it off is
@@ -129,6 +132,7 @@ class InvoicingSettingsRead(BaseModel):
     quote_next_seq: int
     number_reset_yearly: bool
     auto_invoice_mode: AutoInvoiceMode
+    vat_period: VatPeriod = VatPeriod.QUARTER
     reminders_enabled: bool
     reminder_days: list[int]
     public_invoice_links: bool = True
@@ -1429,6 +1433,45 @@ class InvoicingRevenueStats(BaseModel):
     #: The whole year by line kind, every kind present in either year. Excl. tax: a line's
     #: ``amount`` is before tax, and a kind's tax rate is not one number.
     by_kind: list[RevenueKind]
+
+
+class VatSpan(BaseModel):
+    """One VAT period: its two dates (both inclusive) and what was invoiced inside them."""
+
+    start: date
+    end: date
+    #: The tax charged on the documents issued in the span — the figure a return starts from.
+    tax: float
+    #: Their subtotal before tax, reverse-charged and exempt revenue included.
+    excl: float
+    #: Documents issued in the span, credit notes included.
+    invoice_count: int
+
+
+class InvoicingVatStats(BaseModel):
+    """The VAT charged in the agency's current return period, beside the period before it.
+
+    **Sales only.** The platform records what the agency invoices and nothing it buys, so this
+    is the tax *charged*, before any input VAT is deducted — the top line of a return, not the
+    amount that will leave the bank. Every screen that prints it says so, because a figure
+    labelled "to pay" that ignores the deductions is an overstatement nobody could check.
+
+    The rules are ``InvoicingRevenueStats``'s: a document counts in the period of its
+    ``issue_date``, drafts and cancelled documents never count, a credit note's negated totals
+    net its own period down, and a foreign document converts through its stored exchange rate.
+    A reverse-charged or exempt line charges no tax, so it is in ``excl`` and not in ``tax``.
+
+    ``current`` is the **whole** period today falls in (a return covers the quarter, not the
+    quarter so far), so its figure is still growing until ``current.end``. ``previous`` is the
+    one that has closed — the return that is usually still to be filed in the month after.
+    """
+
+    #: The span the figures are summed over: the org's setting, or the ``period`` asked for.
+    period: VatPeriod
+    #: The org's own day the spans were resolved against (§8).
+    today: date
+    current: VatSpan
+    previous: VatSpan
 
 
 class ExternalRefRead(BaseModel):

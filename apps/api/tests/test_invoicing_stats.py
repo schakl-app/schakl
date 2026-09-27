@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
+from app.core.periods import calendar_span, previous_calendar_span
 from app.db import async_session_maker, set_current_org
 from tests.conftest import Tenant, add_membership, auth_cookie, make_tenant, org_today
 from tests.test_invoicing_api import _company, _setup_org
@@ -294,3 +295,204 @@ async def test_revenue_stats_year_is_validated(client_for) -> None:
         assert empty["total_excl"] == 0.0
         assert empty["top_clients"] == []
         assert len(empty["months_excl"]) == 12
+
+
+# --- VAT per return period ------------------------------------------------------------- #
+async def _vat_fixture(client, headers) -> tuple[date, date]:
+    """One invoice in the current quarter, one in the quarter before, one older than both.
+
+    Dated on the second day of each span so a run on the first or last day of a quarter still
+    lands every document where the comment says it is.
+    """
+    today = org_today()
+    current, _ = calendar_span("quarter", today)
+    previous, _ = previous_calendar_span("quarter", today)
+    await _setup_org(client, headers)
+    alpha = await _company(client, headers, "Alpha")
+    for when, price in (
+        (current + timedelta(days=1), "1000"),  # € 210 tax, this quarter
+        (previous + timedelta(days=1), "500"),  # € 105 tax, last quarter
+        (previous - timedelta(days=40), "300"),  # older than both: in neither figure
+    ):
+        await _issued(
+            client,
+            headers,
+            alpha,
+            lines=[{"description": "Werk", "quantity": "1", "unit_price": price}],
+            issue_date=when,
+        )
+    # A draft is not yet anything — it must not reach a return.
+    draft = await client.post(
+        "/api/v1/invoicing/invoices",
+        json={
+            "company_id": alpha,
+            "lines": [{"description": "Concept", "quantity": "1", "unit_price": "9999"}],
+        },
+        headers=headers,
+    )
+    assert draft.status_code == 201, draft.text
+    return current, previous
+
+
+async def test_vat_stats_sum_the_orgs_return_period_in_one_statement(
+    client_for, count_queries
+) -> None:
+    tenant: Tenant = await make_tenant("inv-vat")
+    headers = await auth_cookie(tenant.user)
+    today = org_today()
+    async with client_for(tenant.host) as client:
+        current, previous = await _vat_fixture(client, headers)
+        with count_queries() as counter:
+            res = await client.get("/api/v1/invoicing/stats/vat", headers=headers)
+        assert res.status_code == 200, res.text
+        body = res.json()
+        # Nobody set anything: the seeded period is the quarter, and the span is the whole one.
+        assert body["period"] == "quarter"
+        assert body["current"] == {
+            "start": current.isoformat(),
+            "end": calendar_span("quarter", today)[1].isoformat(),
+            "tax": 210.0,
+            "excl": 1000.0,
+            "invoice_count": 1,
+        }
+        assert body["previous"] == {
+            "start": previous.isoformat(),
+            "end": (current - timedelta(days=1)).isoformat(),
+            "tax": 105.0,
+            "excl": 500.0,
+            "invoice_count": 1,
+        }
+        # One statement over the documents, however many there are.
+        assert len(counter.matching("from invoices")) == 1
+        assert len(counter) <= 8
+
+        # The year is asked for by name and folds every document dated inside it.
+        year = (
+            await client.get(
+                "/api/v1/invoicing/stats/vat", params={"period": "year"}, headers=headers
+            )
+        ).json()
+        assert year["period"] == "year"
+        assert year["current"]["start"] == date(today.year, 1, 1).isoformat()
+        assert year["current"]["end"] == date(today.year, 12, 31).isoformat()
+        assert (
+            await client.get(
+                "/api/v1/invoicing/stats/vat", params={"period": "week"}, headers=headers
+            )
+        ).status_code == 422
+
+
+async def test_vat_stats_follow_the_setting_and_a_credit_note_nets_its_period(
+    client_for,
+) -> None:
+    tenant: Tenant = await make_tenant("inv-vat-setting")
+    headers = await auth_cookie(tenant.user)
+    today = org_today()
+    month_start, month_end = calendar_span("month", today)
+    async with client_for(tenant.host) as client:
+        await _setup_org(client, headers)
+        alpha = await _company(client, headers, "Alpha")
+        invoice = await _issued(
+            client,
+            headers,
+            alpha,
+            lines=[{"description": "Werk", "quantity": "1", "unit_price": "1000"}],
+            issue_date=month_start,
+        )
+        saved = await client.put(
+            "/api/v1/invoicing/settings", json={"vat_period": "month"}, headers=headers
+        )
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["vat_period"] == "month"
+        body = (await client.get("/api/v1/invoicing/stats/vat", headers=headers)).json()
+        assert body["period"] == "month"
+        assert body["current"]["start"] == month_start.isoformat()
+        assert body["current"]["end"] == month_end.isoformat()
+        assert body["current"]["tax"] == 210.0
+
+        credited = await client.post(
+            f"/api/v1/invoicing/invoices/{invoice['id']}/credit",
+            json={"issue": True},
+            headers=headers,
+        )
+        assert credited.status_code in (200, 201), credited.text
+        after = (await client.get("/api/v1/invoicing/stats/vat", headers=headers)).json()
+        # The credit note is issued today, which is inside this month: the period nets to zero
+        # and counts two documents, exactly as the revenue report does.
+        assert after["current"]["tax"] == 0.0
+        assert after["current"]["invoice_count"] == 2
+
+        refused = await client.put(
+            "/api/v1/invoicing/settings", json={"vat_period": "weekly"}, headers=headers
+        )
+        assert refused.status_code == 422
+
+
+async def test_vat_stats_need_the_module_scope_and_follow_the_horizon(client_for) -> None:
+    tenant: Tenant = await make_tenant("inv-vat-scope")
+    member = await add_member(tenant)
+    restricted = await make_tenant("inv-vat-scope-m", email="rm-inv-vat@example.com")
+    async with async_session_maker() as session:
+        await set_current_org(session, tenant.org.id)
+        membership = await add_membership(
+            session, tenant.org.id, restricted.user.id, role="admin"
+        )
+        membership_id = membership.id
+        await session.commit()
+    owner_headers = await auth_cookie(tenant.user)
+    restricted_headers = await auth_cookie(restricted.user, org_id=tenant.org.id)
+    when = calendar_span("quarter", org_today())[0]
+    async with client_for(tenant.host) as client:
+        assert (
+            await client.get("/api/v1/invoicing/stats/vat", headers=await auth_cookie(member))
+        ).status_code == 403
+        await _setup_org(client, owner_headers)
+        alpha = await _company(client, owner_headers, "Alpha")
+        beta = await _company(client, owner_headers, "Beta")
+        for company, price in ((alpha, "100"), (beta, "250")):
+            await _issued(
+                client,
+                owner_headers,
+                company,
+                lines=[{"description": "X", "quantity": "1", "unit_price": price}],
+                issue_date=when,
+            )
+        group = (
+            await client.post(
+                "/api/v1/companies/groups", json={"name": "Noord"}, headers=owner_headers
+            )
+        ).json()
+        await client.put(
+            f"/api/v1/companies/groups/{group['id']}/companies",
+            json={"company_ids": [alpha]},
+            headers=owner_headers,
+        )
+        await client.put(
+            f"/api/v1/companies/groups/{group['id']}/memberships",
+            json={"membership_ids": [str(membership_id)]},
+            headers=owner_headers,
+        )
+        whole = (await client.get("/api/v1/invoicing/stats/vat", headers=owner_headers)).json()
+        assert whole["current"]["tax"] == 73.5
+        narrowed = (
+            await client.get("/api/v1/invoicing/stats/vat", headers=restricted_headers)
+        ).json()
+        assert narrowed["current"]["tax"] == 21.0
+
+
+def test_calendar_spans_are_whole_and_step_over_a_year() -> None:
+    assert calendar_span("month", date(2028, 2, 10)) == (date(2028, 2, 1), date(2028, 2, 29))
+    assert calendar_span("quarter", date(2026, 9, 27)) == (date(2026, 7, 1), date(2026, 9, 30))
+    assert calendar_span("year", date(2026, 9, 27)) == (date(2026, 1, 1), date(2026, 12, 31))
+    assert previous_calendar_span("month", date(2026, 1, 3)) == (
+        date(2025, 12, 1),
+        date(2025, 12, 31),
+    )
+    assert previous_calendar_span("quarter", date(2026, 2, 3)) == (
+        date(2025, 10, 1),
+        date(2025, 12, 31),
+    )
+    assert previous_calendar_span("year", date(2026, 2, 3)) == (
+        date(2025, 1, 1),
+        date(2025, 12, 31),
+    )

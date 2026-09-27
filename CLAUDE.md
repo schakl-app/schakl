@@ -3281,8 +3281,9 @@ validation, activity line, events and custom-field rules that fifty visits to th
   that names its `entity`, its model, its delete permission and its service call is complete.
   Deleting needs no column vocabulary, and requiring one would have excluded the two entities
   where a batch is most obviously wanted: a run of **draft invoices** and a run of mis-logged
-  **contact moments**. Neither has a field a selection could share, so neither mounts an update
-  route — and the web's `BulkUpdateEntity` / `BulkDeleteEntity` are separate types read off the
+  **contact moments** — and since then **meetings** and **reports**, whose registers collect test
+  recordings and drafts nobody will send. None has a field a selection could share, so none mounts
+  an update route — and the web's `BulkUpdateEntity` / `BulkDeleteEntity` are separate types read off the
   generated client, so asking for the wrong one is a compile error.
 - The web mirrors it in `$lib/core/bulk/`: `BulkToggle` (the ✎, **last** in every toolbar, which
   switches the checkboxes on) and `BulkBar` (the actions, in their own strip above the table) —

@@ -4,7 +4,7 @@ import { apiErrorKey } from "$lib/core/errors";
 import { impexAction } from "$lib/core/impex/actions.server";
 import { can } from "$lib/core/permissions";
 import { originalsAction } from "$lib/modules/invoicing/originals.server";
-import { readAutoInvoiceMode } from "$lib/modules/invoicing/types";
+import { readAutoInvoiceMode, readVatPeriod } from "$lib/modules/invoicing/types";
 import { apiFor } from "$lib/core/session";
 import type { BlockSpec } from "$lib/modules/invoicing/templateConfig";
 
@@ -110,6 +110,20 @@ export const actions: Actions = {
       const e = apiErrorKey(error);
       return fail(400, { error: e.key, fields: e.fields });
     }
+    return { saved: true };
+  },
+  /**
+   * How often the agency files VAT. Its own action, so choosing it never re-posts the seller
+   * block or the numbering beside it.
+   */
+  saveVatPeriod: async (event) => {
+    const form = await event.request.formData();
+    const period = readVatPeriod(form.get("vat_period"));
+    if (!period) return fail(400, { error: "errors.validation" });
+    const { error } = await apiFor(event).PUT("/api/v1/invoicing/settings", {
+      body: { vat_period: period } as never,
+    });
+    if (error) return fail(400, { error: apiErrorKey(error).key });
     return { saved: true };
   },
   saveAutoInvoice: async (event) => {

@@ -999,6 +999,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bulk/meeting/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Delete Meeting
+         * @description Delete a selection of meeting records. Permanent, and per row: the rows the batch could do are done, and the rest come back in `failed`.
+         */
+        post: operations["bulk_delete_meeting_api_v1_bulk_meeting_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/bulk/project/delete": {
         parameters: {
             query?: never;
@@ -1033,6 +1053,26 @@ export interface paths {
          * @description Set fields on a selection of project records: `status`, `company`, `billable_default`. Keys are the entity's own stable column keys (the ones its CSV export uses). An absent key leaves every row's own value alone; an explicit `null` clears it where the field allows that. Rows are independent — an ineligible one is reported in `failed`, never rolled back over the rest.
          */
         post: operations["bulk_update_project_api_v1_bulk_project_update_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bulk/report/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Delete Report
+         * @description Delete a selection of report records. Permanent, and per row: the rows the batch could do are done, and the rest come back in `failed`.
+         */
+        post: operations["bulk_delete_report_api_v1_bulk_report_delete_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7956,6 +7996,28 @@ export interface paths {
          *     excl. and incl. tax. The ledger's turnover — ``time/stats/revenue`` is the hours' worth.
          */
         get: operations["invoicing_revenue_stats_api_v1_invoicing_stats_revenue_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/stats/vat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Invoicing Vat Stats
+         * @description The VAT charged on what was invoiced in the current return period, and in the one
+         *     before it. Sales only: nothing the agency bought is recorded here, so no input VAT is
+         *     deducted and this is the top line of a return, not the amount to transfer.
+         */
+        get: operations["invoicing_vat_stats_api_v1_invoicing_stats_vat_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -25759,6 +25821,8 @@ export interface components {
             reminders_enabled: boolean;
             /** Tax Country */
             tax_country: string;
+            /** @default quarter */
+            vat_period: components["schemas"]["VatPeriod"];
         };
         /** InvoicingSettingsWrite */
         InvoicingSettingsWrite: {
@@ -25794,6 +25858,7 @@ export interface components {
             reminders_enabled?: boolean | null;
             /** Tax Country */
             tax_country?: string | null;
+            vat_period?: components["schemas"]["VatPeriod"] | null;
         };
         /**
          * InvoicingSummary
@@ -25818,6 +25883,34 @@ export interface components {
             quotes_open_count: number;
             /** Quotes Open Total */
             quotes_open_total: number;
+        };
+        /**
+         * InvoicingVatStats
+         * @description The VAT charged in the agency's current return period, beside the period before it.
+         *
+         *     **Sales only.** The platform records what the agency invoices and nothing it buys, so this
+         *     is the tax *charged*, before any input VAT is deducted — the top line of a return, not the
+         *     amount that will leave the bank. Every screen that prints it says so, because a figure
+         *     labelled "to pay" that ignores the deductions is an overstatement nobody could check.
+         *
+         *     The rules are ``InvoicingRevenueStats``'s: a document counts in the period of its
+         *     ``issue_date``, drafts and cancelled documents never count, a credit note's negated totals
+         *     net its own period down, and a foreign document converts through its stored exchange rate.
+         *     A reverse-charged or exempt line charges no tax, so it is in ``excl`` and not in ``tax``.
+         *
+         *     ``current`` is the **whole** period today falls in (a return covers the quarter, not the
+         *     quarter so far), so its figure is still growing until ``current.end``. ``previous`` is the
+         *     one that has closed — the return that is usually still to be filed in the month after.
+         */
+        InvoicingVatStats: {
+            current: components["schemas"]["VatSpan"];
+            period: components["schemas"]["VatPeriod"];
+            previous: components["schemas"]["VatSpan"];
+            /**
+             * Today
+             * Format: date
+             */
+            today: string;
         };
         /** KpiValue */
         KpiValue: {
@@ -38537,6 +38630,38 @@ export interface components {
             type: string;
         };
         /**
+         * VatPeriod
+         * @description How often this agency files its VAT return — vocabulary, not law (§14's rule).
+         *
+         *     The Dutch default is the quarter; a business the tax office moved to monthly returns, or one
+         *     allowed a yearly one, says so here. It decides only which span the overview's VAT figure is
+         *     summed over, so the values are :class:`app.core.periods.CalendarUnit`'s own.
+         * @enum {string}
+         */
+        VatPeriod: "month" | "quarter" | "year";
+        /**
+         * VatSpan
+         * @description One VAT period: its two dates (both inclusive) and what was invoiced inside them.
+         */
+        VatSpan: {
+            /**
+             * End
+             * Format: date
+             */
+            end: string;
+            /** Excl */
+            excl: number;
+            /** Invoice Count */
+            invoice_count: number;
+            /**
+             * Start
+             * Format: date
+             */
+            start: string;
+            /** Tax */
+            tax: number;
+        };
+        /**
          * WatchRead
          * @description Tri-state: ``True`` following, ``False`` muted, ``None`` the default fan-out.
          */
@@ -43023,6 +43148,39 @@ export interface operations {
             };
         };
     };
+    bulk_delete_meeting_api_v1_bulk_meeting_delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkActionResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     bulk_delete_project_api_v1_bulk_project_delete_post: {
         parameters: {
             query?: never;
@@ -43066,6 +43224,39 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["BulkUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkActionResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_delete_report_api_v1_bulk_report_delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkDeleteRequest"];
             };
         };
         responses: {
@@ -56462,6 +56653,38 @@ export interface operations {
             };
         };
     };
+    invoicing_vat_stats_api_v1_invoicing_stats_vat_get: {
+        parameters: {
+            query?: {
+                /** @description month | quarter | year. Absent: the org's own VAT return period. */
+                period?: components["schemas"]["VatPeriod"] | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicingVatStats"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     summary_api_v1_invoicing_summary_get: {
         parameters: {
             query?: never;
@@ -59203,6 +59426,8 @@ export interface operations {
                 /** @description Comma-separated set; absent means every status */
                 status?: string | null;
                 q?: string | null;
+                /** @description title | kind | occurred_at | duration | status | owner | created_at */
+                sort?: string | null;
                 limit?: number;
                 offset?: number;
                 count?: boolean;
@@ -63890,6 +64115,10 @@ export interface operations {
             query?: {
                 company_id?: string | null;
                 audience?: components["schemas"]["ReportAudience"] | null;
+                /** @description Comma-separated set; absent means every status */
+                status?: string | null;
+                /** @description company | period | audience | status | sent_at | created_at */
+                sort?: string | null;
                 limit?: number;
                 offset?: number;
                 count?: boolean;

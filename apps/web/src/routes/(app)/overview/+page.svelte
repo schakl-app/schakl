@@ -11,7 +11,7 @@
    */
   import { burnBarClass, burnBarWidth, burnPct } from "$lib/core/burn";
   import { delta, sharePct } from "$lib/core/delta";
-  import { fmtMoney, fmtNumber } from "$lib/core/format";
+  import { fmtDayMonth, fmtMoney, fmtNumber } from "$lib/core/format";
   import { hoursBurn } from "$lib/core/hours";
   import { t } from "$lib/core/i18n";
   import { memberLabel } from "$lib/core/members";
@@ -91,6 +91,27 @@
         href: `${revenueHref}&vat=incl`,
         hint_key: "overview.hint.vat",
         hint_params: { amount: fmtMoney(invoiced.total_tax) },
+      });
+    }
+    // The VAT charged in the return period that is running, beside the one that closed —
+    // the one usually still to be filed. Sales only, and the label says so: nothing the agency
+    // bought is recorded here, so this is where a return starts, not what leaves the bank.
+    // The hint leads with the two things a narrow tile must not lose — that this is the tax on
+    // sales, and the day the period closes — and ends with the period before. Nothing is a
+    // number: two periods with no tax at all draw no tile.
+    const vat = payload.vat;
+    if (vat && (vat.current.tax !== 0 || vat.previous.tax !== 0)) {
+      out.push({
+        key: "vat",
+        label_key: `overview.tile.vat_${vat.period}`,
+        value: String(vat.current.tax),
+        format: "money",
+        href: `${revenueHref}&vat=incl`,
+        hint_key: `overview.hint.vat_${vat.period}`,
+        hint_params: {
+          end: fmtDayMonth(vat.current.end),
+          amount: fmtMoney(vat.previous.tax),
+        },
       });
     }
     if (payload.summary) {

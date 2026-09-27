@@ -7,7 +7,7 @@ sidebar:
 
 Wat een bureau voor een klant beheert, en de vier diensten waar dat uit gelezen wordt: de registrar, de DNS-zone, de monitor en de site zelf.
 
-128 endpoints, verdeeld over 7 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
+139 endpoints, verdeeld over 7 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
 
 ## `domains`
 
@@ -202,7 +202,7 @@ Queryparameters:
 | `offset` | integer |  (default `0`) |
 | `domain_id` | string |  |
 | `company_id` | string |  |
-| `q` | string | Matches the parent domain's name |
+| `q` | string | Matches the address: the domain's name or the path |
 | `hosting_id` | string |  |
 | `uptime_enabled` | boolean |  |
 | `sort` | string | name \| company \| hosting \| uptime \| created_at \| updated_at, '-' desc |
@@ -255,7 +255,7 @@ Antwoord: `204`
 
 #### `GET /api/v1/websites/available-domains`
 
-**List Available Domains** — The domains that do not have a website yet — the create picker's options.
+**List Available Domains** — Every domain a website may be created on — the create picker's options — each with the addresses already recorded on it (``taken``), since a domain carries one site per address and the next dev install goes on a domain that already has one.
 
 Recht: `websites.website.write`
 
@@ -1136,12 +1136,23 @@ Antwoord: `204`
 | `POST` `/wordpress/sites/{site_id}/abilities/run` | `wordpress.ability.read` |
 | `GET` `/wordpress/sites/{site_id}/brands` | `wordpress.site.read` |
 | `GET` `/wordpress/sites/{site_id}/bridge` | `wordpress.site.read` |
+| `GET` `/wordpress/sites/{site_id}/bridge/forms` | `wordpress.forms.read` |
+| `POST` `/wordpress/sites/{site_id}/bridge/forms` | `wordpress.forms.write` |
+| `GET` `/wordpress/sites/{site_id}/bridge/forms/{wp_id}` | `wordpress.forms.read` |
+| `PATCH` `/wordpress/sites/{site_id}/bridge/forms/{wp_id}` | `wordpress.forms.write` |
+| `DELETE` `/wordpress/sites/{site_id}/bridge/forms/{wp_id}` | `wordpress.forms.delete` |
+| `POST` `/wordpress/sites/{site_id}/bridge/forms/{wp_id}/translations` | `wordpress.forms.write` |
 | `GET` `/wordpress/sites/{site_id}/bridge/languages` | `wordpress.content.read` |
 | `POST` `/wordpress/sites/{site_id}/bridge/media` | `wordpress.content.write` |
 | `GET` `/wordpress/sites/{site_id}/bridge/menus` | `wordpress.content.read` |
+| `POST` `/wordpress/sites/{site_id}/bridge/menus` | `wordpress.content.publish` |
 | `GET` `/wordpress/sites/{site_id}/bridge/menus/{menu}` | `wordpress.content.read` |
+| `PATCH` `/wordpress/sites/{site_id}/bridge/menus/{menu}` | `wordpress.content.publish` |
+| `DELETE` `/wordpress/sites/{site_id}/bridge/menus/{menu}` | `wordpress.content.delete` |
 | `POST` `/wordpress/sites/{site_id}/bridge/menus/{menu}/items` | `wordpress.content.publish` |
+| `PATCH` `/wordpress/sites/{site_id}/bridge/menus/{menu}/items/{item_id}` | `wordpress.content.publish` |
 | `DELETE` `/wordpress/sites/{site_id}/bridge/menus/{menu}/items/{item_id}` | `wordpress.content.publish` |
+| `PUT` `/wordpress/sites/{site_id}/bridge/menus/{menu}/order` | `wordpress.content.publish` |
 | `GET` `/wordpress/sites/{site_id}/bridge/options` | `wordpress.content.read` |
 | `GET` `/wordpress/sites/{site_id}/bridge/options/{page}` | `wordpress.content.read` |
 | `PATCH` `/wordpress/sites/{site_id}/bridge/options/{page}` | `wordpress.content.publish` |
@@ -1274,6 +1285,81 @@ Padparameters: `site_id`
 
 Antwoord: `200` · `WordPressBridgeInfo`
 
+#### `GET /api/v1/wordpress/sites/{site_id}/bridge/forms`
+
+**Bridge Forms** — Contact Form 7 forms through the plugin: id, title, the shortcode a page embeds, locale, last change and — with WPML, where forms are translated as records — language and translation ids. 409 on a site without Contact Form 7.
+
+Recht: `wordpress.forms.read`
+
+Padparameters: `site_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `search` | string | Title and template. |
+| `lang` | string | WPML language, where forms are a translatable post type. |
+| `page` | integer |  (default `1`) |
+| `per_page` | integer |  (default `50`) |
+
+Antwoord: `200` · `WordPressBridgeFormList`
+
+#### `POST /api/v1/wordpress/sites/{site_id}/bridge/forms`
+
+**Bridge Create Form** — A new form, live at once (forms have no draft state), from CF7's default template in the locale with what you send on top — a title alone makes a working form. Returns it with its shortcode and `config_errors`.
+
+Recht: `wordpress.forms.write`
+
+Padparameters: `site_id`
+
+Request body: `WordPressBridgeFormCreate`
+
+Antwoord: `201` · `WordPressBridgeForm`
+
+#### `GET /api/v1/wordpress/sites/{site_id}/bridge/forms/{wp_id}`
+
+**Bridge Form** — One form whole: the template, the fields CF7 parses off it (name, type, required, options), both mails, the messages with `messages_help`, the additional settings, the shortcode, `config_errors` (what CF7's validator objects to — it sends nothing while a mail is misconfigured), and with WPML the translations or the form's `strings`.
+
+Recht: `wordpress.forms.read`
+
+Padparameters: `site_id`, `wp_id`
+
+Antwoord: `200` · `WordPressBridgeForm`
+
+#### `PATCH /api/v1/wordpress/sites/{site_id}/bridge/forms/{wp_id}`
+
+**Bridge Update Form** — Change a form — live the moment it saves, on every page that embeds it. `mail`, `mail_2` and `messages` merge over what the form holds; `form` and `additional_settings` replace whole; unknown message keys and locales are refused before anything is written. With the WPML Contact Form 7 Multilingual add-on, `strings` translates the form's texts.
+
+Recht: `wordpress.forms.write`
+
+Padparameters: `site_id`, `wp_id`
+
+Request body: `WordPressBridgeFormUpdate`
+
+Antwoord: `200` · `WordPressBridgeForm`
+
+#### `DELETE /api/v1/wordpress/sites/{site_id}/bridge/forms/{wp_id}`
+
+**Bridge Delete Form** — Delete a form permanently — CF7 has no trash for forms, and pages embedding its shortcode show nothing there afterwards.
+
+Recht: `wordpress.forms.delete`
+
+Padparameters: `site_id`, `wp_id`
+
+Antwoord: `200` · `WordPressBridgeFormDelete`
+
+#### `POST /api/v1/wordpress/sites/{site_id}/bridge/forms/{wp_id}/translations`
+
+**Bridge Translate Form** — WPML, where forms are a translatable post type: create this form's linked translation in `lang` — the source copied, its locale set to the language's, your translated template, mails and messages on top — and get back the new form with its own shortcode for pages in that language; or, with `translation_id`, link an existing form. Where one form serves every language (the Contact Form 7 Multilingual add-on) the plugin answers 409 and points at `strings` on the update.
+
+Recht: `wordpress.forms.write`
+
+Padparameters: `site_id`, `wp_id`
+
+Request body: `WordPressBridgeFormTranslate`
+
+Antwoord: `201` · `WordPressBridgeForm`
+
 #### `GET /api/v1/wordpress/sites/{site_id}/bridge/languages`
 
 **Bridge Languages** — WPML: the active languages and the default; 409 on a site without WPML.
@@ -1312,6 +1398,18 @@ Queryparameters:
 
 Antwoord: `200` · `WordPressMenuList`
 
+#### `POST /api/v1/wordpress/sites/{site_id}/bridge/menus`
+
+**Bridge Create Menu** — Create an empty navigation menu, optionally placed in theme locations (a location it takes over is live at once, hence `publish`). Add items with `bridge_menu_add_item`.
+
+Recht: `wordpress.content.publish`
+
+Padparameters: `site_id`
+
+Request body: `WordPressMenuCreate`
+
+Antwoord: `201` · `WordPressMenu`
+
 #### `GET /api/v1/wordpress/sites/{site_id}/bridge/menus/{menu}`
 
 **Bridge Menu** — One menu as a tree of items.
@@ -1321,6 +1419,28 @@ Recht: `wordpress.content.read`
 Padparameters: `site_id`, `menu`
 
 Antwoord: `200` · `WordPressMenu`
+
+#### `PATCH /api/v1/wordpress/sites/{site_id}/bridge/menus/{menu}`
+
+**Bridge Update Menu** — Rename a menu and/or make `locations` exactly the set of theme locations it fills: it takes over each one named and is released from the rest. Live at once, hence `publish`.
+
+Recht: `wordpress.content.publish`
+
+Padparameters: `site_id`, `menu`
+
+Request body: `WordPressMenuUpdate`
+
+Antwoord: `200` · `WordPressMenu`
+
+#### `DELETE /api/v1/wordpress/sites/{site_id}/bridge/menus/{menu}`
+
+**Bridge Delete Menu** — Delete a menu and every item in it, permanently; the theme locations it filled go empty. `content.delete`, the key a drafting assistant does not hold.
+
+Recht: `wordpress.content.delete`
+
+Padparameters: `site_id`, `menu`
+
+Antwoord: `200` · `WordPressMenuDeleted`
 
 #### `POST /api/v1/wordpress/sites/{site_id}/bridge/menus/{menu}/items`
 
@@ -1334,6 +1454,18 @@ Request body: `WordPressMenuItemAdd`
 
 Antwoord: `201` · `WordPressMenu`
 
+#### `PATCH /api/v1/wordpress/sites/{site_id}/bridge/menus/{menu}/items/{item_id}`
+
+**Bridge Menu Update Item** — Edit a menu item in place — rename it, re-point it, move it under another parent (`parent: 0` for the top level), set its position among its siblings, target, classes, description or title attribute. What you leave out is kept. Live at once, hence `publish`.
+
+Recht: `wordpress.content.publish`
+
+Padparameters: `site_id`, `menu`, `item_id`
+
+Request body: `WordPressMenuItemUpdate`
+
+Antwoord: `200` · `WordPressMenu`
+
 #### `DELETE /api/v1/wordpress/sites/{site_id}/bridge/menus/{menu}/items/{item_id}`
 
 **Bridge Menu Remove Item** — Remove one item from a menu.
@@ -1341,6 +1473,18 @@ Antwoord: `201` · `WordPressMenu`
 Recht: `wordpress.content.publish`
 
 Padparameters: `site_id`, `menu`, `item_id`
+
+Antwoord: `200` · `WordPressMenu`
+
+#### `PUT /api/v1/wordpress/sites/{site_id}/bridge/menus/{menu}/order`
+
+**Bridge Menu Reorder** — Put one parent's children (the top level by default) in the given order; siblings left out follow in their current order. Live at once, hence `publish`.
+
+Recht: `wordpress.content.publish`
+
+Padparameters: `site_id`, `menu`
+
+Request body: `WordPressMenuReorder`
 
 Antwoord: `200` · `WordPressMenu`
 
@@ -1386,7 +1530,7 @@ Antwoord: `200` · `WordPressOptionsRead`
 
 #### `GET /api/v1/wordpress/sites/{site_id}/bridge/records`
 
-**Bridge List Records** — Records of any post type through the plugin — REST-hidden types included — with the page path, status, and WPML language and translation ids per row.
+**Bridge List Records** — Records of any post type through the plugin — REST-hidden types included — with the page path, status, and WPML language and translation ids per row. `search` matches the title, the body and the ACF fields; `taxonomy` + `term` narrow the list to one term (the FAQ items of one category); `fields=text` returns every record with its readable text in one call (every FAQ item with its answer).
 
 Recht: `wordpress.content.read`
 
@@ -1399,10 +1543,13 @@ Queryparameters:
 | `post_type` | string |  (default `page`) |
 | `search` | string |  |
 | `status` | string | Comma-separated, or 'any'. |
-| `lang` | string |  |
+| `lang` | string | WPML language code, 'all', or a language that was switched off but still holds records (bridge info lists them as inactive_languages). |
 | `parent` | integer |  |
+| `taxonomy` | string | With term: only records in that term. |
+| `term` | string | A term id or slug (with taxonomy). |
 | `page` | integer |  (default `1`) |
 | `per_page` | integer |  (default `20`) |
+| `fields` | string | Also read each record's ACF fields: compact \| visible \| full, or text for each record as one readable text. Default none: rows only. (default `none`) |
 
 Antwoord: `200` · `WordPressRecordList`
 
@@ -1420,7 +1567,7 @@ Antwoord: `201` · `WordPressRecord`
 
 #### `GET /api/v1/wordpress/sites/{site_id}/bridge/records/{wp_id}`
 
-**Bridge Get Record** — One record whole: core fields, taxonomies, SEO, the ACF `fields` (compact: per page-builder row only what that row uses) and `references` for every id in them.
+**Bridge Get Record** — One record whole: core fields, taxonomies, SEO, the ACF `fields` (compact: per page-builder row only what that row uses) and `references` for every id in them; or, with `mode=text`, the record as one readable text in `text`.
 
 Recht: `wordpress.content.read`
 
@@ -1430,7 +1577,7 @@ Queryparameters:
 
 | Naam | Type | Betekenis |
 | --- | --- | --- |
-| `mode` | string |  (default `compact`) |
+| `mode` | string | compact (default) \| visible \| full \| none, or text: the record as one readable text — title, body, fields in order, choices by label — instead of the tree. (default `compact`) |
 | `include_schema` | boolean |  (default `false`) |
 
 Antwoord: `200` · `WordPressRecord`

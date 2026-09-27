@@ -2,7 +2,7 @@ import { redirect } from "@sveltejs/kit";
 
 import { can } from "$lib/core/permissions";
 import { apiFor } from "$lib/core/session";
-import { readYear } from "$lib/core/today";
+import { orgYear, readYear } from "$lib/core/today";
 
 import type { PageServerLoad } from "./$types";
 
@@ -41,6 +41,10 @@ export const load: PageServerLoad = async (event) => {
   const invoicing = enabled.includes("invoicing") && can(user, "invoicing.invoice.read", "any");
   const projects = enabled.includes("projects") && can(user, "projects.project.read");
 
+  // The VAT figure is about the return period *running now*, so it is read only while the
+  // page is on the current year — beside 2024's turnover it would be a number from another page.
+  const vatNow = invoicing && year === orgYear();
+
   const yearFrom = `${year}-01-01`;
   const yearTo = `${year}-12-31`;
   // One promise, streamed behind the shell (docs/PERFORMANCE.md): the heading, the year stepper
@@ -75,6 +79,12 @@ export const load: PageServerLoad = async (event) => {
           .then((r) => r.data ?? null)
           .catch(() => null)
       : Promise.resolve(null),
+    vatNow
+      ? api
+          .GET("/api/v1/invoicing/stats/vat")
+          .then((r) => r.data ?? null)
+          .catch(() => null)
+      : Promise.resolve(null),
     // The hours-value ranking names clients by id only; the ledger's ranking carries names.
     // So the lookup is fetched exactly when it is the ranking that will be drawn.
     invoicing
@@ -85,12 +95,13 @@ export const load: PageServerLoad = async (event) => {
           })
           .then((r) => r.data?.items ?? [])
           .catch(() => []),
-  ]).then(([invoiced, summary, hoursValue, team, budgets, companies]) => ({
+  ]).then(([invoiced, summary, hoursValue, team, budgets, vat, companies]) => ({
     invoiced,
     summary,
     hoursValue,
     team,
     budgets,
+    vat,
     companies,
   }));
 
