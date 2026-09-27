@@ -157,7 +157,8 @@ class FakeWordPress:
                 "slug": "aov", "status": "publish", "link": "https://klant.nl/aov/",
                 "modified": "2026-09-21T12:20:14+02:00", "parent": 7813,
                 "path": ["Particulier", "Verzekeringen"], "content": "", "excerpt": "",
-                "taxonomies": {}, "seo": {"provider": "rank_math", "title": "AOV | Klant"},
+                "taxonomies": {"faq_categories": [{"id": 12, "name": "AOV", "slug": "aov"}]},
+                "seo": {"provider": "rank_math", "title": "AOV | Klant"},
                 "featured_media": None, "lang": "nl",
                 "fields": {
                     "kleur": "auto",
@@ -241,6 +242,9 @@ class FakeWordPress:
         }
         #: Every bridge call, `(method, subpath, body)`, so a test can assert what was sent.
         self.bridge_calls: list[tuple[str, str, object]] = []
+        #: The query string of every bridge call, and of every read of the REST index.
+        self.bridge_queries: list[tuple[str, str, dict]] = []
+        self.index_queries: list[dict] = []
         #: Abilities beyond Rank Math's: one read-only, one write. `acf/field-groups` is what
         #: ACF 6.8 registers; the write one stands in for `acf/create-field-group`.
         self.extra_abilities: list[dict] = [
@@ -353,6 +357,7 @@ class FakeWordPress:
                 self.writes.append((path, _json_mod.loads(request.content or b"null")))
             return _json(self.extra_routes[(request.method, path)])
         if path in ("/wp-json", "/wp-json/"):
+            self.index_queries.append(dict(request.url.params))
             return _json(self._index())
         if path == "/wp-json/wp/v2/users/me":
             return _json(self._me())
@@ -598,6 +603,7 @@ class FakeWordPress:
         body = _json_mod.loads(request.content or b"null") if request.method != "GET" else None
         self.bridge_calls.append((request.method, sub, body))
         q = request.url.params
+        self.bridge_queries.append((request.method, sub, dict(q)))
         parts = [p for p in sub.split("/") if p]
         body = body if isinstance(body, dict) else {}
 
@@ -651,6 +657,14 @@ class FakeWordPress:
                 and ("any" in statuses or r["status"] in statuses)
                 and (not search or search in r["title"].lower())
                 and (not q.get("lang") or q.get("lang") == "all" or r.get("lang") == q.get("lang"))
+                and (
+                    not q.get("taxonomy")
+                    or q.get("term") in [
+                        str(t.get(k))
+                        for t in (r.get("taxonomies") or {}).get(q.get("taxonomy"), [])
+                        for k in ("id", "slug")
+                    ]
+                )
             ]
             per_page, page = int(q.get("per_page", "20")), int(q.get("page", "1"))
             chunk = rows[(page - 1) * per_page: page * per_page]

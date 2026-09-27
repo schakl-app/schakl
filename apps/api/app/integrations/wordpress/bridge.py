@@ -249,6 +249,8 @@ class WordPressBridgeService(WordPressSurfaceService):
         page: int,
         per_page: int,
         fields: str = "none",
+        taxonomy: str | None = None,
+        term: str | None = None,
     ) -> WordPressRecordList:
         _, client = await self._open(site_id)
         params: dict[str, Any] = {
@@ -266,6 +268,10 @@ class WordPressBridgeService(WordPressSurfaceService):
             params["lang"] = lang
         if parent is not None:
             params["parent"] = parent
+        # The plugin narrows by a term only when it is told which taxonomy the term is in.
+        if taxonomy and term:
+            params["taxonomy"] = taxonomy
+            params["term"] = term
         body = await self._bridge(client, "GET", "/content", params=params)
         return WordPressRecordList(
             **(body if isinstance(body, dict) else {"post_type": post_type})

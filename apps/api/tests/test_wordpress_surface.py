@@ -106,7 +106,12 @@ async def test_the_summary_says_what_the_site_is(client_for, wp) -> None:
     headers = await auth_cookie(t.user)
     async with client_for(t.host) as c:
         _, site = await _site(c, headers)
+        seen = len(wp.index_queries)
         res = await c.get(f"/api/v1/wordpress/sites/{site['id']}/summary", headers=headers)
+        # The index is asked for under a query string no page cache has stored an answer to.
+        asked = wp.index_queries[seen:]
+        assert asked and all(q.get("_") for q in asked)
+        assert len({q["_"] for q in wp.index_queries}) == len(wp.index_queries)
         assert res.status_code == 200, res.text
         body = res.json()
         assert body["name"] == "Klant BV"

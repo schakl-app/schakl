@@ -39,6 +39,7 @@ from __future__ import annotations
 import base64
 import json as _json
 import logging
+import time
 from typing import Any
 from urllib.parse import urlparse
 
@@ -427,8 +428,13 @@ class WordPressClient:
 
     # --- the four surfaces ---------------------------------------------------------------- #
     async def rest_index(self) -> dict[str, Any]:
-        """The site's REST index: its name, its namespaces, and therefore what it has."""
-        body = await self.request("GET", REST_ROOT)
+        """The site's REST index: its name, its namespaces, and therefore what it has.
+
+        Asked for under a query string no cache has seen: a page cache that stores REST
+        answers (LiteSpeed keeps them a week) otherwise serves the index from before a plugin
+        was installed, and the site is read as not having it.
+        """
+        body = await self.request("GET", REST_ROOT, params={"_": str(time.time_ns())})
         return body if isinstance(body, dict) else {}
 
     async def current_user(self) -> dict[str, Any]:

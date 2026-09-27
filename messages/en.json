@@ -7196,6 +7196,7 @@
   "permissions.wordpress.rest.read": "Read anything on a connected WordPress site's REST API",
   "permissions.wordpress.rest.write": "Write through a connected WordPress site's REST API (site-takeover routes excluded)",
   "errors.wordpress_rest_method": "Unsupported method.",
+  "errors.wordpress_bridge_term_pair": "Give taxonomy and term together: a term only means something within its taxonomy.",
   "errors.wordpress_rest_path": "The path must be relative to /wp-json/ and may not climb out of it.",
   "errors.wordpress_rest_denied": "Writes to this route are never made through schakl: users, plugins, themes, settings and application passwords are changed in the site's own admin.",
   "activity.action.rest_written": "sent {method} {path} to the WordPress site",

@@ -15696,8 +15696,9 @@ export interface paths {
          * Bridge List Records
          * @description Records of any post type through the plugin — REST-hidden types included — with the
          *     page path, status, and WPML language and translation ids per row. `search` matches the
-         *     title, the body and the ACF fields; `fields=text` returns every record with its readable
-         *     text in one call (every FAQ item with its answer).
+         *     title, the body and the ACF fields; `taxonomy` + `term` narrow the list to one term (the
+         *     FAQ items of one category); `fields=text` returns every record with its readable text in
+         *     one call (every FAQ item with its answer).
          */
         get: operations["bridge_list_records_api_v1_wordpress_sites__site_id__bridge_records_get"];
         put?: never;
@@ -72020,8 +72021,13 @@ export interface operations {
                 search?: string | null;
                 /** @description Comma-separated, or 'any'. */
                 status?: string | null;
+                /** @description WPML language code, 'all', or a language that was switched off but still holds records (bridge info lists them as inactive_languages). */
                 lang?: string | null;
                 parent?: number | null;
+                /** @description With term: only records in that term. */
+                taxonomy?: string | null;
+                /** @description A term id or slug (with taxonomy). */
+                term?: string | null;
                 page?: number;
                 per_page?: number;
                 /** @description Also read each record's ACF fields: compact | visible | full, or text for each record as one readable text. Default none: rows only. */

@@ -7196,6 +7196,7 @@
   "permissions.wordpress.rest.read": "Alles lezen via de REST API van een gekoppelde WordPress-site",
   "permissions.wordpress.rest.write": "Schrijven via de REST API van een gekoppelde WordPress-site (routes die de site overnemen uitgesloten)",
   "errors.wordpress_rest_method": "Niet-ondersteunde methode.",
+  "errors.wordpress_bridge_term_pair": "Geef taxonomy en term samen op: een term zegt pas iets binnen zijn taxonomie.",
   "errors.wordpress_rest_path": "Het pad moet relatief zijn aan /wp-json/ en mag daar niet uit klimmen.",
   "errors.wordpress_rest_denied": "Naar deze route wordt nooit via schakl geschreven: gebruikers, plugins, thema's, instellingen en toepassingswachtwoorden wijzig je in het beheer van de site zelf.",
   "activity.action.rest_written": "stuurde {method} {path} naar de WordPress-site",

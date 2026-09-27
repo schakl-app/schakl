@@ -196,6 +196,23 @@ async def test_info_schema_and_records_read_through_the_plugin(client_for, wp) -
         assert rows["fields_mode"] == "text"
         assert all("Eerst het risico" in r["text"] or r["text"] for r in rows["items"])
         assert rows["items"][0]["fields"] is None
+
+        # One term's records: the FAQ items of one category, not the whole type.
+        in_term = (
+            await c.get(
+                _url(site, "/records?post_type=page&taxonomy=faq_categories&term=aov"),
+                headers=member_h,
+            )
+        ).json()
+        assert [r["id"] for r in in_term["items"]] == [8262]
+        assert wp.bridge_queries[-1][2]["taxonomy"] == "faq_categories"
+        assert wp.bridge_queries[-1][2]["term"] == "aov"
+        # A term without its taxonomy names nothing, and is refused here rather than ignored there.
+        res = await c.get(_url(site, "/records?post_type=page&term=aov"), headers=member_h)
+        assert res.status_code == 422
+        assert res.json()["error"]["message"] == "errors.wordpress_bridge_term_pair"
+        assert res.json()["error"]["fields"] == {"taxonomy": "errors.wordpress_bridge_term_pair"}
+
         res = await c.get(_url(site, "/records/8262?mode=prose"), headers=member_h)
         assert res.status_code == 422
 

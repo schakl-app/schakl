@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, Query
 from app.core.entitlements import license_write_gate
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
+from app.errors import AppError
 from app.integrations.wordpress.bridge import WordPressBridgeService
 from app.integrations.wordpress.schemas import (
     WordPressAbility,
@@ -511,8 +512,21 @@ async def bridge_list_records(
     post_type: str = Query("page", max_length=40),
     search: str | None = Query(None, max_length=200),
     status: str | None = Query(None, max_length=60, description="Comma-separated, or 'any'."),
-    lang: str | None = Query(None, max_length=10),
+    lang: str | None = Query(
+        None,
+        max_length=10,
+        description=(
+            "WPML language code, 'all', or a language that was switched off but still holds "
+            "records (bridge info lists them as inactive_languages)."
+        ),
+    ),
     parent: int | None = Query(None),
+    taxonomy: str | None = Query(
+        None, max_length=40, description="With term: only records in that term."
+    ),
+    term: str | None = Query(
+        None, max_length=200, description="A term id or slug (with taxonomy)."
+    ),
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     fields: str = Query(
@@ -527,8 +541,16 @@ async def bridge_list_records(
 ) -> WordPressRecordList:
     """Records of any post type through the plugin — REST-hidden types included — with the
     page path, status, and WPML language and translation ids per row. `search` matches the
-    title, the body and the ACF fields; `fields=text` returns every record with its readable
-    text in one call (every FAQ item with its answer)."""
+    title, the body and the ACF fields; `taxonomy` + `term` narrow the list to one term (the
+    FAQ items of one category); `fields=text` returns every record with its readable text in
+    one call (every FAQ item with its answer)."""
+    if bool(taxonomy) != bool(term):
+        raise AppError(
+            "validation",
+            "errors.wordpress_bridge_term_pair",
+            status_code=422,
+            fields={("term" if taxonomy else "taxonomy"): "errors.wordpress_bridge_term_pair"},
+        )
     return await WordPressBridgeService(ctx).list_records(
         site_id,
         post_type=post_type,
@@ -539,6 +561,8 @@ async def bridge_list_records(
         page=page,
         per_page=per_page,
         fields=fields,
+        taxonomy=taxonomy,
+        term=term,
     )
 
 
