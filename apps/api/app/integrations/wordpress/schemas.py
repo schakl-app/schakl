@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -1073,3 +1073,144 @@ class WordPressBridgeFormDelete(_BridgeOpen):
     id: int
     title: str | None = None
     deleted: bool = True
+
+
+# --- the theme's files and the caches (plugin 1.5.0) ------------------------------------------ #
+
+
+class WordPressThemeInfo(_BridgeOpen):
+    """The active theme, the installed ones, and where editing stands: ``editing.allowed``
+    (the site owner's switch, wp-config.php, the credential's capability) and
+    ``editing.php.allowed`` with ``editing.php.loopback`` — PHP files are only written while
+    the site can request its own pages to check a change for fatal errors."""
+
+    active: dict[str, Any] = Field(default_factory=dict)
+    themes: list[dict[str, Any]] = Field(default_factory=list)
+    editing: dict[str, Any] = Field(default_factory=dict)
+
+
+class WordPressThemeFileList(_BridgeOpen):
+    theme: str = ""
+    path: str = ""
+    items: list[dict[str, Any]] = Field(default_factory=list)
+    total: int = 0
+    truncated: bool = False
+    directories: list[str] = Field(default_factory=list)
+
+
+class WordPressThemeFile(_BridgeOpen):
+    """One theme file, or the answer to a write on it: ``hash`` is what ``expected_hash``
+    takes, ``revision`` the kept previous version, ``checks`` what was verified (syntax, the
+    site's own loopback), ``caches`` what was emptied afterwards."""
+
+    theme: str = ""
+    path: str = ""
+    hash: str | None = None
+    content: str | None = None
+    revision: int | None = None
+    message: str | None = None
+
+
+class WordPressThemeHistory(_BridgeOpen):
+    """A file's kept versions, newest first — or, asked for one ``revision``, that version
+    with its ``content``."""
+
+    items: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class WordPressThemeEdit(BaseModel):
+    old_string: str = Field(
+        min_length=1,
+        description="Text that is in the file, exactly — whitespace and line endings included. "
+        "It must occur once: include enough surrounding lines to name one place.",
+    )
+    new_string: str = Field(description="What replaces it; empty to remove.")
+    replace_all: bool | None = Field(
+        None, description="Replace every occurrence instead of requiring exactly one."
+    )
+
+
+_THEME_DOC = "A theme by its directory (stylesheet); the active theme when omitted."
+_THEME_PATH_DOC = (
+    'The file, relative to the theme directory: "functions.php", '
+    '"template-parts/header.php". Letters, digits, dot, dash and underscore.'
+)
+_THEME_CHECK_DOC = (
+    "PHP files only: pages of the site to request beside the front page when the change is "
+    'checked for fatal errors — a page that uses the template you changed. Paths ("/contact/") '
+    "or URLs of the site, five at most."
+)
+_THEME_PURGE_DOC = "Empty the page cache and generated CSS/JS after the write (default true)."
+
+
+class WordPressThemeFileUpdate(BaseModel):
+    """Change an existing theme file — live at once. Either ``edits`` or the whole
+    ``content`` with ``expected_hash``."""
+
+    theme: str | None = Field(None, max_length=200, description=_THEME_DOC)
+    path: str = Field(min_length=1, max_length=400, description=_THEME_PATH_DOC)
+    edits: list[WordPressThemeEdit] | None = Field(
+        None,
+        max_length=100,
+        description="Replacements applied in order. Nothing is written when one does not apply.",
+    )
+    content: str | None = Field(
+        None, description="The whole file, instead of edits. Needs expected_hash."
+    )
+    expected_hash: str | None = Field(
+        None,
+        max_length=80,
+        description="The hash of the version you read; the write is refused if the file "
+        "changed since. Required with content, optional with edits.",
+    )
+    check_urls: list[str] | None = Field(None, max_length=5, description=_THEME_CHECK_DOC)
+    purge: bool | None = Field(None, description=_THEME_PURGE_DOC)
+
+
+class WordPressThemeFileCreate(BaseModel):
+    """A new text file in the theme, with the directories it needs."""
+
+    theme: str | None = Field(None, max_length=200, description=_THEME_DOC)
+    path: str = Field(min_length=1, max_length=400, description=_THEME_PATH_DOC)
+    content: str = Field(description="The file's content.")
+    check_urls: list[str] | None = Field(None, max_length=5, description=_THEME_CHECK_DOC)
+    purge: bool | None = Field(None, description=_THEME_PURGE_DOC)
+
+
+class WordPressThemeFileRestore(BaseModel):
+    """Put a theme file back to a kept version."""
+
+    revision: int = Field(
+        ge=1, description="The revision id, from the file's history or from the write that made it."
+    )
+    check_urls: list[str] | None = Field(None, max_length=5, description=_THEME_CHECK_DOC)
+    purge: bool | None = Field(None, description=_THEME_PURGE_DOC)
+
+
+class WordPressCacheInfo(_BridgeOpen):
+    providers: list[dict[str, Any]] = Field(default_factory=list)
+    kinds: list[str] = Field(default_factory=list)
+
+
+class WordPressCachePurge(BaseModel):
+    """Empty the site's caches. Without ``what``: the page cache, the generated CSS/JS and
+    the opcode cache."""
+
+    what: list[Literal["page", "assets", "object", "opcache", "all"]] | None = Field(
+        None,
+        description='Kinds to empty. "object" (Redis/Memcached where the site has one) is only '
+        'emptied when named; "all" is every kind.',
+    )
+    urls: list[str] | None = Field(
+        None,
+        max_length=50,
+        description='Pages of the site to empty from the page cache instead of all of it: paths '
+        '("/contact/") or URLs.',
+    )
+
+
+class WordPressCachePurged(_BridgeOpen):
+    purged: list[dict[str, Any]] = Field(default_factory=list)
+    skipped: list[dict[str, Any]] = Field(default_factory=list)
+    requested: list[str] = Field(default_factory=list)
+    message: str | None = None

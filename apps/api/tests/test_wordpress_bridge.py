@@ -11,6 +11,8 @@ What these pin, beyond "the route answers":
 * **The audience decides the permission**, read off the plugin's own record: a member drafts,
   editing a live page or publishing is ``content.publish``, and deleting has its own key.
 * **Every write leaves a trail line on the site row** (§16).
+* **The theme's files have keys of their own**, admin only, and neither the passthrough nor an
+  ability is a way around them.
 * **A site is a parameter, never a tool**: the bridge routes are in the ``wordpress`` MCP
   section whether the agency holds one site or forty.
 """
@@ -618,7 +620,7 @@ async def test_the_bridge_tools_ride_the_wordpress_section(client_for, wp) -> No
     bridge = {
         name for name, path in tool_paths.items() if "/wordpress/sites/{site_id}/bridge" in path
     }
-    assert len(bridge) == 33, sorted(bridge)
+    assert len(bridge) == 43, sorted(bridge)
     assert bridge <= wordpress.tools
     assert {
         "bridge_info",
@@ -799,3 +801,305 @@ async def test_forms_translate_both_ways_wpml_knows_them(client_for, wp) -> None
         translated = next(row for row in trail if row["action"] == "translation_created")
         assert translated["payload"]["translation"] == made["id"]
         assert translated["payload"]["lang"] == "en"
+
+
+# ---------------------------------------------------------------- the theme's files, the caches
+
+
+async def test_theme_files_are_read_and_written_on_keys_of_their_own(client_for, wp) -> None:
+    t = await make_tenant("wp-bridge-theme")
+    owner_h = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, site = await _site(c, owner_h)
+        member_h = await _member(t, "wp-bridge-theme", role="member")
+
+        # A theme is code: reading it is not a member's by default, writing it even less.
+        for path in ("/theme", "/theme/files", "/theme/file?path=style.css", "/theme/file/history"):
+            res = await c.get(_url(site, path), headers=member_h)
+            assert res.status_code == 403, (path, res.text)
+        res = await c.put(
+            _url(site, "/theme/file"),
+            json={"path": "style.css", "edits": [{"old_string": "#111", "new_string": "#222"}]},
+            headers=member_h,
+        )
+        assert res.status_code == 403
+        assert wp.writes == []
+
+        info = (await c.get(_url(site, "/theme?refresh=true"), headers=owner_h)).json()
+        assert info["active"]["stylesheet"] == "klant"
+        assert info["editing"]["allowed"] is True
+        assert info["editing"]["php"]["loopback"] == {"ok": True, "refreshed": True}
+
+        found = (
+            await c.get(_url(site, "/theme/files?search=COLOR&extensions=css"), headers=owner_h)
+        ).json()
+        assert [r["path"] for r in found["items"]] == ["style.css"]
+        assert found["items"][0]["matches"] == [{"line": 4, "text": "body { color: #111; }"}]
+        assert wp.bridge_queries[-1][2] == {
+            "limit": "500", "recursive": "true", "extensions": "css", "search": "COLOR",
+        }
+
+        css = (await c.get(_url(site, "/theme/file?path=style.css"), headers=owner_h)).json()
+        assert "#111" in css["content"] and len(css["hash"]) == 64
+        res = await c.get(_url(site, "/theme/file?path=../wp-config.php"), headers=owner_h)
+        assert res.status_code == 422
+        assert res.json()["error"]["details"]["code"] == "invalid_input"
+        res = await c.get(_url(site, "/theme/file?path=nope.css"), headers=owner_h)
+        assert res.status_code == 404
+
+        # Edits, carried as sent; the answer names the kept version.
+        edit = {"path": "style.css", "edits": [{"old_string": "#111", "new_string": "#222"}]}
+        res = await c.put(_url(site, "/theme/file"), json=edit, headers=owner_h)
+        assert res.status_code == 200, res.text
+        assert res.json()["revision"] == 900 and res.json()["hash"] != css["hash"]
+        assert wp.bridge_calls[-1] == ("PUT", "/theme/file", edit)
+        assert "#222" in wp.theme_files["style.css"]
+
+        # The plugin's refusals are carried: an edit that does not apply, a stale hash.
+        res = await c.put(_url(site, "/theme/file"), json=edit, headers=owner_h)
+        assert res.status_code == 422
+        assert res.json()["error"]["message"] == "errors.wordpress_bridge_rejected"
+        assert res.json()["error"]["details"]["problems"] == [
+            {"path": "edits[0]", "code": "not_found"}
+        ]
+        res = await c.put(
+            _url(site, "/theme/file"),
+            json={"path": "style.css", "content": "a{}", "expected_hash": css["hash"]},
+            headers=owner_h,
+        )
+        assert res.status_code == 409
+        assert res.json()["error"]["details"]["code"] == "conflict"
+        assert res.json()["error"]["details"]["written"] is False
+
+        # Ours to refuse, before the site is asked: both, or neither.
+        calls = len(wp.bridge_calls)
+        for body in (
+            {"path": "style.css"},
+            {"path": "style.css", "content": "a{}", "edits": edit["edits"]},
+        ):
+            res = await c.put(_url(site, "/theme/file"), json=body, headers=owner_h)
+            assert res.status_code == 422, res.text
+            assert res.json()["error"]["message"] == "errors.wordpress_theme_edits_or_content"
+        assert len(wp.bridge_calls) == calls
+
+        # PHP: what does not parse is never written, what kills the site is put back.
+        for marker, code in (("SYNTAX", "php_syntax_error"), ("FATAL", "php_error")):
+            res = await c.put(
+                _url(site, "/theme/file"),
+                json={
+                    "path": "functions.php",
+                    "edits": [{"old_string": "'one'", "new_string": f"'{marker}'"}],
+                    "check_urls": ["/contact/"],
+                },
+                headers=owner_h,
+            )
+            assert res.status_code == 422, res.text
+            assert res.json()["error"]["details"]["code"] == code
+        assert res.json()["error"]["details"]["rolled_back"] is True
+        assert "'one'" in wp.theme_files["functions.php"]
+        assert wp.bridge_calls[-1][2]["check_urls"] == ["/contact/"]
+
+        # Create, delete, history, restore.
+        res = await c.post(
+            _url(site, "/theme/file"),
+            json={"path": "template-parts/card.php", "content": "<?php // card", "purge": False},
+            headers=owner_h,
+        )
+        assert res.status_code == 201, res.text
+        assert res.json()["created"] is True and res.json()["caches"] is None
+        assert wp.bridge_calls[-1][2] == {
+            "path": "template-parts/card.php", "content": "<?php // card", "purge": False,
+        }
+        res = await c.post(
+            _url(site, "/theme/file"),
+            json={"path": "template-parts/card.php", "content": ""},
+            headers=owner_h,
+        )
+        assert res.status_code == 409
+
+        res = await c.delete(
+            _url(site, "/theme/file?path=template-parts/card.php"), headers=owner_h
+        )
+        assert res.status_code == 200, res.text
+        assert res.json()["deleted"] is True
+        deleted = res.json()["revision"]
+        assert "template-parts/card.php" not in wp.theme_files
+
+        history = (
+            await c.get(
+                _url(site, "/theme/file/history?path=template-parts/card.php"), headers=owner_h
+            )
+        ).json()
+        assert [r["before"] for r in history["items"]] == ["delete", "create"]
+        one = (
+            await c.get(_url(site, f"/theme/file/history?revision={deleted}"), headers=owner_h)
+        ).json()
+        assert one["content"] == "<?php // card"
+
+        res = await c.post(
+            _url(site, "/theme/file/restore"), json={"revision": deleted}, headers=owner_h
+        )
+        assert res.status_code == 200, res.text
+        assert wp.theme_files["template-parts/card.php"] == "<?php // card"
+
+        trail = (
+            await c.get(
+                f"/api/v1/activity?entity_type=wordpress_site&entity_id={site['id']}",
+                headers=owner_h,
+            )
+        ).json()
+        theme_lines = [
+            (r["action"], r["payload"]["path"])
+            for r in trail
+            if r["action"].startswith("theme_file_")
+        ]
+        assert sorted(theme_lines) == [
+            ("theme_file_created", "template-parts/card.php"),
+            ("theme_file_deleted", "template-parts/card.php"),
+            ("theme_file_restored", "template-parts/card.php"),
+            ("theme_file_updated", "style.css"),
+        ]
+        updated = next(r["payload"] for r in trail if r["action"] == "theme_file_updated")
+        assert updated["revision"] == 900 and updated["edits"] == 1
+        assert updated["via"] == "schakl-wordpress-mcp-bridge"
+
+
+async def test_a_site_that_keeps_its_theme_closed_says_so_as_a_state(client_for, wp) -> None:
+    t = await make_tenant("wp-bridge-theme-off")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, site = await _site(c, headers)
+        edit = {"path": "style.css", "edits": [{"old_string": "#111", "new_string": "#222"}]}
+
+        # The switch is off: a 409 that names it — not "the credential was refused", which
+        # would send an admin to re-mint a password that was never wrong.
+        wp.theme_editing = False
+        res = await c.put(_url(site, "/theme/file"), json=edit, headers=headers)
+        assert res.status_code == 409, res.text
+        assert res.json()["error"]["message"] == "errors.wordpress_bridge_switched_off"
+        assert res.json()["error"]["details"]["setting"] == "theme_editing"
+        assert "#111" in wp.theme_files["style.css"]
+        # Reading stays open.
+        res = await c.get(_url(site, "/theme/file?path=style.css"), headers=headers)
+        assert res.status_code == 200
+
+        # The site cannot request its own pages: PHP is closed, a stylesheet is not.
+        wp.theme_editing, wp.theme_loopback = True, False
+        res = await c.put(
+            _url(site, "/theme/file"),
+            json={
+                "path": "functions.php",
+                "edits": [{"old_string": "'one'", "new_string": "'two'"}],
+            },
+            headers=headers,
+        )
+        assert res.status_code == 409, res.text
+        assert res.json()["error"]["message"] == "errors.wordpress_bridge_unavailable"
+        assert res.json()["error"]["details"]["code"] == "loopback_unavailable"
+        res = await c.put(_url(site, "/theme/file"), json=edit, headers=headers)
+        assert res.status_code == 200, res.text
+
+        # An older plugin has no theme routes at all.
+        wp.has_bridge = False
+        res = await c.get(_url(site, "/theme"), headers=headers)
+        assert res.status_code == 409
+        assert res.json()["error"]["message"] == "errors.wordpress_bridge_missing"
+
+
+async def test_the_caches_are_listed_and_emptied(client_for, wp) -> None:
+    t = await make_tenant("wp-bridge-cache")
+    owner_h = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, site = await _site(c, owner_h)
+        member_h = await _member(t, "wp-bridge-cache", role="member")
+
+        info = (await c.get(_url(site, "/cache"), headers=member_h)).json()
+        assert [p["id"] for p in info["providers"]] == ["litespeed"]
+
+        # Emptying is felt by visitors: `publish`, which a member does not hold.
+        res = await c.post(_url(site, "/cache/purge"), json={}, headers=member_h)
+        assert res.status_code == 403
+        assert wp.writes == []
+
+        res = await c.post(_url(site, "/cache/purge"), json={}, headers=owner_h)
+        assert res.status_code == 200, res.text
+        assert res.json()["requested"] == ["page", "assets", "opcache"]
+        assert wp.bridge_calls[-1] == ("POST", "/cache/purge", {})
+
+        res = await c.post(
+            _url(site, "/cache/purge"),
+            json={"what": ["page"], "urls": ["/contact/"]},
+            headers=owner_h,
+        )
+        assert res.json()["purged"] == [{"kind": "page", "provider": "litespeed", "scope": "urls"}]
+        res = await c.post(
+            _url(site, "/cache/purge"), json={"what": ["everything"]}, headers=owner_h
+        )
+        assert res.status_code == 422
+
+        trail = (
+            await c.get(
+                f"/api/v1/activity?entity_type=wordpress_site&entity_id={site['id']}",
+                headers=owner_h,
+            )
+        ).json()
+        kinds = sorted(
+            tuple(r["payload"]["kinds"]) for r in trail if r["action"] == "cache_purged"
+        )
+        assert kinds == [("assets", "opcache", "page"), ("page",)]
+
+
+async def test_the_passthrough_and_abilities_are_no_way_around_the_theme_keys(
+    client_for, wp
+) -> None:
+    from app.integrations.wordpress.surface import _names_theme_write as names
+
+    assert names("schakl/v1/theme/file", None)
+    assert names("Schakl/V1/Theme/file/restore", {})
+    assert names(
+        "schakl/v1/mcp", {"method": "tools/call", "params": {"name": "theme_files_update"}}
+    )
+    assert names("mcp/agency-server", {"params": {"name": "schakl-bridge-theme-files-create"}})
+    assert names("wp-abilities/v1/abilities/schakl-bridge/theme-files-delete/run", {"input": {}})
+    assert not names("schakl/v1/mcp", {"method": "tools/call", "params": {"name": "content_get"}})
+    assert not names("schakl/v1/cache/purge", {"what": ["page"]})
+    assert not names("litespeed/v1/purge", {"all": True})
+
+    t = await make_tenant("wp-bridge-theme-doors")
+    owner_h = await auth_cookie(t.user)
+    wp.extra_abilities.append({
+        "name": "schakl-bridge/theme-files-get", "label": "Read a theme file",
+        "description": "", "category": "schakl-bridge", "input_schema": {}, "output_schema": {},
+        "meta": {"show_in_rest": True, "annotations": {"readonly": True}},
+    })
+    async with client_for(t.host) as c:
+        _, site = await _site(c, owner_h)
+        member_h = await _member(t, "wp-bridge-theme-doors", role="member")
+        base = f"/api/v1/wordpress/sites/{site['id']}"
+
+        # `rest.read` reads any plugin route — but not a client's theme source.
+        body = {"path": "schakl/v1/theme/file", "params": {"path": "functions.php"}}
+        res = await c.post(f"{base}/rest", json=body, headers=member_h)
+        assert res.status_code == 403, res.text
+        res = await c.post(f"{base}/rest", json=body, headers=owner_h)
+        assert res.status_code == 200, res.text
+        assert "klant_value" in res.json()["data"]["content"]
+        # The rest of the plugin's namespace is what it was.
+        res = await c.post(f"{base}/rest", json={"path": "schakl/v1/cache"}, headers=member_h)
+        assert res.status_code == 200, res.text
+
+        # A read-only ability is `ability.read`, which a member holds — the theme's is not.
+        runs = len(wp.ability_runs)
+        res = await c.post(
+            f"{base}/abilities/run",
+            json={"name": "schakl-bridge/theme-files-get", "input": {"path": "functions.php"}},
+            headers=member_h,
+        )
+        assert res.status_code == 403, res.text
+        assert len(wp.ability_runs) == runs
+        res = await c.post(
+            f"{base}/abilities/run",
+            json={"name": "schakl-bridge/theme-files-get", "input": {"path": "functions.php"}},
+            headers=owner_h,
+        )
+        assert res.status_code == 200, res.text

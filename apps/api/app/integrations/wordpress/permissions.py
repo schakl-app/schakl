@@ -76,6 +76,19 @@ WORDPRESS_PERMISSIONS: list[PermissionSpec] = [
     # page that embeds it — `content.delete`'s reason, one door over: a key that may edit a
     # form should be able to say "never remove one". Admin-only by default.
     PermissionSpec("wordpress.forms.delete", position=75),
+    # --- the theme's files ------------------------------------------------------------------ #
+    # Reading a client's theme source through the bridge plugin. Admin-only by default, unlike
+    # the other reads: a theme is code, and code is where a key for a payment provider or a
+    # CRM gets pasted. An agency that wants an account manager to see how a template prints a
+    # field grants it; nobody gets it by being a member.
+    PermissionSpec("wordpress.theme.read", position=76),
+    # Changing, creating, deleting and restoring theme files: PHP that runs on the client's
+    # site, live the moment it saves. The plugin has its own switch (off by default), parses
+    # PHP before writing and puts back a change that kills the site — and none of that makes
+    # this a key to hand an assistant by default. Admin only. The passthrough and the
+    # abilities ask for it too where they would reach the same routes (`surface.py`), so
+    # `rest.write` and `ability.run` are not a way around it.
+    PermissionSpec("wordpress.theme.write", position=77),
     # --- Abilities ------------------------------------------------------------------------ #
     # Listing what the site registers, and running the abilities that declare themselves
     # `readonly`. The annotation is the plugin author's claim; an ability that makes no claim

@@ -24,6 +24,8 @@ Four rules the routes share.
 
 from __future__ import annotations
 
+import json
+import re
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any, TypeVar
@@ -279,6 +281,39 @@ def normalise_rest_path(raw: str) -> str:
 
 def _write_denied(path: str) -> bool:
     return any(path == d or path.startswith(d + "/") for d in REST_WRITE_DENIED)
+
+
+#: The bridge plugin's theme routes, relative to ``/wp-json/``. They have curated routes and
+#: keys of their own (``wordpress.theme.read`` / ``.write``); the passthrough asks for the same
+#: key rather than letting ``rest.read`` read a client's theme source or ``rest.write`` change it.
+THEME_REST_PATH = "schakl/v1/theme"
+
+#: The plugin's theme writes by any of the names its three doors give them: the MCP tools
+#: (``theme_files_update``), the abilities (``schakl-bridge/theme-files-update``), the
+#: operations (``theme.files.update``).
+_THEME_WRITE = re.compile(r"theme[._-]files[._-](update|create|delete|restore)")
+
+#: The abilities the plugin registers for the theme's files.
+THEME_ABILITY_PREFIX = "schakl-bridge/theme-"
+
+
+def _theme_path(path: str) -> bool:
+    lowered = path.lower()
+    return lowered == THEME_REST_PATH or lowered.startswith(THEME_REST_PATH + "/")
+
+
+def _names_theme_write(path: str, body: Any) -> bool:
+    """A write that reaches the theme's files by another door: the plugin's MCP endpoint, the
+    MCP Adapter or an ability's run route, with the tool named in the path or the body."""
+    if _theme_path(path) or _THEME_WRITE.search(path.lower()):
+        return True
+    if body is None:
+        return False
+    try:
+        text = json.dumps(body)
+    except (TypeError, ValueError):
+        return False
+    return bool(_THEME_WRITE.search(text.lower()))
 
 
 def _fit(data: Any) -> tuple[Any, bool, int | None, list[str]]:
@@ -654,8 +689,12 @@ class WordPressSurfaceService(WordPressService):
                 status_code=422,
                 fields={"path": "errors.wordpress_rest_path"},
             )
+        if data.method == "GET" and _theme_path(path):
+            self.ctx.require("wordpress.theme.read")
         if data.method != "GET":
             self.ctx.require("wordpress.rest.write")
+            if _names_theme_write(path, data.body):
+                self.ctx.require("wordpress.theme.write")
             if _write_denied(path):
                 raise AppError(
                     "forbidden",
@@ -713,6 +752,10 @@ class WordPressSurfaceService(WordPressService):
             raise AppError("not_found", "errors.wordpress_not_on_site", status_code=404)
         if not spec.readonly:
             self.ctx.require("wordpress.ability.run")
+        if spec.name.lower().startswith(THEME_ABILITY_PREFIX):
+            self.ctx.require(
+                "wordpress.theme.read" if spec.readonly else "wordpress.theme.write"
+            )
         output = await self._call(
             lambda: client.run_ability(spec.name, spec.annotations, data.input)
         )

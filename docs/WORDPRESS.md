@@ -498,6 +498,13 @@ and the bounds are the design:
   themes, settings, and through `users` the application passwords. Refused for *everybody*, before
   the site is asked, with the list in `details` — those changes are made in the site's own admin by
   a person. Reads of the same routes stay open: which plugins a site runs is a fair question.
+- **The theme's files keep their own keys through it.** A `GET` under `schakl/v1/theme` asks
+  `theme.read` on top of `rest.read`, and a write that reaches the theme by any door — that
+  path, the plugin's MCP endpoint or the MCP Adapter with a `theme_files_*` tool named in the
+  body, an ability's run route — asks `theme.write` on top of `rest.write`
+  (`surface._names_theme_write`). `run_site_ability` asks the same of the plugin's
+  `schakl-bridge/theme-*` abilities. A guard against the accidental way round, not a proof:
+  `rest.write` was already the key that can deface a site.
 - **Path hygiene.** Relative to `/wp-json/`, tolerant of a pasted leading `/wp-json/`, refusing
   `..`, a scheme or a host (`normalise_rest_path`); the SSRF guard on the stored base URL still
   applies. The caller's own MCP key never travels outward.
@@ -588,8 +595,8 @@ ACF 6.8 container with a REST-hidden post type and the vangessel `pre_get_posts`
 
 ### What schakl adds, and the rules it keeps
 
-`bridge.py` is the surface: **33 routes under `/sites/{id}/bridge/…`**, one per plugin
-operation, which is 33 tools in `/mcp/wordpress` whether the agency holds one site or four
+`bridge.py` is the surface: **43 routes under `/sites/{id}/bridge/…`**, one per plugin
+operation, which is 43 tools in `/mcp/wordpress` whether the agency holds one site or four
 hundred (§7's rule, and `test_the_bridge_tools_ride_the_wordpress_section` counts them).
 
 | Route | Permission | What |
@@ -605,6 +612,9 @@ hundred (§7's rule, and `test_the_bridge_tools_ride_the_wordpress_section` coun
 | `GET /bridge/languages` · `GET` / `POST /bridge/records/{wp_id}/translations` | `content.read` / `write` (+ `publish`) | WPML: the group, create a translation, connect one |
 | `GET` / `PUT /bridge/strings` | `content.read` / **`publish`** | String Translation |
 | `GET` / `POST /bridge/forms` · `GET` / `PATCH` / `DELETE /bridge/forms/{wp_id}` · `POST …/translations` | `forms.read` / `forms.write` / **`forms.delete`** | Contact Form 7 (plugin 1.2.0): the template and the fields CF7 parses off it, both mails, messages, `config_errors`, the shortcode; mails and messages merge on update; WPML both ways — a linked form per language, or one form's `strings` |
+| `GET /bridge/theme` · `GET /bridge/theme/files` · `GET /bridge/theme/file` · `GET /bridge/theme/file/history` | **`theme.read`** | the theme's files (plugin 1.5.0): the tree, `search` for the files that hold a string with the lines, one file with its `hash`, the versions kept |
+| `PUT` / `POST` / `DELETE /bridge/theme/file` · `POST /bridge/theme/file/restore` | **`theme.write`** | change a file by `edits` or whole with `expected_hash`, create one, delete one, put a kept version back — PHP included where the site can check itself |
+| `GET /bridge/cache` · `POST /bridge/cache/purge` | `site.read` / **`publish`** | the caches found; empty the page cache, generated CSS/JS, opcode cache, and the object cache when named |
 
 Four rules, three of them §7's restated because they were easy to lose one namespace over:
 
@@ -636,7 +646,29 @@ Four rules, three of them §7's restated because they were easy to lose one name
   (with `via: schakl-wordpress-mcp-bridge` and the touched fields or `ops×n`), `content_deleted`,
   `media_uploaded`, `term_created`, `options_updated`, `menu_created` / `menu_updated` /
   `menu_deleted`, `translation_created`, `string_translated`, and for forms `form_created` / `form_updated`
-  (with `via`), `content_deleted` (`type: wpcf7_contact_form`) and `translation_created`.
+  (with `via`), `content_deleted` (`type: wpcf7_contact_form`) and `translation_created`; for the
+  theme `theme_file_updated` / `theme_file_created` / `theme_file_deleted` / `theme_file_restored`
+  (path, the kept `revision`, `via`), and `cache_purged` (the kinds emptied).
+
+**The theme's files, and why they have keys of their own.** Plugin 1.5.0 reads a theme's files
+and — where the site owner ticked *Theme files* in the plugin's settings, which is off by
+default — changes them. That is PHP running on a client's site, so it is not folded into
+`content.publish`: `wordpress.theme.read` and `wordpress.theme.write` are both admin-only by
+default (the read too — a theme is code, and code is where a key gets pasted), and neither is
+a key an assistant gets without somebody deciding it. The plugin is the second gate and does
+the checking this side cannot: a write stays inside the theme directory, names the version it
+replaces (`expected_hash`, or `edits` that must each match once), and keeps the previous
+version; a PHP file is parsed before it is written, and once written the site requests its own
+pages with core's `wp_scrape_key` handshake and puts the file back if PHP died. That check
+needs the site to reach itself, so **PHP writes open only where the loopback works**
+(`editing.php` on `GET /bridge/theme`). Three of its refusals get a status of their own here:
+the switch being off (or `DISALLOW_FILE_EDIT`, or a missing capability) arrives as the plugin's
+403 with `details.setting` / `constant` / `capability` and becomes a 409
+`errors.wordpress_bridge_switched_off` rather than "the credential was refused" — re-minting
+a password fixes none of them; `loopback_unavailable` and a stale hash are 409s with the
+plugin's `details`; `php_syntax_error` and `php_error` are 422s, the latter with
+`details.rolled_back`. A site on an older plugin answers `rest_no_route`, which reads as the
+plugin missing — `bridge_version` on the row says which it is.
 
 **Forms, and how WPML knows them.** The `/sites/{id}/forms` routes of §7 reach Contact Form 7
 through its own REST namespace and stay for a site without the plugin; the `/bridge/forms`

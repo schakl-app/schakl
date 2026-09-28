@@ -240,6 +240,14 @@ class FakeWordPress:
             301: {"id": 301, "package": 12, "name": "Form", "title": "Form", "lang": "nl",
                   "value": "[text* your-name]", "translations": {}},
         }
+        #: The theme's files as plugin 1.5.0 serves them, and its two switches.
+        self.theme_files: dict[str, str] = {
+            "style.css": "/*\nTheme Name: Klant\n*/\nbody { color: #111; }\n",
+            "functions.php": "<?php\nfunction klant_value() {\n\treturn 'one';\n}\n",
+        }
+        self.theme_editing = True
+        self.theme_loopback = True
+        self.theme_revisions: list[dict] = []
         #: Every bridge call, `(method, subpath, body)`, so a test can assert what was sent.
         self.bridge_calls: list[tuple[str, str, object]] = []
         #: The query string of every bridge call, and of every read of the REST index.
@@ -394,6 +402,180 @@ class FakeWordPress:
             status,
             json={"code": code, "message": message, "status": status, "details": details or {}},
         )
+
+    def _theme_file(self, path: str) -> dict:
+        import hashlib
+
+        content = self.theme_files[path]
+        return {
+            "theme": "klant", "path": path, "extension": path.rsplit(".", 1)[-1],
+            "bytes": len(content.encode()), "php": path.endswith(".php"), "text": True,
+            "hash": hashlib.sha256(content.encode()).hexdigest(),
+            "lines": content.count("\n"),
+        }
+
+    def _bridge_theme_route(self, request: httpx.Request, sub: str, body: dict, q):  # noqa: C901
+        """``theme.*`` as plugin 1.5.0 answers them: one theme (``klant``), two switches, a
+        sliver of the checks — a stale hash, an edit that does not apply, PHP that does not
+        parse (a line holding ``SYNTAX``) or dies (``FATAL``), a site that cannot check itself."""
+        method = request.method
+        if sub == "/theme":
+            return _json({
+                "active": {"stylesheet": "klant", "name": "Klant", "block": False,
+                           "writable": True},
+                "themes": [{"stylesheet": "klant"}],
+                "editing": {
+                    "allowed": self.theme_editing, "setting": self.theme_editing,
+                    "reason": None if self.theme_editing else "Switched off.",
+                    "php": {"allowed": self.theme_editing and self.theme_loopback,
+                            "loopback": {"ok": self.theme_loopback,
+                                         "refreshed": q.get("refresh") == "true"}},
+                },
+            })
+        if sub == "/theme/files":
+            rows = []
+            for path in sorted(self.theme_files):
+                wanted = (q.get("extensions") or "").split(",")
+                if q.get("extensions") and path.rsplit(".", 1)[-1] not in wanted:
+                    continue
+                row = self._theme_file(path)
+                if q.get("search"):
+                    hits = [
+                        {"line": n + 1, "text": line.strip()}
+                        for n, line in enumerate(self.theme_files[path].split("\n"))
+                        if q["search"].lower() in line.lower()
+                    ]
+                    if not hits:
+                        continue
+                    row["matches"] = hits
+                rows.append(row)
+            return _json({"theme": "klant", "path": q.get("path", ""), "items": rows,
+                          "total": len(rows), "truncated": False, "directories": []})
+        if sub == "/theme/file/history":
+            if q.get("revision"):
+                row = next(
+                    (r for r in self.theme_revisions if r["revision"] == int(q["revision"])), None
+                )
+                if row is None:
+                    return self._bridge_error("not_found", "That revision was not found.", 404)
+                return _json(row)
+            rows = [
+                {k: v for k, v in r.items() if k != "content"}
+                for r in reversed(self.theme_revisions)
+                if not q.get("path") or r["path"] == q["path"]
+            ]
+            return _json({"theme": "klant", "path": q.get("path", ""), "items": rows})
+        if sub not in ("/theme/file", "/theme/file/restore"):
+            return _wp_error("rest_no_route", "No route was found matching the URL.", 404)
+
+        if method == "GET":
+            path = q.get("path", "")
+            if ".." in path:
+                return self._bridge_error("invalid_input", "No way up.", 400, {"path": path})
+            if path not in self.theme_files:
+                return self._bridge_error("not_found", f'The file "{path}" was not found.', 404)
+            if path.endswith(".png"):
+                return self._bridge_error("not_text", "Not a text file.", 415, {"path": path})
+            return _json({**self._theme_file(path), "content": self.theme_files[path]})
+
+        if not self.theme_editing:
+            return self._bridge_error(
+                "forbidden", "Theme file editing is switched off on this site.", 403,
+                {"setting": "theme_editing"})
+
+        action = {"PUT": "update", "POST": "create", "DELETE": "delete"}[method]
+        if sub == "/theme/file/restore":
+            action = "restore"
+            row = next(
+                (r for r in self.theme_revisions if r["revision"] == body.get("revision")), None
+            )
+            if row is None:
+                return self._bridge_error("not_found", "That revision was not found.", 404)
+            path, new = row["path"], (row["content"] if row["existed"] else None)
+        else:
+            path = (q.get("path") if method == "DELETE" else body.get("path")) or ""
+            new = None
+        if path.endswith(".php") and not self.theme_loopback:
+            return self._bridge_error(
+                "loopback_unavailable", "PHP files are not written on this site.", 409,
+                {"loopback": {"ok": False}})
+        current = self.theme_files.get(path)
+        expected = q.get("expected_hash") if method == "DELETE" else body.get("expected_hash")
+        if action == "create":
+            if current is not None:
+                return self._bridge_error("conflict", "Already there.", 409, {"written": False})
+            new = body["content"]
+        elif action in ("update", "delete"):
+            if current is None:
+                return self._bridge_error("not_found", f'The file "{path}" was not found.', 404)
+            if expected and expected != self._theme_file(path)["hash"]:
+                return self._bridge_error(
+                    "conflict", "Changed since you read it.", 409,
+                    {"written": False, "hash": self._theme_file(path)["hash"]})
+        if action == "update":
+            if "content" in body:
+                new = body["content"]
+            else:
+                new, problems = current, []
+                for i, edit in enumerate(body.get("edits") or []):
+                    if edit["old_string"] not in new:
+                        problems.append({"path": f"edits[{i}]", "code": "not_found"})
+                        continue
+                    new = new.replace(edit["old_string"], edit["new_string"])
+                if problems:
+                    return self._bridge_error(
+                        "validation_failed", "Nothing was written.", 422,
+                        {"problems": problems, "written": False})
+        if new is not None and path.endswith(".php"):
+            if "SYNTAX" in new:
+                return self._bridge_error(
+                    "php_syntax_error", "Nothing was written: PHP cannot parse this file.", 422,
+                    {"path": path, "line": 2, "written": False})
+            if "FATAL" in new:
+                return self._bridge_error(
+                    "php_error", "The change broke the site and was put back.", 422,
+                    {"path": path, "rolled_back": True, "url": "https://klant.nl/"})
+        revision = 900 + len(self.theme_revisions)
+        self.theme_revisions.append({
+            "revision": revision, "theme": "klant", "path": path, "before": action,
+            "existed": current is not None, "content": current, "by": self.username,
+        })
+        self.writes.append((sub, body if method != "DELETE" else dict(q)))
+        if new is None:
+            self.theme_files.pop(path, None)
+            return _json({"theme": "klant", "path": path, "deleted": True,
+                          "revision": revision, "message": f"{path} was deleted."})
+        self.theme_files[path] = new
+        return _json({
+            **self._theme_file(path), "revision": revision,
+            **({"created": True} if current is None else {}),
+            **({"restored": body.get("revision")} if action == "restore" else {}),
+            "checks": {"syntax": "ok" if path.endswith(".php") else None,
+                       "loopback": {"ok": True} if path.endswith(".php") else None},
+            "caches": None if body.get("purge") is False else {"purged": [], "skipped": []},
+            "message": f"{path} was written.",
+        })
+
+    def _bridge_cache_route(self, request: httpx.Request, sub: str, body: dict):
+        providers = [{"id": "litespeed", "name": "LiteSpeed Cache", "kinds": ["page", "assets"],
+                      "per_url": True}]
+        if sub == "/cache" and request.method == "GET":
+            return _json({"providers": providers, "object": {"persistent": False},
+                          "opcache": {"enabled": True},
+                          "kinds": ["page", "assets", "object", "opcache"]})
+        if sub == "/cache/purge" and request.method == "POST":
+            known = {"page", "assets", "object", "opcache"}
+            what = body.get("what") or ["page", "assets", "opcache"]
+            kinds = sorted(known) if "all" in what else what
+            self.writes.append((sub, body))
+            return _json({
+                "purged": [{"kind": k, "provider": "litespeed" if k in ("page", "assets") else k,
+                            "scope": "urls" if body.get("urls") and k == "page" else "all"}
+                           for k in kinds],
+                "skipped": [], "requested": kinds, "urls": body.get("urls") or [],
+                "message": "Emptied: " + ", ".join(kinds) + ".",
+            })
+        return _wp_error("rest_no_route", "No route was found matching the URL.", 404)
 
     def _bridge_menus_route(self, request: httpx.Request, parts: list[str], body: dict):
         """``menus.*`` as plugin 1.3.0 answers them: one theme location (``primary``), menu 1
@@ -803,6 +985,12 @@ class FakeWordPress:
 
         if parts and parts[0] == "forms":
             return self._bridge_forms_route(request, parts, body, q)
+
+        if parts and parts[0] == "theme":
+            return self._bridge_theme_route(request, sub, body, q)
+
+        if parts and parts[0] == "cache":
+            return self._bridge_cache_route(request, sub, body)
 
         if parts and parts[0] == "wpml":
             if not self.multilingual:
