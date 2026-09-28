@@ -630,6 +630,14 @@ Four rules, three of them §7's restated because they were easy to lose one name
   whether WordPress auto-updates it. The API resolves `can_update`; the panel prints it beside
   the version and links a site that cannot to the plugin's settings screen. NULL is "not
   reported" (an older plugin), never "cannot update".
+  And `wordpress_sites.bridge_theme` (migration `b4e8d1a6c3f7`, additive) keeps the plugin's
+  `info.theme` (plugin 1.5.0): the active theme, whether the stored credential may change its
+  files (`editing`) and PHP among them (`php`), why not, and the site's own facts behind that
+  answer — the two checkboxes (`setting`, `php_setting`), `config` where wp-config.php forbids
+  it, and `loopback`, which is NULL where editing is off and nothing was asked. It rides on
+  every site row, so a list of forty sites says which of them take a theme write without a
+  call to each; the panel prints it and links a closed site to the plugin's settings. Like the
+  version it is an observation — the write itself is decided by the call.
 - **The plugin's refusal is carried, not translated.** `WordPressError` grew `details`, and a
   422 from the plugin lands as `errors.wordpress_bridge_rejected` with `details.problems`
   untouched — `{path: "blokken_blokken[2].titel_0_1_2", code: "required"}`, `{path: "kleur",

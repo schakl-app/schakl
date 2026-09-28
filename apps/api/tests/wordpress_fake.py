@@ -148,6 +148,8 @@ class FakeWordPress:
         self.bridge_version = "1.0.0"
         #: `info.updates` (bridge 1.3.1+); `None` is an older plugin that does not send it.
         self.bridge_updates: dict | None = None
+        #: The plugin's `info.theme` (1.5.0+), or None for a plugin that does not report it.
+        self.bridge_theme: dict | None = None
         #: Records the plugin serves, keyed by id, in its own canonical shape: `fields` is the
         #: name-keyed ACF tree (compact), `references` what the ids resolve to. One page in the
         #: shape of the themes' page builder (a `blokken_blokken` repeater of typed rows).
@@ -812,6 +814,7 @@ class FakeWordPress:
                 "menus": [{"id": 1, "name": "Hoofdmenu", "slug": "hoofdmenu"}],
                 "user": {"id": 1, "login": self.username, "capabilities": {"manage_options": True}},
                 **({"updates": self.bridge_updates} if self.bridge_updates is not None else {}),
+                **({"theme": self.bridge_theme} if self.bridge_theme is not None else {}),
             })
 
         if sub == "/schema":

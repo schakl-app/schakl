@@ -123,6 +123,67 @@ async def test_the_probe_records_whether_the_plugin_can_update_itself(client_for
         assert res.json()["bridge_updates"] is None
 
 
+async def test_the_probe_records_where_theme_editing_stands(client_for, wp) -> None:
+    t = await make_tenant("wp-bridge-theme-row")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, site = await _site(c, headers)
+        verify = f"/api/v1/wordpress/sites/{site['id']}/verify"
+        row_url = f"/api/v1/wordpress/sites/{site['id']}"
+
+        # A plugin older than 1.5.0 does not say: unknown, not "closed".
+        res = await c.post(verify, headers=headers)
+        assert res.json()["bridge_theme"] is None
+        assert (await c.get(row_url, headers=headers)).json()["bridge_theme"] is None
+
+        # Switched off: the site's own switch is named, and no loopback was asked.
+        wp.bridge_version = "1.5.0"
+        wp.bridge_theme = {
+            "active": {"stylesheet": "klant", "name": "Klant", "writable": True},
+            "read": True,
+            "editing": {
+                "allowed": False, "php": False, "reason": "Switched off in the bridge settings.",
+                "setting": False, "php_setting": True, "config": None,
+                "loopback": None, "loopback_checked_at": None, "loopback_error": None,
+            },
+        }
+        res = await c.post(verify, headers=headers)
+        theme = res.json()["bridge_theme"]
+        assert theme["stylesheet"] == "klant" and theme["writable"] is True
+        assert theme["editing"] is False and theme["setting"] is False
+        assert theme["php"] is False and theme["loopback"] is None
+        assert theme["reason"] == "Switched off in the bridge settings."
+        assert (await c.get(row_url, headers=headers)).json()["bridge_theme"] == theme
+        listed = (await c.get("/api/v1/wordpress/sites", headers=headers)).json()
+        assert [r["bridge_theme"] for r in listed if r["id"] == site["id"]] == [theme]
+
+        # Switched on since, on a site that cannot reach itself: reading the plugin's info is
+        # an observation too, and the row follows it without a probe.
+        wp.bridge_theme["editing"] = {
+            "allowed": True, "php": False,
+            "reason": "The site cannot check itself for fatal errors: timed out",
+            "setting": True, "php_setting": True, "config": None,
+            "loopback": False, "loopback_checked_at": "2026-09-28T12:00:00+02:00",
+            "loopback_error": "timed out", "secret": "never stored",
+        }
+        info = (await c.get(_url(site), headers=headers)).json()
+        assert info["theme"]["editing"]["allowed"] is True
+        row = (await c.get(row_url, headers=headers)).json()["bridge_theme"]
+        assert row["editing"] is True and row["php"] is False
+        assert row["loopback"] is False and row["loopback_error"] == "timed out"
+        assert "secret" not in row and "loopback_checked_at" not in row
+
+        wp.bridge_theme["editing"] |= {"php": True, "reason": None, "loopback": True}
+        res = await c.post(verify, headers=headers)
+        assert res.json()["bridge_theme"]["php"] is True
+        assert res.json()["bridge_theme"]["reason"] is None
+
+        # The plugin gone clears it with the version.
+        wp.has_bridge = False
+        res = await c.post(verify, headers=headers)
+        assert res.json()["bridge_theme"] is None
+
+
 async def test_a_site_without_the_plugin_answers_409_naming_it(client_for, wp) -> None:
     wp.has_bridge = False
     t = await make_tenant("wp-bridge-missing")

@@ -46,6 +46,33 @@ class WordPressBridgeUpdates(BaseModel):
     can_update: bool = False
 
 
+class WordPressBridgeTheme(BaseModel):
+    """Where theme file editing stands on the site, as the plugin last reported it
+    (bridge 1.5.0+). ``editing`` and ``php`` answer for the stored credential — what a theme
+    write through schakl would meet; the rest says why, and which switch is the site's."""
+
+    #: The active theme's directory and name.
+    stylesheet: str | None = None
+    name: str | None = None
+    #: Whether the web server may write in the theme directory at all.
+    writable: bool = False
+    #: Theme files can be changed through the bridge.
+    editing: bool = False
+    #: PHP files among them: only while the site can request its own pages to check a change.
+    php: bool = False
+    #: Why not, in the plugin's words, where either answer is no.
+    reason: str | None = None
+    #: The two checkboxes in the plugin's settings.
+    setting: bool = False
+    php_setting: bool = False
+    #: ``DISALLOW_FILE_EDIT`` or ``DISALLOW_FILE_MODS`` where wp-config.php forbids it.
+    config: str | None = None
+    #: Whether the site can request its own pages; ``None`` where it was never asked
+    #: (editing is off, so the answer would change nothing).
+    loopback: bool | None = None
+    loopback_error: str | None = None
+
+
 class WordPressSiteRead(BaseModel):
     """A connected WordPress. Never carries the application password."""
 
@@ -88,6 +115,9 @@ class WordPressSiteRead(BaseModel):
     #: Whether that plugin can update itself; ``None`` where the plugin did not report it
     #: (not installed, or older than 1.3.1).
     bridge_updates: WordPressBridgeUpdates | None = None
+    #: Where theme file editing stands; ``None`` where the plugin did not report it (not
+    #: installed, or older than 1.5.0).
+    bridge_theme: WordPressBridgeTheme | None = None
 
     last_verified_at: datetime | None = None
     #: Whether a password is stored at all. The password itself never leaves the server.
@@ -155,6 +185,9 @@ class WordPressVerifyResult(BaseModel):
     mcp_server_path: str | None = None
     bridge_version: str | None = None
     bridge_updates: WordPressBridgeUpdates | None = None
+    #: Where theme file editing stands; ``None`` where the plugin did not report it (not
+    #: installed, or older than 1.5.0).
+    bridge_theme: WordPressBridgeTheme | None = None
     #: How many Rank Math brands this site tracks, where AI Visibility answered. ``None`` where
     #: it did not — zero brands and no Rank Math are different sentences.
     brand_count: int | None = None

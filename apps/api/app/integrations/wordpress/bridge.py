@@ -38,6 +38,7 @@ from app.integrations.wordpress.client import (
     WordPressClient,
     WordPressError,
     WordPressUnreachable,
+    bridge_theme,
     bridge_updates,
     describe_failure,
 )
@@ -209,9 +210,15 @@ class WordPressBridgeService(WordPressSurfaceService):
         # version, whatever the last probe recorded.
         if isinstance(version, str):
             updates = bridge_updates(body.get("updates"))
-            if version != site.bridge_version or updates != site.bridge_updates:
+            theme = bridge_theme(body.get("theme"))
+            if (
+                version != site.bridge_version
+                or updates != site.bridge_updates
+                or theme != site.bridge_theme
+            ):
                 site.bridge_version = version
                 site.bridge_updates = updates
+                site.bridge_theme = theme
                 await self.ctx.session.flush()
         return WordPressBridgeInfo(
             site_id=site.id,

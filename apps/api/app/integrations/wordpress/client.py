@@ -245,6 +245,40 @@ def bridge_updates(block: Any) -> dict[str, Any] | None:
     }
 
 
+def bridge_theme(block: Any) -> dict[str, Any] | None:
+    """The plugin's ``info.theme`` (bridge 1.5.0+) reduced to the keys this side stores.
+
+    ``None`` where the plugin sent none — an older plugin — so the row says "not reported"
+    rather than "closed". ``editing`` and ``php`` are the answer for the stored credential,
+    which is the account every call from here is made as; ``setting``, ``php_setting``,
+    ``config`` and ``loopback`` are the site's own, and say which of them to go and change."""
+    if not isinstance(block, dict):
+        return None
+    editing = block.get("editing")
+    if not isinstance(editing, dict) or not isinstance(editing.get("allowed"), bool):
+        return None
+    active = block.get("active") if isinstance(block.get("active"), dict) else {}
+
+    def text(source: dict[str, Any], key: str) -> str | None:
+        value = source.get(key)
+        return value[:500] if isinstance(value, str) and value else None
+
+    loopback = editing.get("loopback")
+    return {
+        "stylesheet": text(active, "stylesheet"),
+        "name": text(active, "name"),
+        "writable": active.get("writable") is True,
+        "editing": editing["allowed"],
+        "php": editing.get("php") is True,
+        "reason": text(editing, "reason"),
+        "setting": editing.get("setting") is True,
+        "php_setting": editing.get("php_setting") is True,
+        "config": text(editing, "config"),
+        "loopback": loopback if isinstance(loopback, bool) else None,
+        "loopback_error": text(editing, "loopback_error"),
+    }
+
+
 #: Test seam — an ``httpx`` transport used instead of the network. Never set in production.
 _transport: httpx.AsyncBaseTransport | None = None
 
@@ -732,6 +766,7 @@ class WordPressClient:
                 # Always set once the plugin answered: an older plugin's missing block clears
                 # a status a newer one reported before a downgrade.
                 observed["bridge_updates"] = bridge_updates(info.get("updates"))
+                observed["bridge_theme"] = bridge_theme(info.get("theme"))
             elif caps.get("rest"):
                 observed["bridge_absent"] = True
 

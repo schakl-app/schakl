@@ -50,6 +50,14 @@
       auto_update: boolean;
       can_update: boolean;
     } | null;
+    bridge_theme?: {
+      name: string | null;
+      editing: boolean;
+      php: boolean;
+      reason: string | null;
+      setting: boolean;
+      config: string | null;
+    } | null;
     rankmath_ai_visibility: boolean;
     last_verified_at: string | null;
   };
@@ -277,6 +285,41 @@
               rel="noreferrer"
               class="text-brand hover:underline">{t("wordpress.bridge_updates.settings")}</a
             >
+          {/if}
+        </dd>
+      </div>
+    {/if}
+    <!-- Whether the theme's files can be changed through the plugin, and PHP among them. Off
+         is the plugin's default and only the site's own settings screen turns it on, so a
+         closed site links there — unless wp-config.php forbids it, which no screen changes. -->
+    {#if site.bridge_version}
+      {@const th = site.bridge_theme}
+      <div class="flex justify-between gap-4">
+        <dt class="text-muted">{t("wordpress.field.bridge_theme")}</dt>
+        <dd class="text-right text-text">
+          {#if !th}
+            <span class="text-muted">○ {t("wordpress.bridge_theme.unknown")}</span>
+          {:else if th.editing}
+            <span class="text-emerald-600">✓</span>
+            {t(th.php ? "wordpress.bridge_theme.open" : "wordpress.bridge_theme.open_no_php")}
+            {#if !th.php && th.reason}
+              <span class="text-amber-700">· {th.reason}</span>
+            {/if}
+          {:else}
+            <span class="text-muted">○ {t("wordpress.bridge_theme.closed")}</span>
+            {#if th.config}
+              <span class="text-amber-700">· {th.config}</span>
+            {:else if !th.setting}
+              ·
+              <a
+                href={`${site.base_url.replace(/\/$/, "")}/wp-admin/options-general.php?page=schakl-bridge`}
+                target="_blank"
+                rel="noreferrer"
+                class="text-brand hover:underline">{t("wordpress.bridge_theme.settings")}</a
+              >
+            {:else if th.reason}
+              <span class="text-amber-700">· {th.reason}</span>
+            {/if}
           {/if}
         </dd>
       </div>

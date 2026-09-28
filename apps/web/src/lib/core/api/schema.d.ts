@@ -39596,6 +39596,51 @@ export interface components {
             [key: string]: unknown;
         };
         /**
+         * WordPressBridgeTheme
+         * @description Where theme file editing stands on the site, as the plugin last reported it
+         *     (bridge 1.5.0+). ``editing`` and ``php`` answer for the stored credential — what a theme
+         *     write through schakl would meet; the rest says why, and which switch is the site's.
+         */
+        WordPressBridgeTheme: {
+            /** Config */
+            config?: string | null;
+            /**
+             * Editing
+             * @default false
+             */
+            editing: boolean;
+            /** Loopback */
+            loopback?: boolean | null;
+            /** Loopback Error */
+            loopback_error?: string | null;
+            /** Name */
+            name?: string | null;
+            /**
+             * Php
+             * @default false
+             */
+            php: boolean;
+            /**
+             * Php Setting
+             * @default false
+             */
+            php_setting: boolean;
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Setting
+             * @default false
+             */
+            setting: boolean;
+            /** Stylesheet */
+            stylesheet?: string | null;
+            /**
+             * Writable
+             * @default false
+             */
+            writable: boolean;
+        };
+        /**
          * WordPressBridgeUpdates
          * @description Whether the bridge plugin can update itself from its GitHub releases (bridge 1.3.1+).
          *
@@ -40661,6 +40706,7 @@ export interface components {
             active: boolean;
             /** Base Url */
             base_url: string;
+            bridge_theme?: components["schemas"]["WordPressBridgeTheme"] | null;
             bridge_updates?: components["schemas"]["WordPressBridgeUpdates"] | null;
             /** Bridge Version */
             bridge_version?: string | null;
@@ -41127,6 +41173,7 @@ export interface components {
         WordPressVerifyResult: {
             /** Brand Count */
             brand_count?: number | null;
+            bridge_theme?: components["schemas"]["WordPressBridgeTheme"] | null;
             bridge_updates?: components["schemas"]["WordPressBridgeUpdates"] | null;
             /** Bridge Version */
             bridge_version?: string | null;
