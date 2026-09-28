@@ -1828,7 +1828,13 @@ contrast bug in dark mode rather than only an inconsistency.
   tile rather than picking one and calling it turnover; the landing page draws the ledger's where it
   can and says in one line when it is drawing the hours' worth instead. **A report over a year
   takes `?year=` and nothing else invents a period** (`YearStepper`, `readYear`): the year is the
-  view, the stepper is two links, and a VAT toggle rides beside it in the same URL. And **a report
+  view, the stepper is two links, and a VAT toggle rides beside it in the same URL. The one tile
+  with a period of its own is *Btw dit kwartaal* — the VAT charged in the tenant's running return
+  period (`invoicing/stats/vat`, the period set in Instellingen → Facturatie) — and it earns the
+  exception by being about *now*: it is drawn only on the current year, and its hint names the day
+  the period closes. A strip of six shares the row, so a label is short enough to survive it
+  ("Btw over verkoop, dit kwartaal" lost its last two words, the only ones that mattered) and both
+  clipped lines carry their full text as a `title`. And **a report
   that lists rows is the shared `DataTable`** — Projecten joins the projects API's budget burn onto
   the time module's one grouped all-time aggregate (`time/stats/projects`) in the load, keeps the
   server sort on the columns the API can order by and honestly none on the rest, and pages through

@@ -1,6 +1,6 @@
 ---
 title: MCP server
-description: "Connect Claude or another MCP client to your own schakl installation, with an API key that decides exactly what the AI may see and do."
+description: "Connect Claude, ChatGPT or another MCP client to your own schakl installation, over OAuth or with an API key, and decide exactly what the AI may see and do."
 sidebar:
   order: 7
 ---
@@ -14,10 +14,11 @@ What the AI may see and do is decided by the scopes on the key you hand it.
 
 ## Where to find it
 
-The server runs at `https://<your-host>/mcp`, on your organisation's own address. There is no screen
-for it: you configure it on the client side, using a key from *Instellingen → Mijn account*
-(Settings → My account, the **API-sleutels** block) or from *Instellingen → Service-accounts*
-(Settings → Service accounts).
+The server runs at `https://<your-host>/mcp`, on your organisation's own address. Its screen is
+*Instellingen → API en MCP* (Settings → API and MCP): that is where you mint a key and get the
+connection line for your client with it, where the clients you connected over OAuth are listed, and
+where an admin creates OAuth clients with a fixed client id and secret. Keys that belong to nobody
+live under *Instellingen → Service-accounts* (Settings → Service accounts).
 
 <Aside type="caution">
 The MCP server is a **licensed** module. Without a covering licence, `/mcp` answers with a licence
@@ -25,21 +26,63 @@ error as a whole, reads included. That is deliberate: MCP is used mostly for rea
 reads-still-work split would fence off nothing here. See [Licenses](/en/docs/admin/licenses/).
 </Aside>
 
-## Connecting
+## Connecting without a key: OAuth
+
+Claude (as a custom connector, in the browser or in Claude Desktop) and ChatGPT speak OAuth 2.1, and
+then need nothing but the address.
 
 <Steps>
-1. Mint a key as described under [REST API](/en/docs/integrations/rest-api/). Under **Scopes**, tick
-   only what the AI may do — for asking questions that is usually read permissions only.
-2. Copy the key immediately. It is shown only once.
-3. Add the server to your client. For Claude Code:
+1. In your client, add a custom connector with the address `https://<your-host>/mcp`. For ChatGPT
+   that is `https://<your-host>/mcp/compact`: the full list does not fit its budget.
+2. The client registers itself and sends you to your own workspace's sign-in screen. You sign in as
+   always, with two-factor verification or your organisation's SSO.
+3. On **Toegang toestaan** (Allow access) you choose what the client may do:
+   - **Alles wat ik zelf mag** (everything I may do): read and change, in every module you can reach;
+   - **Alleen lezen** (read only): everything you may read, never changing anything;
+   - **Zelf kiezen** (choose myself): a list you tick yourself, grouped per module.
+4. Press **Toestaan** (Allow). No secret is copied anywhere.
+</Steps>
+
+What that flow hands back is an ordinary personal API key, not a second kind of access: every request
+is capped by your live permissions and your client selection. The first two choices are stored as a
+**rule**, not as today's list: a module switched on later is included by itself, because a chat
+client never asks for consent again. **Zelf kiezen** stays a fixed list; a new module only joins when
+you reconnect.
+
+Your connections are listed under **Gekoppelde clients** (connected clients) on *Instellingen → API
+en MCP*. **Ontkoppelen** (disconnect) ends every session of that client, and it cannot refresh itself.
+
+### A client that asks for a client id and secret
+
+Claude needs no client id. Tools that do not register themselves, such as an enterprise connector
+config or an automation tool, do ask for a fixed client id and secret. An admin holding
+`settings.oauth.manage` creates one under **OAuth-clients** on the same screen: a name and one
+redirect URI per line. The secret is shown exactly once. The same card also lists the clients that
+registered themselves, marked apart, with **Nieuw secret** (new secret; only for clients created
+here) and **Intrekken** (revoke), which switches the client off along with every key it ever issued,
+whoever's.
+
+## Connecting with a key
+
+<Steps>
+1. Open *Instellingen → API en MCP*. Under **Wat koppel je?** (what are you connecting) choose
+   **AI-assistent (MCP)**.
+2. Give the key a **Naam** (name) and choose under **Wat mag die doen?** (what may it do):
+   **Alleen lezen** (read only, the default and usually enough), **Lezen en schrijven** (read and
+   write), or **Kies per recht** (per permission).
+3. Choose the section that fits your client under **Welke tools** (which tools; see below). Leave
+   **Verloopt op** (expires on) empty for a key that never expires and press **Sleutel aanmaken**.
+4. The screen prints the connection line with the key already in it. For Claude Code:
 
    ```bash
    claude mcp add --transport http schakl https://<your-host>/mcp \
      --header "Authorization: Bearer schakl_…"
    ```
-4. Any other client that speaks Streamable HTTP: point it at the same address with the header
+
+   Copy it straight away: the key is shown only once.
+5. Any other client that speaks Streamable HTTP: point it at the same address with the header
    `Authorization: Bearer schakl_…` or `X-API-Key: schakl_…`.
-5. Ask the client to list its tools. If nothing appears, check that you used your organisation's own
+6. Ask the client to list its tools. If nothing appears, check that you used your organisation's own
    address — a key only exists on its own organisation's hostname.
 </Steps>
 
@@ -77,7 +120,18 @@ So the same server answers on narrower URLs, and you paste whichever one fits th
 | `/mcp` | Everything. The default, and what a coding agent wants |
 | `/mcp/compact` | A curated read-only fourteen, small enough for a chat client's ceiling |
 | `/mcp/<module>` | One module's own endpoints, for example `/mcp/google-ads` or `/mcp/invoicing` |
-| `/mcp/<bundle>` | A named job spanning several modules, for example `/mcp/infra` or `/mcp/growth` |
+| `/mcp/<bundle>` | A named job spanning several modules (see below) |
+
+| Bundle | Modules |
+| --- | --- |
+| `/mcp/agent` | Clients, contacts, projects, tasks, hours, contact moments |
+| `/mcp/infra` | Domains, websites, hosting, Cloudflare, OXXA, uptime, WordPress |
+| `/mcp/finance` | Invoicing, subscriptions, Mollie |
+| `/mcp/growth` | Google Ads, Google Analytics, Search Console, Tag Manager, marketing, reporting |
+
+Google Analytics, Search Console and WordPress also have a section of their own
+(`/mcp/google-analytics`, `/mcp/google-search-console`, `/mcp/wordpress`): an agent asked to work a
+client's Analytics wants seventeen tools, not the hundred of the whole bundle.
 
 A module section is derived from that module's own routes, so an endpoint added tomorrow is served
 tomorrow; a bundle names *modules*, never tools, which keeps it as self-maintaining as the sections
@@ -112,6 +166,7 @@ create, change and delete records on its own, with nobody pressing **Opslaan** (
 | --- | --- | --- |
 | `apikeys.personal.manage` | Manage own API keys | Administrator, Member |
 | `apikeys.service_account.manage` | Manage service accounts | Administrator |
+| `settings.oauth.manage` | Manage OAuth clients with a fixed client id and secret | Administrator |
 
 After that the key decides everything: each ticked scope is a permission from the same catalogue as
 *Instellingen → Rollen* (Settings → Roles). A personal key is additionally re-capped to its owner's
@@ -119,15 +174,18 @@ live permissions on every single request.
 
 ## Good to know
 
-- **API keys are the only way in today.** The full OAuth sign-in flow some MCP clients expect is not
-  implemented, so such a client cannot connect yet.
+- **An anonymous call gets a 401**, with the invitation to do OAuth. That is how a client discovers
+  the server, by being refused, and it means a stranger cannot see which modules you run.
 - The transport is Streamable HTTP with self-contained JSON responses. The older SSE transport is
   not offered.
 - 600 calls per minute per key. An AI that searches enthusiastically can run into that.
 - **Intrekken** (Revoke) in the key screen removes access immediately, with nothing to change on the
   client side.
 - The tool list comes entirely from the API description. Hand-written, smarter tools (such as "find
-  this client") do exist inside the in-app assistant, but are not part of this list.
+  this client", or a client's performance with the comparison already worked out) do exist inside
+  the [in-app assistant](/en/docs/modules/ai/), but are not part of this list.
+- A route that takes a file as multipart is not a tool. Where it matters there is a JSON twin, such
+  as uploading an attachment as base64.
 - To not serve the server at all, set `SCHAKL_MCP_ENABLED=false` on the server. That removes `/mcp`
   entirely.
 

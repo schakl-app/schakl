@@ -853,7 +853,7 @@ def test_a_delete_only_entity_mounts_no_update_route() -> None:
     names = {route.name for route in iter_route_leaves(app.routes)}
 
     assert "bulk_update_company" in names, "the naming convention this test asserts against"
-    for entity in ("invoice", "interaction"):
+    for entity in ("invoice", "interaction", "meeting", "report"):
         assert f"bulk_delete_{entity}" in names
         assert f"bulk_update_{entity}" not in names
 

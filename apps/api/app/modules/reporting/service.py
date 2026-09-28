@@ -20,6 +20,7 @@ from app.config import settings as app_settings
 from app.core.activity.service import ActivityService, snapshot
 from app.core.events import emit
 from app.core.jobs import enqueue
+from app.core.sorting import apply_sort
 from app.core.tenancy import RequestContext, TenantScopedRepository
 from app.core.timezone import org_today
 from app.db import set_current_org
@@ -574,6 +575,18 @@ class ProfileService:
 # --------------------------------------------------------------------------------------- #
 # The run
 # --------------------------------------------------------------------------------------- #
+#: What ``GET /reporting/reports?sort=`` may order by (``app/core/sorting.py``). The client
+#: sorts on the name the row prints — the snapshot, not a join.
+REPORT_SORTABLE = {
+    "company": func.lower(Report.company_name),
+    "period": Report.period_start,
+    "audience": Report.audience,
+    "status": Report.status,
+    "sent_at": Report.sent_at,
+    "created_at": Report.created_at,
+}
+
+
 class ReportService:
     """Reports: listed, generated, reviewed, published, sent.
 
@@ -626,34 +639,38 @@ class ReportService:
         *,
         company_id: uuid.UUID | None = None,
         audience: str | None = None,
+        status: str | None = None,
+        sort: str | None = None,
         limit: int = 50,
         offset: int = 0,
         count: bool = True,
     ) -> ReportList:
-        stmt = self.repo.scoped_select().where(Report.audience.in_(self._visible_audiences()))
+        conditions = [Report.audience.in_(self._visible_audiences())]
         if company_id is not None:
-            stmt = stmt.where(Report.company_id == company_id)
+            conditions.append(Report.company_id == company_id)
         if audience is not None:
-            stmt = stmt.where(Report.audience == audience)
+            conditions.append(Report.audience == audience)
+        if status:
+            # A comma-separated set, absent meaning every status (§9): the pickers and the
+            # generated tools read this endpoint too, so narrowing is the screen's to ask for.
+            conditions.append(Report.status.in_([s for s in status.split(",") if s]))
+        stmt = apply_sort(
+            self.repo.scoped_select().where(*conditions),
+            sort,
+            REPORT_SORTABLE,
+            default=Report.period_start.desc(),
+            tiebreak=Report.company_name,
+        )
         rows = (
-            await self.ctx.session.execute(
-                stmt.order_by(Report.period_start.desc(), Report.company_name)
-                .limit(limit)
-                .offset(offset)
-            )
+            await self.ctx.session.execute(stmt.limit(limit).offset(offset))
         ).scalars().all()
         total: int | None = None
         if count:
             # From the *same* repository, so the total counts exactly the rows the list could
             # return — a hand-built count is how a scoped login gets "2" above one row (#285).
-            count_stmt = self.repo.scoped_count_select().where(
-                Report.audience.in_(self._visible_audiences())
+            total = await self.ctx.session.scalar(
+                self.repo.scoped_count_select().where(*conditions)
             )
-            if company_id is not None:
-                count_stmt = count_stmt.where(Report.company_id == company_id)
-            if audience is not None:
-                count_stmt = count_stmt.where(Report.audience == audience)
-            total = await self.ctx.session.scalar(count_stmt)
         portal = self.ctx.is_portal
         return ReportList(items=[_row(row, portal=portal) for row in rows], total=total)
 

@@ -7,7 +7,7 @@ sidebar:
 
 Invoices and quotes built from the work that produced them, recurring agreements, the payment provider that settles them and the bookkeeping package they end up in.
 
-112 endpoints across 4 groups. A permission written `module.resource.action:own` is scoped: `:own` covers rows that are yours, `:any` covers everyone's, and `:any` satisfies a check for `:own`.
+113 endpoints across 4 groups. A permission written `module.resource.action:own` is scoped: `:own` covers rows that are yours, `:any` covers everyone's, and `:any` satisfies a check for `:own`.
 
 ## `invoicing`
 
@@ -68,6 +68,7 @@ Invoices and quotes built from the work that produced them, recurring agreements
 | `GET` `/invoicing/settings` | `invoicing.invoice.read:any` |
 | `PUT` `/invoicing/settings` | `invoicing.settings.manage` |
 | `GET` `/invoicing/stats/revenue` | `invoicing.invoice.read:any` |
+| `GET` `/invoicing/stats/vat` | `invoicing.invoice.read:any` |
 | `GET` `/invoicing/summary` | `invoicing.invoice.read` |
 | `GET` `/invoicing/tax-rates` | `invoicing.invoice.read:any` |
 | `POST` `/invoicing/tax-rates` | `invoicing.settings.manage` |
@@ -437,6 +438,8 @@ Query parameters:
 | Name | Type | Meaning |
 | --- | --- | --- |
 | `include_inactive` | boolean |  (default `false`) |
+| `q` | string | matches name, article code and description |
+| `usage` | boolean | attach how many agreements and standard subscriptions name each product (default `false`) |
 
 Returns: `200` · `ProductRead[]`
 
@@ -717,6 +720,20 @@ Query parameters:
 | `year` | integer · required |  |
 
 Returns: `200` · `InvoicingRevenueStats`
+
+#### `GET /api/v1/invoicing/stats/vat`
+
+**Invoicing Vat Stats** — The VAT charged on what was invoiced in the current return period, and in the one before it. Sales only: nothing the agency bought is recorded here, so no input VAT is deducted and this is the top line of a return, not the amount to transfer.
+
+Permission: `invoicing.invoice.read:any`
+
+Query parameters:
+
+| Name | Type | Meaning |
+| --- | --- | --- |
+| `period` | VatPeriod | month \| quarter \| year. Absent: the org's own VAT return period. |
+
+Returns: `200` · `InvoicingVatStats`
 
 #### `GET /api/v1/invoicing/summary`
 

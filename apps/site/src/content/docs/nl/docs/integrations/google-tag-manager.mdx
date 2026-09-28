@@ -19,7 +19,8 @@ die iemand drie weken geleden klaarzette ooit gepubliceerd is: daar was hier gee
   werkruimte schakl. schrijft, en de noodstop.
 - **Marketing → Tag Manager**: de containers zelf, met de live versie, de tags, triggers en
   variabelen, het versieverleden en het codefragment.
-- Op een **klantpagina** staat de container naast het domein en de website waar hij op draait.
+- Op een **klantpagina** koppel je hem vanuit het paneel **Marketing**, waar hij als verbinding
+  naast de bronnen staat, met het aantal live tags en ongepubliceerde wijzigingen.
 
 Tag Manager heeft de koppeling **Google Workspace** nodig. Zet je hem aan onder
 *Instellingen → Integraties*, dan wordt die er meteen bij gezet, en het scherm vertelt je dat
@@ -33,8 +34,8 @@ voordat je opslaat.
    Cloud-project, en dat is werk voor een beheerder en niet iets wat opnieuw koppelen oplost.
 2. Zorg dat het Google-account waarmee je koppelt toegang heeft tot de container van de klant in
    Tag Manager. schakl. vraagt nooit meer dan dat account al heeft.
-3. Houd de **GTM-code** van de container bij de hand (`GTM-XXXXXXX`), of kies straks uit de lijst
-   met containers waar je account bij kan.
+3. Houd de **GTM-code** van de container bij de hand (`GTM-XXXXXXX`), of zoek straks op naam in de
+   containers waar je account bij kan.
 </Steps>
 
 ## Koppelen
@@ -45,8 +46,9 @@ voordat je opslaat.
    met opzet: de drie bronnen van het dashboard zijn alleen-lezen meting, en iemand die een
    bezoekersgrafiek wilde vragen of hij op de website van een klant mag publiceren is precies hoe
    mensen leren om toestemmingsschermen weg te klikken zonder ze te lezen.
-3. Koppel per klant een container: plak de GTM-code, of kies uit de lijst, en hang er de klant
-   aan en eventueel de website waar hij op draait.
+3. Koppel per klant een container: plak de GTM-code, of zoek op naam, en hang er de klant aan en
+   eventueel de website waar hij op draait. Dat kan hier, en ook vanuit het paneel **Marketing** op
+   de klantpagina, bij **Tag Manager**; het is dezelfde koppeling.
 4. Laat **Eigen werkruimte** aanstaan en zet er de naam van je bureau in. Hieronder staat waarom
    dat belangrijker is dan het lijkt.
 </Steps>
@@ -69,6 +71,16 @@ gemaakt *voordat* je organisatie de Tag Manager-rechten vroeg, en dan is het é�
 koppelen. schakl. controleert het recht vóór de aanroep, dus het kan je vertellen welke van de
 twee je voor je hebt.
 </Aside>
+
+### Een zoekvak, geen lijst van alles
+
+Tag Manager rekent zijn limiet per gebruiker per minuut, en de containers van een account opsommen
+kost een aanvraag per account. Een kiezer die alles ophaalde, liep bij een bureau met 44 accounts
+bij de eerste keer openen tegen dat quotum aan. Daarom is de kiezer een zoekvak: de lijst met
+accounts wordt altijd gelezen, de containers alleen van de accounts die bij je zoekterm passen, tot
+een vast plafond. Een geplakte GTM-code is één aanvraag. Wat niet geopend is wordt genoemd
+(*"8 van 44"*), want een korte lijst die er compleet uitziet leest als *"we zitten niet in dat
+account"*. Loopt het quotum halverwege op, dan blijft wat al gelezen was staan.
 
 ## Een werkruimte is een gedeeld concept, geen eigen kopie
 
@@ -148,10 +160,20 @@ Daarom bewaart een conversie **wat er gevraagd is** en **wat er als laatste is w
 aparte velden. Een conversie waarvan iemand de tag in Tag Manager heeft weggegooid is dan een
 toestand die je kunt zien, in plaats van een regel die stilzwijgend blijft beweren dat hij werkt.
 
+### Samenvatting en doel
+
+Op de containerpagina staat **Samenvatting en doel**: twee tekstvelden in je eigen woorden. De
+**samenvatting** zegt wat deze container voor de klant is en doet; het **doel** wat de metingen
+moeten aantonen, bijvoorbeeld *"offerte-aanvragen meten"*. Wie de container mag koppelen, kan ze
+bewerken; wie hem mag lezen, ziet ze. Ze gaan mee in het activiteitenlog, en ze worden als twee
+losse velden bewaard, nooit aan elkaar geplakt.
+
 ## De nachtelijke telling
 
 Elke nacht om 05:35 wordt de spiegel van elke gekoppelde container ververst. Gaat er bij één
-container iets mis, dan blijft dat op die ene regel staan en verversen de andere gewoon.
+container iets mis, dan blijft dat op die ene regel staan en verversen de andere gewoon. Het
+aantal klaarstaande wijzigingen staat ook op de regel van de container in het paneel Marketing van
+de klant, zodat je het ziet zonder de container te openen.
 
 Het getal waar deze taak voor bestaat is **klaarstaande, niet-gepubliceerde wijzigingen**. Een
 wijziging die weken geleden is klaargezet en nooit gepubliceerd is de gewoonste manier waarop de

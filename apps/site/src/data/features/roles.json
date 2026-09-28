@@ -1,7 +1,7 @@
 {
   "name": "Rollen en rechten",
   "slug": "roles",
-  "order": 180,
+  "order": 190,
   "icon": "🛡️",
   "lucide": "roles",
   "demo": "roles",
@@ -87,6 +87,16 @@
         "body": {
           "nl": "Je regelt alles onder Instellingen → Rollen: rollen maken, rechten aanvinken, toewijzen aan mensen. Zet je later een module aan, dan brengt die zijn eigen rechten mee en worden ze eenmalig aan je systeemrollen toegekend. Elke wijziging aan een rol wordt vastgelegd, zodat je terug kunt zien wie wat veranderde.",
           "en": "You set everything up under Instellingen → Rollen (Settings → Roles): create roles, tick permissions, assign them to people. Turn on a module later and it brings its own permissions, granted to your system roles once. Every change to a role is recorded, so you can see who changed what."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Wie vertrekt, wordt gedeactiveerd",
+          "en": "Whoever leaves is deactivated"
+        },
+        "body": {
+          "nl": "Een collega die vertrekt deactiveer je onder Instellingen → Team & gebruikers in plaats van hem eruit te gooien. Inloggen lukt niet meer, ook niet met een sessie die nog openstaat, en hij verdwijnt uit de keuzelijsten voor nieuw werk, maar zijn naam blijft staan op zijn uren, taken, contactmomenten, verlof en in de wijzigingshistorie. Rollen, contract en uurtarief blijven bewaard, en Activeren zet het met één klik terug. De lijst opent op de mensen die hier nog werken, met de vertrokken collega's ingeklapt en geteld eronder. Een organisatie buitensluiten kan ook zo niet: bij het tellen van beheerders tellen alleen de accounts die nog kunnen inloggen.",
+          "en": "A colleague who leaves you deactivate under Instellingen → Team & gebruikers rather than throwing them out. Signing in stops working, a session still open included, and they drop out of the pickers for new work, but their name stays on their hours, tasks, interactions, leave and in the change history. Roles, contract and hourly rate are kept, and Activeren undoes it in one click. The list opens on the people who still work here, with former colleagues folded and counted below. Locking the organisation out is impossible this way too: counting administrators counts only the accounts that can still sign in."
         }
       }
     ]

@@ -1,7 +1,7 @@
 {
   "name": "AI op jouw sleutel",
   "slug": "ai",
-  "order": 230,
+  "order": 240,
   "icon": "🤖",
   "lucide": "bot",
   "demo": "assistant",
@@ -10,8 +10,8 @@
     "en": "AI on your own key"
   },
   "description": {
-    "nl": "Je eigen aanbieder en je eigen sleutel: Anthropic, OpenAI of een server die je zelf draait. Vier functies apart te schakelen, met een maandbudget en een meter die laat zien wat het kost.",
-    "en": "Your own provider on your own key: Anthropic, OpenAI or a server you run yourself. Four features you switch on separately, with a monthly budget and a meter that shows what it costs."
+    "nl": "Je eigen aanbieder en je eigen sleutel: Anthropic, OpenAI of een server die je zelf draait. Een assistent die je hele werkruimte leest, taken die je inspreekt of in woorden aanpast, en acht functies die je los schakelt, met een maandbudget en een meter.",
+    "en": "Your own provider on your own key: Anthropic, OpenAI or a server you run yourself. An assistant that reads your whole workspace, tasks you dictate or change in words, and eight features you switch separately, with a monthly budget and a meter."
   },
   "page": {
     "eyebrow": {
@@ -23,8 +23,8 @@
       "en": "Your key, your model"
     },
     "lead": {
-      "nl": "Er zit geen AI van ons in het product. Je zet je eigen aanbieder en sleutel in Instellingen → AI en rekent rechtstreeks met die aanbieder af: geen credits van ons, geen toeslag per gebruiker. Vier functies staan los van elkaar aan of uit, en zolang er geen aanbieder is ingesteld, wordt er nergens in de app een AI-knop getekend.",
-      "en": "There is no AI of ours inside the product. You put your own provider and key into Instellingen → AI (Settings → AI) and settle with that provider directly: no credits from us, no per-seat surcharge. Four features switch on and off independently, and until a provider is configured, no AI control is drawn anywhere in the app."
+      "nl": "Er zit geen AI van ons in het product. Je zet je eigen aanbieder en sleutel in Instellingen → AI en rekent rechtstreeks met die aanbieder af: geen credits van ons, geen toeslag per gebruiker. Acht functies staan los van elkaar aan of uit, en zolang er geen aanbieder is ingesteld, wordt er nergens in de app een AI-knop getekend.",
+      "en": "There is no AI of ours inside the product. You put your own provider and key into Instellingen → AI (Settings → AI) and settle with that provider directly: no credits from us, no per-seat surcharge. Eight features switch on and off independently, and until a provider is configured, no AI control is drawn anywhere in the app."
     },
     "sections": [
       {
@@ -53,25 +53,33 @@
       },
       {
         "heading": {
-          "nl": "Vier functies, los van elkaar te schakelen",
-          "en": "Four features, independently switchable"
+          "nl": "Acht functies, los van elkaar te schakelen",
+          "en": "Eight features, independently switchable"
         },
         "body": {
-          "nl": "Alle AI in de app loopt door dezelfde kern, dus één sleutel, één set schakelaars en één budget gelden overal tegelijk. Een bureau dat wel schrijfhulp wil maar geen chatassistent, zet precies dat aan en verder niets. Elke functie mag bovendien een eigen model krijgen: het standaardmodel is bedoeld voor schrijven, terwijl Snel toevoegen op Uren juist gebaat is bij een snel model. In het veld Huisstijl (maximaal 4000 tekens) beschrijf je hoe jullie schrijven, en die tekst gaat mee in elke schrijfopdracht.",
-          "en": "Every AI feature runs through the same core, so one key, one set of toggles and one budget apply everywhere at once. An agency that wants writing help but no chat assistant switches on exactly that and nothing else. Each feature can also carry its own model: the default model is sized for writing, while quick-add on Uren (Time) is better served by a fast one. The Huisstijl field (house style, up to 4000 characters) is where you describe how your agency writes, and that text is prepended to every writing prompt."
+          "nl": "Alle AI in de app loopt door dezelfde kern, dus één sleutel, één set schakelaars en één budget gelden overal tegelijk. Een bureau dat wel schrijfhulp wil maar geen chatassistent, zet precies dat aan en verder niets. Elke functie mag bovendien een eigen model krijgen: het standaardmodel is bedoeld voor schrijven, terwijl Snel toevoegen op Uren juist gebaat is bij een snel model. In het veld Huisstijl (maximaal 4000 tekens) beschrijf je hoe jullie schrijven, en die tekst gaat mee in elke schrijfopdracht. Functies die lezen wat een ander schreef, zoals een e-mail of een vergadering, hebben met opzet een eigen schakelaar: wie AI een alinea laat oppoetsen, heeft daarmee nog niet ingestemd dat hij de mailbox van een klant leest.",
+          "en": "Every AI feature runs through the same core, so one key, one set of toggles and one budget apply everywhere at once. An agency that wants writing help but no chat assistant switches on exactly that and nothing else. Each feature can also carry its own model: the default model is sized for writing, while quick-add on Uren (Time) is better served by a fast one. The Huisstijl field (house style, up to 4000 characters) is where you describe how your agency writes, and that text is prepended to every writing prompt. Features that read what somebody else wrote, such as an e-mail or a meeting, deliberately get a switch of their own: agreeing to have AI polish a paragraph is not agreeing to have it read a client's mailbox."
         },
         "bullets": {
           "nl": [
-            "Assistent: een uitschuifpaneel vanuit de bovenbalk dat je vragen over je eigen klanten, projecten, taken en uren beantwoordt",
+            "Assistent: een uitschuifpaneel vanuit de bovenbalk dat alles in je werkruimte kan opzoeken en een vaste lijst dingen voor je vastlegt",
             "Schrijfhulp: in elk tekstveld met opmaak, met Verbeteren, Inkorten, Uitbreiden, Spelling & grammatica, Zakelijke of Informele toon, Vertalen en Schrijf uit; daarna Vervangen of Invoegen",
             "Urenhulp: één regel in Snel toevoegen op Uren wordt een concept-urenregel, plus Vul mijn dag aan voor het gat tussen je rooster en wat je boekte",
-            "Briefing & rapporten: een samenvatting van de recente activiteit van een klant, en een maandconcept dat je zelf bewerkt voordat het iets wordt"
+            "Briefing & rapporten: een samenvatting van de recente activiteit van een klant, en een maandconcept dat je zelf bewerkt voordat het iets wordt",
+            "Taak inspreken, aanpassen en plannen: een taak in één adem inspreken, een taak in woorden aanpassen, en de stappen laten schrijven uit de omschrijving",
+            "E-mail in taak: een taak die je maakt bij het goedkeuren van een e-mail, aangevuld uit die e-mail, geschreven vanuit jouw bureau",
+            "E-mail naar taakadres: invullen wat een gemailde taak openliet, zonder te overschrijven wat de afzender schreef",
+            "Vergadertranscripten en verslagen: een opgenomen vergadering uitschrijven en er een verslag met actiepunten van maken"
           ],
           "en": [
-            "Assistent: a slide-over from the top bar that answers questions about your own clients, projects, tasks and hours",
+            "Assistent: a slide-over from the top bar that can look up anything in your workspace and records a fixed list of things for you",
             "Schrijfhulp: inside every rich-text field, with improve, shorten, expand, spelling & grammar, business or informal tone, translate and write out; then replace or insert",
             "Urenhulp: one line in Snel toevoegen on Uren becomes a draft time entry, plus \"Vul mijn dag aan\" for the gap between your schedule and what you logged",
-            "Briefing & rapporten: a digest of a client's recent activity, and a monthly draft you edit yourself before it becomes anything"
+            "Briefing & rapporten: a digest of a client's recent activity, and a monthly draft you edit yourself before it becomes anything",
+            "Taak inspreken, aanpassen en plannen: dictate a task in one breath, change a task in words, and have its steps written from the description",
+            "E-mail in taak: a task you create while approving an e-mail, filled in from that e-mail, written from your agency's side",
+            "E-mail naar taakadres: filling in what a mailed-in task left open, without overwriting what the sender wrote",
+            "Vergadertranscripten en verslagen: transcribing a recorded meeting and drafting its minutes with action items"
           ]
         }
       },
@@ -87,12 +95,12 @@
       },
       {
         "heading": {
-          "nl": "De assistent leest mee, hij schrijft niet",
-          "en": "The assistant reads; it does not write"
+          "nl": "De assistent leest alles wat jij mag, en schrijft een vaste lijst",
+          "en": "The assistant reads what you may, and writes a fixed list"
         },
         "body": {
-          "nl": "Het sterretje in de bovenbalk opent de Assistent naast je werk. Sta je op een klant, een project of een taak, dan neemt hij dat record over, zodat \"deze klant\" gewoon klopt zonder dat je hem uitlegt waar je bent. Hij is met opzet alleen-lezen: hij beantwoordt vragen over je eigen klanten, contactpersonen, projecten, taken, uren en het rooster, en maakt of wijzigt nooit een record. Elk antwoord draagt bronchips die terugklikken naar de records waar het vandaan komt, zodat je een getal kunt narekenen in plaats van het te geloven.",
-          "en": "The sparkle in the top bar opens the Assistent beside your work. On a client, project or task page it inherits that record, so \"this client\" simply resolves without you explaining where you are. It is read-only by design: it answers questions about your own clients, contacts, projects, tasks, hours and the schedule, and never creates or changes a record. Every answer carries source chips that link back to the records it came from, so you can check a number instead of believing it."
+          "nl": "Het sterretje in de bovenbalk opent de Assistent naast je werk. Sta je op een klant, een project of een taak, dan neemt hij dat record over, zodat \"deze klant\" gewoon klopt. Hij zoekt in dezelfde API die een externe AI-koppeling via MCP krijgt, dus hij weet van klanten, taken en uren net zo goed als van domeinen, facturen en marketingcijfers, en hij ziet precies wat jij mag zien, niets meer. Schrijven doet hij alleen van een vaste lijst: een taak aanmaken of wijzigen, een reactie plaatsen, uren registreren en de timer starten of stoppen. Elke schrijfactie gaat als jou door dezelfde controles en hetzelfde spoor als in het scherm; iets instellen, een factuur versturen of een rapport publiceren kan hij niet. Elk antwoord draagt bronchips die terugklikken naar de records waar het vandaan komt, zodat je een getal kunt narekenen in plaats van het te geloven.",
+          "en": "The sparkle in the top bar opens the Assistent beside your work. On a client, project or task page it inherits that record, so \"this client\" simply resolves. It searches the same API an external AI client gets over MCP, so it knows about domains, invoices and marketing figures as well as clients, tasks and hours, and it sees exactly what you may see and nothing more. It writes only from a fixed list: create or change a task, post a comment, log hours, and start or stop the timer. Every write goes, as you, through the same checks and onto the same trail as on the screen; configuring something, sending an invoice or publishing a report is beyond it. Every answer carries source chips that link back to the records it came from, so you can check a number instead of believing it."
         }
       },
       {
@@ -101,20 +109,20 @@
           "en": "Speak it instead of typing it"
         },
         "body": {
-          "nl": "Naast Snel toevoegen op Uren staat een microfoon: je spreekt één regel in en de uitgeschreven tekst komt in het veld te staan. Spraak vraagt een eigen sleutel onder Spraak naar tekst, want Anthropic heeft helemaal geen transcriptiedienst en staat daarom bewust niet in dat lijstje. De audio gaat naar de dienst die jij daar instelt en nergens anders heen; de ingebouwde spraakfunctie van de browser stuurt in Chrome en Edge alles naar Google en in Safari naar Apple, en die keuze wilden we niet voor je maken. Je leest het transcript eerst na en corrigeert het zelf, omdat een Nederlandse klantnaam nu juist is wat een herkenner verkeerd verstaat.",
-          "en": "Beside Snel toevoegen (quick add) on Uren there is a microphone: you speak one line and the transcript lands in the field. Speech needs its own credential under Spraak naar tekst, because Anthropic has no transcription endpoint at all and is therefore deliberately absent from that list. The audio goes to the service you configure there and nowhere else — the browser's own speech API ships everything to Google in Chrome and Edge, and to Apple in Safari, and that was not a choice to make on your behalf. You read the transcript and fix it yourself first, because a Dutch client name is exactly what a recogniser gets wrong."
+          "nl": "Er staat een microfoon bij Snel toevoegen op Uren, bij Inspreken op Taken, in het vak Aanpassen met schakl op een taak en in het invoervak van de Assistent. Spraak vraagt een eigen sleutel onder Spraak naar tekst (OpenAI, een compatibele server of Mistral), want Anthropic heeft helemaal geen transcriptiedienst en staat daarom bewust niet in dat lijstje. De audio gaat naar de dienst die jij daar instelt en nergens anders heen; de ingebouwde spraakfunctie van de browser stuurt in Chrome en Edge alles naar Google en in Safari naar Apple, en die keuze wilden we niet voor je maken. Wat je inspreekt komt altijd eerst als tekst in beeld, omdat een Nederlandse klantnaam nu juist is wat een herkenner verkeerd verstaat.",
+          "en": "There is a microphone at Snel toevoegen (quick add) on Uren, at Inspreken on Taken, in a task's Aanpassen met schakl box and in the Assistent's input. Speech needs its own credential under Spraak naar tekst (OpenAI, a compatible server or Mistral), because Anthropic has no transcription endpoint at all and is therefore deliberately absent from that list. The audio goes to the service you configure there and nowhere else — the browser's own speech API ships everything to Google in Chrome and Edge, and to Apple in Safari, and that was not a choice to make on your behalf. Whatever you dictate always appears as text first, because a Dutch client name is exactly what a recogniser gets wrong."
         },
         "bullets": {
           "nl": [
             "Een eigen spraakaanbieder en een eigen maandbudget, gemeten in seconden audio",
-            "Opnemen stopt na zestig seconden en de teller loopt zichtbaar mee",
-            "Het transcript belandt in Snel toevoegen, nooit rechtstreeks op je urenstaat",
+            "Twee minuten voor een urenregel, vijf voor een taak of een vraag aan de assistent, met de grens zichtbaar naast de teller",
+            "Het transcript belandt in het veld of in een concept, nooit rechtstreeks in een record",
             "De microfoon wordt alleen getekend waar hij ook echt kan werken"
           ],
           "en": [
             "Its own speech provider and its own monthly budget, measured in seconds of audio",
-            "Recording stops after sixty seconds, with the elapsed counter visible while it runs",
-            "The transcript lands in the quick-add field, never straight onto your timesheet",
+            "Two minutes for a time entry, five for a task or a question to the assistant, with the cap shown beside the counter",
+            "The transcript lands in the field or in a draft, never straight into a record",
             "The microphone is only drawn where it can actually work"
           ]
         }

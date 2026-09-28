@@ -1,0 +1,125 @@
+{
+  "slug": "mistral",
+  "name": "Mistral (Voxtral)",
+  "order": 63,
+  "category": "ai",
+  "status": "live",
+  "lucide": "mic",
+  "mark": {
+    "monogram": "MI",
+    "color": "#FA520F"
+  },
+  "tagline": {
+    "nl": "Spraak naar tekst met sprekers, drie uur in één keer",
+    "en": "Speech to text with speakers, three hours in one go"
+  },
+  "summary": {
+    "nl": "Mistral is in schakl. een spraakaanbieder: Voxtral zet een opname om in tekst, in het Nederlands, met per fragment wie er sprak en wanneer. Het neemt drie uur audio in één verzoek, en daarom is het de aanbieder die we aanraden voor vergaderingen: een opname die in één keer past houdt één set sprekerslabels. Dezelfde sleutel werkt ook voor inspreken op Uren, bij een taak en in de assistent. Voor de chatfuncties kies je een andere aanbieder, of de chat-API van Mistral via OpenAI-compatibel.",
+    "en": "In schakl., Mistral is a speech provider: Voxtral turns a recording into text, in Dutch, with who spoke and when per segment. It takes three hours of audio in one request, which is why it is the provider we recommend for meetings: a recording that fits in one go keeps one set of speaker labels. The same key also works for dictation on Uren, for a task and in the assistant. For the chat features you pick another provider, or Mistral's chat API through OpenAI-compatible."
+  },
+  "highlights": {
+    "nl": [
+      "Sprekerslabels en tijdstempels per fragment, in het Nederlands",
+      "Drie uur in één verzoek: een vergadering van twee uur wordt niet in stukken geknipt",
+      "Eigen sleutel, versleuteld opgeslagen, apart van de chatsleutel",
+      "Standaardmodel voxtral-mini-latest"
+    ],
+    "en": [
+      "Speaker labels and timestamps per segment, in Dutch",
+      "Three hours in one request: a two-hour meeting is not cut into pieces",
+      "Its own key, stored encrypted, separate from the chat key",
+      "Default model voxtral-mini-latest"
+    ]
+  },
+  "where": {
+    "nl": "Instellingen → AI, fieldset Spraak naar tekst, Spraakaanbieder op Mistral (Voxtral). De opnameknop voor een vergadering staat onder Vergaderingen.",
+    "en": "Instellingen → AI (Settings → AI), the Spraak naar tekst fieldset, Spraakaanbieder set to Mistral (Voxtral). The record button for a meeting sits under Meetings."
+  },
+  "docs": "/docs/modules/ai/",
+  "page": {
+    "lead": {
+      "nl": "Een vergadering wil weten wie wat zei, niet alleen wat er gezegd werd. Een aanbieder die dat per verzoek bepaalt en maar een kwartier per verzoek neemt, nummert de sprekers bij elk deel opnieuw. Voxtral neemt de hele vergadering in één keer.",
+      "en": "A meeting wants to know who said what, not just what was said. A provider that decides that per request and takes only a quarter of an hour per request numbers the speakers afresh for every part. Voxtral takes the whole meeting in one go."
+    },
+    "requirements": {
+      "nl": [
+        "Een Mistral-account met een API-sleutel. Je rekent rechtstreeks met Mistral af.",
+        "Het recht ai.settings.manage om de aanbieder in te stellen. Standaard alleen voor beheerders.",
+        "Een functie die de microfoon gebruikt aan: Vergadertranscripten en verslagen, Urenhulp, Taak inspreken of de Assistent",
+        "De app via https bereikbaar, anders geeft de browser geen toegang tot de microfoon"
+      ],
+      "en": [
+        "A Mistral account with an API key. You settle with Mistral directly.",
+        "The ai.settings.manage permission to configure the provider. Admin-only by default.",
+        "A feature that uses the microphone switched on: meeting transcripts and minutes, Urenhulp, task dictation or the Assistent",
+        "The app reachable over https, or the browser grants no microphone access"
+      ]
+    },
+    "steps": {
+      "nl": [
+        "Maak in je Mistral-console een API-sleutel aan voor deze installatie.",
+        "Open <strong>Instellingen → AI</strong> en ga naar de fieldset <strong>Spraak naar tekst</strong>.",
+        "Zet <strong>Spraakaanbieder</strong> op <strong>Mistral (Voxtral)</strong> en vul <strong>API-sleutel voor spraak</strong> in. Die wordt versleuteld opgeslagen en nooit teruggetoond.",
+        "<strong>Spraakmodel</strong> mag leeg blijven: dan wordt <code>voxtral-mini-latest</code> gebruikt. Een basis-URL hoef je niet in te vullen.",
+        "Zet onder <strong>Functies</strong> aan waar de microfoon moet verschijnen, bijvoorbeeld <strong>Vergadertranscripten en verslagen</strong>, en vul eventueel een <strong>Maandbudget audio (seconden)</strong> in.",
+        "Druk op <strong>Verbinding testen</strong> en geef in <strong>Instellingen → Rollen</strong> het recht <code>ai.use</code> aan de rollen die de functies mogen gebruiken."
+      ],
+      "en": [
+        "Create an API key for this installation in your Mistral console.",
+        "Open <strong>Instellingen → AI</strong> (Settings → AI) and go to the <strong>Spraak naar tekst</strong> fieldset.",
+        "Set <strong>Spraakaanbieder</strong> (speech provider) to <strong>Mistral (Voxtral)</strong> and fill in <strong>API-sleutel voor spraak</strong>. It is stored encrypted and never played back.",
+        "<strong>Spraakmodel</strong> may stay empty: <code>voxtral-mini-latest</code> is used then. There is no base URL to fill in.",
+        "Under <strong>Functies</strong>, switch on where the microphone should appear, for example <strong>Vergadertranscripten en verslagen</strong>, and optionally set a <strong>Maandbudget audio (seconden)</strong>.",
+        "Press <strong>Verbinding testen</strong> (test connection) and grant <code>ai.use</code> in <strong>Instellingen → Rollen</strong> to the roles allowed to use the features."
+      ]
+    },
+    "sections": [
+      {
+        "heading": {
+          "nl": "Waarom een aparte spraakaanbieder",
+          "en": "Why a separate speech provider"
+        },
+        "body": {
+          "nl": "Anthropic, de standaardaanbieder voor de chatfuncties, heeft geen transcriptiedienst. Spraak heeft daarom altijd een eigen instelling met een eigen sleutel, en de chatsleutel hergebruiken configureert niets. Mistral staat daar als eigen keuze omdat de transcriptie-API van Voxtral twee dingen kan vragen die een gewone OpenAI-compatibele aanroep niet kan sturen: wie er sprak, en wanneer. De chat-API van Mistral gebruik je, als je dat wilt, via de aanbieder OpenAI-compatibel.",
+          "en": "Anthropic, the default provider for the chat features, has no transcription service. So speech always has its own setting with its own key, and reusing the chat key configures nothing. Mistral is a choice of its own there because Voxtral's transcription API can be asked two things a plain OpenAI-compatible call cannot send: who spoke, and when. Mistral's chat API you use, if you want to, through the OpenAI-compatible provider."
+        }
+      },
+      {
+        "heading": {
+          "nl": "Een vergadering in één verzoek",
+          "en": "A meeting in one request"
+        },
+        "body": {
+          "nl": "Een aanbieder labelt sprekers per verzoek. Moet een opname in delen, dan heten de sprekers in het tweede deel opnieuw S1 en S2, en schakl. nummert ze daarom door in plaats van te raden wie wie was. Met Voxtral is dat tot drie uur niet nodig: één verzoek, één set labels, die je in de nakijkstap aan de deelnemers koppelt. Het verslag, de besluiten en de actiepunten volgen daarna via je chataanbieder, en worden pas een contactmoment en taken als iemand ze bevestigt.",
+          "en": "A provider labels speakers per request. If a recording has to go in parts, the speakers in the second part are called S1 and S2 again, so schakl. numbers them on rather than guessing who was who. With Voxtral that is unnecessary up to three hours: one request, one set of labels, which you pair with the participants in the review step. The minutes, decisions and action items then come from your chat provider, and only become a contact moment and tasks once somebody confirms them."
+        }
+      }
+    ],
+    "permissions": [
+      {
+        "key": "ai.settings.manage",
+        "nl": "De spraakaanbieder en de sleutel instellen. Standaard alleen beheerders.",
+        "en": "Set the speech provider and its key. Admin only by default."
+      },
+      {
+        "key": "ai.use",
+        "nl": "De AI-functies gebruiken, inspreken en transcriberen inbegrepen.",
+        "en": "Use the AI features, dictation and transcription included."
+      }
+    ],
+    "limits": {
+      "nl": [
+        "Alleen spraak naar tekst. Voor de assistent, de schrijfhulp en de andere functies stel je een chataanbieder in.",
+        "Boven drie uur wordt een opname ook bij Voxtral in delen geknipt, en per deel nummert de aanbieder de sprekers opnieuw.",
+        "De audio gaat naar Mistral en nergens anders heen; het verbruik wordt geteld in seconden, niet als de tekst van een transcript.",
+        "Ondersteunde audioformaten: WebM, Ogg, MP4 of M4A, WAV en MP3, herkend aan de inhoud van het bestand."
+      ],
+      "en": [
+        "Speech to text only. For the assistant, the writing assist and the other features you configure a chat provider.",
+        "Beyond three hours a recording is cut into parts with Voxtral too, and the provider numbers the speakers afresh per part.",
+        "The audio goes to Mistral and nowhere else; usage is counted in seconds, never as the text of a transcript.",
+        "Supported audio containers: WebM, Ogg, MP4/M4A, WAV and MP3, identified by the file's own bytes."
+      ]
+    }
+  }
+}

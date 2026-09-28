@@ -460,3 +460,33 @@ class TimeonClient:
 
     async def delete_budget(self, budget_id: int) -> None:
         await self.call(f"/api/budget/{int(budget_id)}", method="DELETE")
+
+    # --- customer writes ------------------------------------------------------- #
+    # Like the project writes, read out of Timeon's own web app rather than its OpenAPI document
+    # (``customer_mapping.py`` names each shape). The document marks ``/api/customer/create``
+    # deprecated and the app has moved with it: it creates through ``POST /api/customer`` and
+    # still saves through ``POST /api/customer/save``.
+
+    async def customer(self, customer_id: int) -> dict[str, Any]:
+        """One customer, whole — what a save has to send back (the save replaces)."""
+        return await self.call(f"/api/customer/{int(customer_id)}") or {}
+
+    async def countries(self) -> list[dict[str, Any]]:
+        """Timeon's country table: ``countryID`` beside an ISO 3166-1 alpha-2 code (``isO2``).
+
+        A customer names its country by Timeon's own integer, which means nothing here, so the
+        table is what lets a country travel at all.
+        """
+        res = await self.call("/api/system/countries")
+        return [row for row in (res or []) if isinstance(row, dict)]
+
+    async def create_customer(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Create a customer. **Never retried**, for :meth:`create_project`'s reason: a create
+        that answered 502 may well have happened, and a second one is a second client."""
+        res = await self.call("/api/customer", payload, retry=False)
+        return res if isinstance(res, dict) else {}
+
+    async def save_customer(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Replace a customer — wholesale, like every other save in this API."""
+        res = await self.call("/api/customer/save", payload)
+        return res if isinstance(res, dict) else {}

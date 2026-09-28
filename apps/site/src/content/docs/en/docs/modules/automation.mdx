@@ -2,7 +2,7 @@
 title: Automation
 description: "Rules of the shape: when this happens and these conditions hold, run these actions. With a run log of every time it fired."
 sidebar:
-  order: 19
+  order: 20
 ---
 
 import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
@@ -70,7 +70,11 @@ takes code: conditions are declarative, never executable.
 Actions run in order. Five kinds ship built in:
 
 - **Taak aanmaken** (Create task): from a **Taaksjabloon** (Task template), or one bare task with a
-  **Taaktitel** (Task title). If the rule fired on a client, the task lands on that client by itself.
+  **Taaktitel** (Task title). If the rule fired on a client, the task lands on that client by itself;
+  if it fired on a task, on that task's client. A task always belongs to a client: a rule that fires
+  on neither and names no client or project is refused, and the refusal is on the run log. Every
+  task gets a deadline: **Vervaldatum (dagen vanaf nu)** (due, days from now) counts from the day the
+  rule fires, on your organisation's calendar, and empty or 0 is that day itself.
 - **Taakstatus wijzigen** (Change task status): set the task to a **Nieuwe status**.
 - **Taak toewijzen** (Assign task): pick the colleague under **Toewijzen aan**.
 - **Melding sturen** (Send notification): pick **Ontvangers** (Recipients) and type your own

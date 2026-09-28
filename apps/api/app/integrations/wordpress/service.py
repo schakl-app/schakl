@@ -55,6 +55,7 @@ from app.integrations.wordpress.client import (
 from app.integrations.wordpress.models import WordPressSite, WordPressStatus
 from app.integrations.wordpress.schemas import (
     WordPressBrand,
+    WordPressBridgeTheme,
     WordPressBridgeUpdates,
     WordPressSiteCreate,
     WordPressSiteRead,
@@ -62,6 +63,13 @@ from app.integrations.wordpress.schemas import (
     WordPressVerifyResult,
     brand_from_payload,
 )
+
+
+def bridge_theme_read(stored: dict | None) -> WordPressBridgeTheme | None:
+    """The stored ``bridge_theme`` as the API prints it; ``None`` where nothing was reported."""
+    if not isinstance(stored, dict) or "editing" not in stored:
+        return None
+    return WordPressBridgeTheme.model_validate(stored)
 
 
 def bridge_updates_read(stored: dict | None) -> WordPressBridgeUpdates | None:
@@ -172,6 +180,7 @@ def _read(site: WordPressSite, labels: Labels | None = None) -> WordPressSiteRea
         rankmath_ai_visibility=supports_ai_visibility(site.rankmath_version),
         bridge_version=site.bridge_version,
         bridge_updates=bridge_updates_read(site.bridge_updates),
+        bridge_theme=bridge_theme_read(site.bridge_theme),
         last_verified_at=site.last_verified_at,
         password_configured=bool(site.app_password_encrypted),
         created_at=site.created_at,
@@ -560,9 +569,11 @@ class WordPressService:
         if isinstance(observed.get("bridge_version"), str):
             site.bridge_version = observed["bridge_version"]
             site.bridge_updates = observed.get("bridge_updates")
+            site.bridge_theme = observed.get("bridge_theme")
         elif observed.get("bridge_absent"):
             site.bridge_version = None
             site.bridge_updates = None
+            site.bridge_theme = None
 
         await self.ctx.session.flush()
         await self.ctx.session.refresh(site)  # server-side ``updated_at`` — see ``update``
@@ -577,6 +588,7 @@ class WordPressService:
             mcp_server_path=site.mcp_server_path,
             bridge_version=site.bridge_version,
             bridge_updates=bridge_updates_read(site.bridge_updates),
+            bridge_theme=bridge_theme_read(site.bridge_theme),
             brand_count=brand_count if isinstance(brand_count, int) else None,
             error=issue,
         )

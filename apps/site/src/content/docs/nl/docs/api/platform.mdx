@@ -7,7 +7,7 @@ sidebar:
 
 Alles wat overal doorheen loopt: de organisatiegegevens die een client als eerste ophaalt, bestanden, meldingen, automatiseringsregels, AI, eigen velden, spreadsheets en bulkbewerkingen.
 
-267 endpoints, verdeeld over 20 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
+284 endpoints, verdeeld over 20 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
 
 ## `ai`
 
@@ -364,8 +364,10 @@ Antwoord: `200` · `Page_RunRead_`
 | `POST` `/bulk/domain/update` | `domains.domain.write` |
 | `POST` `/bulk/interaction/delete` | `interactions.interaction.delete` |
 | `POST` `/bulk/invoice/delete` | `invoicing.invoice.delete` |
+| `POST` `/bulk/meeting/delete` | `meetings.meeting.delete` |
 | `POST` `/bulk/project/delete` | `projects.project.delete` |
 | `POST` `/bulk/project/update` | `projects.project.write` |
+| `POST` `/bulk/report/delete` | `reporting.report.write` |
 | `POST` `/bulk/subscription/delete` | `subscriptions.subscription.delete` |
 | `POST` `/bulk/subscription/update` | `subscriptions.subscription.write` |
 | `POST` `/bulk/task/delete` | `tasks.task.delete` |
@@ -458,6 +460,16 @@ Request body: `BulkDeleteRequest`
 
 Antwoord: `200` · `BulkActionResult`
 
+#### `POST /api/v1/bulk/meeting/delete`
+
+**Bulk Delete Meeting** — Delete a selection of meeting records. Permanent, and per row: the rows the batch could do are done, and the rest come back in `failed`.
+
+Recht: `meetings.meeting.delete`
+
+Request body: `BulkDeleteRequest`
+
+Antwoord: `200` · `BulkActionResult`
+
 #### `POST /api/v1/bulk/project/delete`
 
 **Bulk Delete Project** — Delete a selection of project records. Permanent, and per row: the rows the batch could do are done, and the rest come back in `failed`.
@@ -475,6 +487,16 @@ Antwoord: `200` · `BulkActionResult`
 Recht: `projects.project.write`
 
 Request body: `BulkUpdateRequest`
+
+Antwoord: `200` · `BulkActionResult`
+
+#### `POST /api/v1/bulk/report/delete`
+
+**Bulk Delete Report** — Delete a selection of report records. Permanent, and per row: the rows the batch could do are done, and the rest come back in `failed`.
+
+Recht: `reporting.report.write`
+
+Request body: `BulkDeleteRequest`
 
 Antwoord: `200` · `BulkActionResult`
 
@@ -2139,7 +2161,7 @@ Antwoord: `200`
 
 #### `POST /api/v1/impex/website/import`
 
-**Impex Import Website** — Import website rows from a spreadsheet, upserting on the first of `domain` each row fills (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
+**Impex Import Website** — Import website rows from a spreadsheet, upserting on the first of `address`, `domain` each row fills (max 2000 data rows per request). Accepts a CSV/TSV/Excel upload or a pasted block; the format is read from the content, not the filename.
 
 Recht: `impex.import`, `websites.website.write`
 
@@ -2174,14 +2196,29 @@ Antwoord: `200` · `ImpexInspectReport`
 | `GET` `/meetings/{meeting_id}` | `meetings.meeting.read` |
 | `PATCH` `/meetings/{meeting_id}` | `meetings.meeting.write` |
 | `DELETE` `/meetings/{meeting_id}` | `meetings.meeting.delete` |
+| `POST` `/meetings/{meeting_id}/action-items/draft-task` | `meetings.meeting.write` |
+| `POST` `/meetings/{meeting_id}/action-items/task` | `meetings.meeting.write` |
+| `POST` `/meetings/{meeting_id}/ai/revise` | `meetings.meeting.write` |
+| `POST` `/meetings/{meeting_id}/ai/transcribe` | `meetings.meeting.write` |
 | `DELETE` `/meetings/{meeting_id}/audio` | `meetings.meeting.write` |
 | `POST` `/meetings/{meeting_id}/chunks` | `meetings.meeting.write` |
-| `POST` `/meetings/{meeting_id}/confirm` | `meetings.meeting.write` |
 | `POST` `/meetings/{meeting_id}/finish` | `meetings.meeting.write` |
+| `POST` `/meetings/{meeting_id}/interaction` | `meetings.meeting.write` |
 | `PUT` `/meetings/{meeting_id}/minutes` | `meetings.meeting.write` |
+| `PUT` `/meetings/{meeting_id}/participants` | `meetings.meeting.write` |
+| `GET` `/meetings/{meeting_id}/pdf` | `meetings.meeting.read` |
+| `GET` `/meetings/{meeting_id}/preview` | `meetings.meeting.read` |
+| `POST` `/meetings/{meeting_id}/redraft` | `meetings.meeting.write` |
 | `POST` `/meetings/{meeting_id}/retry` | `meetings.meeting.write` |
-| `PUT` `/meetings/{meeting_id}/speakers` | `meetings.meeting.write` |
 | `GET` `/meetings/{meeting_id}/status` | `meetings.meeting.read` |
+| `POST` `/meetings/{meeting_id}/time` | `meetings.meeting.write` |
+| `GET` `/meetings/{meeting_id}/transcript` | `meetings.meeting.read` |
+| `GET` `/meetings/policy` | `meetings.meeting.write` |
+| `GET` `/meetings/settings` | `meetings.settings.manage` |
+| `PUT` `/meetings/settings` | `meetings.settings.manage` |
+| `GET` `/meetings/settings/designs/{design}/source` | `meetings.settings.manage` |
+| `POST` `/meetings/settings/preview` | `meetings.settings.manage` |
+| `GET` `/meetings/settings/sections` | `meetings.settings.manage` |
 
 <details>
 <summary>Parameters en schema's per endpoint</summary>
@@ -2200,6 +2237,7 @@ Queryparameters:
 | `project_id` | string |  |
 | `status` | string | Comma-separated set; absent means every status |
 | `q` | string |  |
+| `sort` | string | title \| kind \| occurred_at \| duration \| status \| owner \| created_at |
 | `limit` | integer |  (default `50`) |
 | `offset` | integer |  (default `0`) |
 | `count` | boolean |  (default `true`) |
@@ -2248,6 +2286,54 @@ Padparameters: `meeting_id`
 
 Antwoord: `204`
 
+#### `POST /api/v1/meetings/{meeting_id}/action-items/draft-task`
+
+**Draft Task For Action Item** — Schakl fills in the task form for one action item of the minutes — title, what exactly, the steps the meeting listed, the deadline that was spoken, who took it on — grounded in the transcript around it. A draft: nothing is created until it is posted below.
+
+Recht: `meetings.meeting.write`
+
+Padparameters: `meeting_id`
+
+Request body: `MeetingTaskDraftRequest`
+
+Antwoord: `200` · `TaskParseResult`
+
+#### `POST /api/v1/meetings/{meeting_id}/action-items/task`
+
+**Create Task For Action Item** — Make the task for one action item now, with its steps and links in one call, as the caller (the tasks module's own rules apply). The item remembers its task and the contact moment lists it; the only way an action item becomes a task.
+
+Recht: `meetings.meeting.write`
+
+Padparameters: `meeting_id`
+
+Request body: `MeetingTaskCreate`
+
+Antwoord: `201` · `MeetingTaskCreated`
+
+#### `POST /api/v1/meetings/{meeting_id}/ai/revise`
+
+**Revise Meeting With Ai** — One typed instruction, applied to the meeting as the caller: the title, client, project, kind and date, the roster and its speaker labels, and — while under review — every part of the minutes. The answer is a diff; what the instruction did not mention stays.
+
+Recht: `meetings.meeting.write`
+
+Padparameters: `meeting_id`
+
+Request body: `MeetingReviseRequest`
+
+Antwoord: `200` · `MeetingReviseResult`
+
+#### `POST /api/v1/meetings/{meeting_id}/ai/transcribe`
+
+**Transcribe Revise Instruction** — Speech to text for the revise box: an instruction spoken instead of typed. Nothing is written; the words come back to be read first.
+
+Recht: `meetings.meeting.write`
+
+Padparameters: `meeting_id`
+
+Request body: `MeetingTranscribeRequest`
+
+Antwoord: `200` · `TimeTranscribeResult`
+
 #### `DELETE /api/v1/meetings/{meeting_id}/audio`
 
 **Delete Audio** — Drop the recording now rather than at the retention date; the words stay.
@@ -2270,18 +2356,6 @@ Request body: `MeetingChunk`
 
 Antwoord: `200` · `object`
 
-#### `POST /api/v1/meetings/{meeting_id}/confirm`
-
-**Confirm Meeting** — The minutes become a contact moment and the ticked action items become tasks.
-
-Recht: `meetings.meeting.write`
-
-Padparameters: `meeting_id`
-
-Request body: `MeetingConfirm`
-
-Antwoord: `200` · `MeetingConfirmResult`
-
 #### `POST /api/v1/meetings/{meeting_id}/finish`
 
 **Finish Meeting** — The recorder stopped: the worker folds, transcribes and drafts.
@@ -2294,15 +2368,79 @@ Request body: `MeetingFinish`
 
 Antwoord: `200` · `MeetingDetail`
 
+#### `POST /api/v1/meetings/{meeting_id}/interaction`
+
+**File Meeting** — File the minutes as a contact moment on the client now. Normally that happened by itself the moment the minutes landed; this is for a meeting where it did not (the filing was refused, or the row predates it), and it says why when it is refused again.
+
+Recht: `meetings.meeting.write`
+
+Padparameters: `meeting_id`
+
+Antwoord: `200` · `MeetingDetail`
+
 #### `PUT /api/v1/meetings/{meeting_id}/minutes`
 
-**Save Minutes** — The reviewer's edits to the draft, kept without confirming.
+**Save Minutes** — An edit to the minutes, whole. The page autosaves through this; the contact moment on the client is rewritten to match. A title in the draft is the meeting's title.
 
 Recht: `meetings.meeting.write`
 
 Padparameters: `meeting_id`
 
 Request body: `MinutesDraft`
+
+Antwoord: `200` · `MeetingDetail`
+
+#### `PUT /api/v1/meetings/{meeting_id}/participants`
+
+**Set Participants** — Who was in the meeting — a colleague, a contact of the client, or a name — and which speaker label (S1, S2 …) each of them is. Replaces the whole roster.
+
+Recht: `meetings.meeting.write`
+
+Padparameters: `meeting_id`
+
+Request body: `MeetingParticipants`
+
+Antwoord: `200` · `MeetingDetail`
+
+#### `GET /api/v1/meetings/{meeting_id}/pdf`
+
+**Meeting Pdf** — The minutes as a PDF, with the chapters the caller ticked (the transcript is off unless asked for). A read, so it survives an expired licence.
+
+Recht: `meetings.meeting.read`
+
+Padparameters: `meeting_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `sections` | string | Comma-separated chapters; absent = the org's defaults |
+
+Antwoord: `200`
+
+#### `GET /api/v1/meetings/{meeting_id}/preview`
+
+**Preview Meeting** — The minutes document as HTML — the same artefact the PDF prints.
+
+Recht: `meetings.meeting.read`
+
+Padparameters: `meeting_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `sections` | string | Comma-separated chapters; absent = the org's defaults |
+
+Antwoord: `200`
+
+#### `POST /api/v1/meetings/{meeting_id}/redraft`
+
+**Redraft Meeting** — Draft the minutes again over the transcript already here — after naming the speakers, so the action items land on the people who took them on. No new transcription.
+
+Recht: `meetings.meeting.write`
+
+Padparameters: `meeting_id`
 
 Antwoord: `200` · `MeetingDetail`
 
@@ -2316,18 +2454,6 @@ Padparameters: `meeting_id`
 
 Antwoord: `200` · `MeetingDetail`
 
-#### `PUT /api/v1/meetings/{meeting_id}/speakers`
-
-**Set Speakers** — Name the provider's speaker labels — "S2 is Jan".
-
-Recht: `meetings.meeting.write`
-
-Padparameters: `meeting_id`
-
-Request body: `MeetingSpeakers`
-
-Antwoord: `200` · `MeetingDetail`
-
 #### `GET /api/v1/meetings/{meeting_id}/status`
 
 **Meeting Status** — The one column the detail page polls while a worker holds the row.
@@ -2337,6 +2463,88 @@ Recht: `meetings.meeting.read`
 Padparameters: `meeting_id`
 
 Antwoord: `200` · `MeetingStatusRead`
+
+#### `POST /api/v1/meetings/{meeting_id}/time`
+
+**Log Meeting Time** — Book the meeting's hours: one time entry per colleague named, for its length (or the minutes given), filed on the contact moment. Booking a colleague asks ``time.entry.write:any``; the ``time`` module must be writable.
+
+Recht: `meetings.meeting.write`
+
+Padparameters: `meeting_id`
+
+Request body: `MeetingLogTime`
+
+Antwoord: `200` · `MeetingDetail`
+
+#### `GET /api/v1/meetings/{meeting_id}/transcript`
+
+**Meeting Transcript** — The transcript, whole: as JSON (every line with its speaker's name and the seconds it was said at — what an agent reads), or as a `.txt`, `.md`, `.srt` or `.vtt` file.
+
+Recht: `meetings.meeting.read`
+
+Padparameters: `meeting_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `format` | string |  (default `json`) |
+
+Antwoord: `200`
+
+#### `GET /api/v1/meetings/policy`
+
+**Meeting Policy** — What the recorder asks before it records: readable by whoever may record.
+
+Recht: `meetings.meeting.write`
+
+Antwoord: `200` · `MeetingPolicy`
+
+#### `GET /api/v1/meetings/settings`
+
+**Get Settings** — The org's meetings settings: the consent statement, the minutes document, the house writing instructions. No saved row means the defaults.
+
+Recht: `meetings.settings.manage`
+
+Antwoord: `200` · `MeetingSettingsRead`
+
+#### `PUT /api/v1/meetings/settings`
+
+**Update Settings**
+
+Recht: `meetings.settings.manage`
+
+Request body: `MeetingSettingsUpdate`
+
+Antwoord: `200` · `MeetingSettingsRead`
+
+#### `GET /api/v1/meetings/settings/designs/{design}/source`
+
+**Design Source** — A shipped design's own HTML and CSS, to start a custom minutes template from.
+
+Recht: `meetings.settings.manage`
+
+Padparameters: `design`
+
+Antwoord: `200` · `MeetingDesignSource`
+
+#### `POST /api/v1/meetings/settings/preview`
+
+**Preview Settings** — Render an unsaved design over the org's latest minuted meeting — the editor's preview.
+
+Recht: `meetings.settings.manage`
+
+Request body: `MeetingSettingsPreviewRequest`
+
+Antwoord: `200`
+
+#### `GET /api/v1/meetings/settings/sections`
+
+**Section Catalog** — Every chapter a minutes document can carry, with the org's default for each.
+
+Recht: `meetings.settings.manage`
+
+Antwoord: `200` · `MeetingSectionCatalogEntry[]`
 
 </details>
 

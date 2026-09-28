@@ -21,8 +21,7 @@ permissions and the same tenant isolation as an employee on screen.
 - **The interactive reference**: `https://<your-host>/api/docs` (Swagger UI), plus
   `https://<your-host>/api/redoc` and the document itself at
   `https://<your-host>/api/openapi.json`.
-- **Personal keys**: *Instellingen → Mijn account* (Settings → My account), the **API en MCP**
-  block.
+- **Personal keys**: *Instellingen → API en MCP* (Settings → API and MCP).
 - **Keys for automation**: *Instellingen → Service-accounts* (Settings → Service accounts), in the
   "Team & toegang" (Team & access) group.
 
@@ -39,7 +38,7 @@ The instance reference sits under `/api/` on purpose: the reverse proxy routes o
 
 | | Personal key | Service account |
 | --- | --- | --- |
-| Where | *Instellingen → Mijn account* | *Instellingen → Service-accounts* |
+| Where | *Instellingen → API en MCP* | *Instellingen → Service-accounts* |
 | Acts as | you | an account of its own, with no person behind it |
 | Permissions | your live permissions intersected with the key's scopes | exactly the scopes ticked |
 | When your role changes | the key shrinks with you | unchanged |
@@ -52,15 +51,17 @@ employee who once switched it on.
 ## Minting a key
 
 <Steps>
-1. Go to *Instellingen → Mijn account* and find the **API-sleutels** block. For automation, go to
+1. Go to *Instellingen → API en MCP* and choose **Automatiseringstool** (automation tool) or **Iets
+   anders** (something else) under **Wat koppel je?**. For a key that belongs to nobody, go to
    *Instellingen → Service-accounts* instead, create an account with **Service-account toevoegen**
    (Add service account), then click **Nieuwe sleutel** (New key).
 2. Fill in a **Naam** (Name) — for example "n8n-automatisering". That name is the only thing you
    will recognise the key by later.
 3. Pick a date under **Verloopt op** (Expires on), or leave it empty for a key that never expires.
    A date may be at most a year ahead, and never in the past.
-4. Tick what the key may do under **Scopes**. At least one is required. The list only offers
-   permissions you hold yourself: a key can never grant more than its creator has.
+4. Choose what the key may do under **Wat mag die doen?**: **Alleen lezen** (read only), **Lezen en
+   schrijven** (read and write), or **Kies per recht** (per permission) to tick them yourself. The
+   list only offers permissions you hold yourself: a key can never grant more than its creator has.
 5. Press **Sleutel aanmaken** (Create key) and copy the key immediately.
 </Steps>
 

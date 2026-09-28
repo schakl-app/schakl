@@ -16,8 +16,9 @@ budgets, retainers and invoices all count with it.
 ## Where to find it
 
 **Uren** (Time) in the main menu is your own week. The team-wide side lives under **Overzicht**
-(Overview): the tabs *Uren* (the hours overview), *Productiviteit* (Productivity) and *Omzet*
-(Revenue). The client page and the project page each carry an **Uren** panel. The only settings
+(Overview), with the tabs *Overzicht* (the year at a glance), *Omzet* (Revenue), *Projecten*
+(Projects), *Medewerkers* (Employees), *Uren* (the hours overview) and *Marketing*. The client page
+and the project page each carry an **Uren** panel. The only settings
 screen is *Instellingen → Uren-typen* (Settings → Time entry types).
 
 ## The timer
@@ -35,6 +36,12 @@ Beside the day sits the **Nieuwe registratie** (New entry) form, with **Van**, *
 and stays in sync with the times: change **Tot** and the duration follows, type a duration and
 **Tot** moves. If **Tot** is at or before **Van**, the entry rolls into the next day, so work
 crossing midnight need not be split in two.
+
+A time you type is your office's clock: schakl. reads it in your organisation's time zone and
+stores a real instant. An entry arriving through the API or an AI agent with an offset of its own
+(`12:40:00+02:00`) therefore lands at the same moment, and every "which day is this" is answered in
+your organisation's time zone: an entry at 23:30 sits on its own day in the timesheet, the reports
+and on the invoice.
 
 Pick a project and **Beschikbare uren** (Hours available) appears underneath: spent against budget
 for this period, with a bar and what is left. Where that budget comes from a retainer, the
@@ -71,10 +78,12 @@ microphone button. In every case the AI only fills in the form; nothing is saved
 
 ## Approving and invoicing
 
-*Overzicht → Uren* is the team list. You filter by employee, client, project, period and type, and
-with the status pills on **Goed te keuren** (To approve), **Goedgekeurd** (Approved), **Te
+*Overzicht → Uren* is the team list. You filter by employee, client, project, task, period and type,
+and with the status pills on **Goed te keuren** (To approve), **Goedgekeurd** (Approved), **Te
 factureren** (To invoice) and **Gefactureerd** (Invoiced). The totals at the bottom cover the whole
-filtered set, not just the page on screen.
+filtered set, not just the page on screen. The task picker lists open tasks; finished ones are
+behind the search. The filter lives in the URL, so an hours row on a client page or the budget
+figure on a task opens exactly that task's hours.
 
 Tick rows and use **Goedkeuren** (Approve), **Goedkeuring ongedaan maken** (Unapprove) or
 **Markeren als gefactureerd** (Mark as invoiced). Invoicing implies sign-off: a row you mark as
@@ -88,12 +97,34 @@ An approved entry is locked for anyone without the *Approve hours* permission. Y
 
 ## Reports
 
-*Overzicht → Productiviteit* puts hours, billable share and active days side by side per employee.
-*Overzicht → Omzet* shows revenue per month, this year against last year, and the largest clients.
-Billable hours are priced there at the **hourly rate of the employee who logged them**: the
+**Overzicht** opens on the year: revenue excl. and incl. VAT against last year, what is
+outstanding, the hours logged and how many budgets are over, the months in a chart, and three
+rankings (clients, project budgets, team) that each open the tab explaining them. The arrows step to
+another year.
+
+- *Omzet* reads what was actually invoiced: per month, per client and per kind of line, excl. and
+  incl. VAT, beside last year. Only issued documents count, credit notes negative in their month.
+  Beneath it sits the value of the logged hours, with the gap between the two as a tile of its own.
+- *Projecten* lines up budget, burn, hours and what those hours are worth per project, with the
+  budget bands (over, almost spent, within) on top.
+- *Medewerkers* (formerly Productiviteit) lines up hours, billable share, approval, active days and
+  value per colleague.
+
+With invoicing switched off, revenue is the value of the billable hours. Billable hours are priced at the **hourly rate of the employee who logged them**: the
 *Uurtarief* field on the person under *Instellingen → Team & gebruikers* (Settings → Team &
 users), otherwise the *Standaard uurtarief* under *Instellingen → Verlof* (Settings → Leave).
-Hours logged by someone with no rate anywhere are left out of the money figure.
+Hours logged by someone with no rate anywhere are left out of the money figure, and without any
+rates at all you get no € 0 tiles.
+
+## On the client page
+
+The **Uren** panel on a client groups by day and names per line the colleague, the description, the
+project and the task, the duration and whether it is billable (✓ or —). It says how many of how
+many entries it shows and links to the hours overview, filtered to this client, for the rest; the
+project and task on a line open exactly those hours. Through ⋯ you correct a line on the spot: your
+own lines, a colleague's if you hold that right, and an approved line only if you may approve.
+**Uren boeken** in the header and **＋ Uren schrijven** in the panel open the same form in a dialog
+with the client already filled in; after saving the panel updates itself.
 
 ## Setting up time entry types
 

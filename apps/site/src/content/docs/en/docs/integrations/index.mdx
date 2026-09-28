@@ -1,6 +1,6 @@
 ---
 title: Integrations
-description: "Where schakl. talks to outside services: payments, accounting, domains, Google, the sites you host and your own scripts, each with your own account."
+description: "Where schakl. talks to outside services: payments, accounting, time registration, domains, Google, Microsoft 365, the sites you host and your own scripts, each with your own account."
 sidebar:
   order: 0
 ---
@@ -8,8 +8,8 @@ sidebar:
 import { Aside, CardGrid, LinkCard } from '@astrojs/starlight/components';
 
 schakl. runs on your own server and talks from there to the services your agency already uses:
-your payment provider, your bookkeeping package, your registrar, your DNS, Google Workspace, your
-marketing sources, the sites you host and your own scripts. Every integration uses **your own
+your payment provider, your bookkeeping package, your registrar, your DNS, Google Workspace or
+Microsoft 365, your marketing sources, the sites you host and your own scripts. Every integration uses **your own
 account at that service**. The key or token is stored encrypted against your organisation in the
 database rather than in a configuration file on the server, and you can replace or remove it at
 any time.
@@ -41,8 +41,8 @@ Ticking an integration pulls in the modules it has nowhere to put its data witho
 a module tells you by name which integrations go with it — before you save, on a screen that does
 not list them.
 
-Keys for your own scripts sit apart from both: personal keys under *Instellingen → Mijn account*
-(Settings → My account), section **API en MCP**, and keys that outlive somebody's departure under
+Keys for your own scripts sit apart from both: personal keys under *Instellingen → API en MCP*
+(Settings → API and MCP), and keys that outlive somebody's departure under
 *Instellingen → Service-accounts* (Settings → Service accounts).
 
 ## Available, or on the roadmap
@@ -76,6 +76,16 @@ that reason — do it once, on a test key or a single domain, before you point c
   />
 </CardGrid>
 
+## Time registration
+
+<CardGrid>
+  <LinkCard
+    title="Timeon"
+    href="/en/docs/integrations/timeon/"
+    description="Keep hours and projects in step with Timeon for as long as your cutover lasts: a direction per kind, invoiced hours protected, conflicts as decisions."
+  />
+</CardGrid>
+
 ## Domains, sites and hosting
 
 <CardGrid>
@@ -92,7 +102,7 @@ that reason — do it once, on a test key or a single domain, before you point c
   <LinkCard
     title="WordPress"
     href="/en/docs/integrations/wordpress/"
-    description="One Application Password per website, and Rank Math's AI Visibility figures as a fifth marketing source."
+    description="One Application Password per website: Rank Math's AI Visibility as a marketing source, and every client site's pages, forms and media for agents through MCP."
   />
   <LinkCard
     title="Uptime Kuma"
@@ -101,7 +111,7 @@ that reason — do it once, on a test key or a single domain, before you point c
   />
 </CardGrid>
 
-## Google
+## Google and Microsoft
 
 <CardGrid>
   <LinkCard
@@ -122,7 +132,12 @@ that reason — do it once, on a test key or a single domain, before you point c
   <LinkCard
     title="Marketing sources"
     href="/en/docs/integrations/marketing-sources/"
-    description="Analytics, Search Console, Google Ads, SE Ranking and Rank Math as figures per client, on the client file and in your reports."
+    description="Analytics, Search Console, Google Ads, SE Ranking and Rank Math as figures per client, on the client file and in your reports, with Analytics and Search Console as MCP sections of their own."
+  />
+  <LinkCard
+    title="Microsoft 365"
+    href="/en/docs/integrations/microsoft-365/"
+    description="Outlook calendar, OneDrive and Outlook mail, connected per organisation with your own Entra app registration, beside or instead of Google."
   />
 </CardGrid>
 
@@ -142,7 +157,7 @@ that reason — do it once, on a test key or a single domain, before you point c
   <LinkCard
     title="MCP server"
     href="/en/docs/integrations/mcp/"
-    description="The same API as a toolset for AI clients, with the same permissions per key."
+    description="The same API as a toolset for AI clients: Claude and ChatGPT connect over OAuth, other clients with a key, with the same permissions."
   />
 </CardGrid>
 

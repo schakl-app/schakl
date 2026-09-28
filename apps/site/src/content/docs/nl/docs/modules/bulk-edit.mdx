@@ -2,7 +2,7 @@
 title: Meerdere rijen tegelijk
 description: "Rijen aanvinken in een lijst en ze in één keer bewerken of verwijderen, met dezelfde controles als wanneer je elk record apart had geopend."
 sidebar:
-  order: 27
+  order: 28
 ---
 
 import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
@@ -75,9 +75,11 @@ over meerdere abonnementen bestaat een eigen functie, **Prijsverhoging**.
 
 ## Verwijderen
 
-**Verwijderen** vraagt altijd om bevestiging, en die bevestiging zegt wat er meegaat. Zo staat er
-bij klanten: "12 klanten verwijderen? Alles wat eraan hangt gaat mee: contactpersonen, domeinen,
-abonnementen en facturen." Bij taken gaan reacties, checklists en urenregistraties mee;
+**Verwijderen** vraagt altijd om bevestiging, en die bevestiging zegt wat er meegaat. Klanten gaan
+naar de prullenbak, waar ze dertig dagen terug te zetten zijn: "12 klanten naar de prullenbak
+verplaatsen? Een klant met een geschiedenis (facturen, domeinen, abonnementen, projecten, uren)
+wordt overgeslagen en gemeld — archiveer die in plaats daarvan." Zo'n klant komt in de uitkomst
+terug als overgeslagen rij, met de reden erbij (zie [Klanten](/nl/docs/modules/companies/)). Bij taken gaan reacties, checklists en urenregistraties mee;
 bij projecten blijven taken en uren juist bestaan, zonder project.
 
 ## Als er iets niet kan
@@ -117,8 +119,9 @@ een gewone bewerking. Lezen blijft altijd werken.
   de zoekterm of de sortering, dan vervalt de selectie. Wil je meer rijen in één keer pakken, zet
   dan eerst **Per pagina** onderaan de lijst hoger; je kunt kiezen uit 25, 50, 100 en 200.
 - Op **Interacties** heten de drie acties **Goedkeuren**, **Toewijzen…** en **Afwijzen**. Staat
-  er een getal achter een actie, dan kan die actie minder rijen aan dan je hebt aangevinkt, en
-  dat getal zegt hoeveel.
+  er een getal achter een actie, dan wijkt het aantal berichten af van je selectie, en dat getal
+  zegt hoeveel het er worden: een aangevinkt gesprek telt als al zijn wachtende berichten, en een
+  actie die niet op elke rij kan, telt minder.
 - Elke bulkwijziging komt gewoon in het activiteitenspoor van het record terecht, met jouw naam
   en het tijdstip erbij, precies zoals een wijziging via het formulier.
 - Een rij die buiten jouw klantgroepen valt, staat niet in de lijst en kan dus ook niet worden

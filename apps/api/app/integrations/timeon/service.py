@@ -210,6 +210,7 @@ class TimeonAccountService:
             },
             "hours_direction": account.hours_direction,
             "projects_direction": account.projects_direction,
+            "customers_direction": account.customers_direction,
             "conflict_policy": account.conflict_policy,
             "window_days": account.window_days,
             "history_floor": account.history_floor,
@@ -217,6 +218,7 @@ class TimeonAccountService:
             "protect_approved": account.protect_approved,
             "push_approvals": account.push_approvals,
             "create_missing_projects": account.create_missing_projects,
+            "create_missing_customers": account.create_missing_customers,
             "create_missing_users": account.create_missing_users,
             "auto_sync": account.auto_sync,
             "auto_frequency": account.auto_frequency,
@@ -271,7 +273,13 @@ class TimeonAccountService:
         # `null` on a NOT NULL schedule column is "I did not choose", never "empty it" — the
         # schema says so and this is where it is enforced, because absent and explicit-null reach
         # `model_dump(exclude_unset=True)` differently and only one of them is a decision.
-        for key in ("auto_frequency", "auto_interval_hours", "auto_time"):
+        for key in (
+            "auto_frequency",
+            "auto_interval_hours",
+            "auto_time",
+            "customers_direction",
+            "create_missing_customers",
+        ):
             if key in values and values[key] is None:
                 values.pop(key)
         api_key = values.pop("api_key", None)

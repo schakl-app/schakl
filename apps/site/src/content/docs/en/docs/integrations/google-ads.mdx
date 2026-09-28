@@ -150,6 +150,25 @@ nothing at all about the terms you looked at and deliberately left alone — whi
 same shortlist comes back every month until nobody reads it. So one review pass records both
 halves: what you excluded, and what you decided to keep, with the reason.
 
+## Conversions only count once Google has finished counting
+
+Google credits a conversion to the day of the click, up to the end of the conversion window: 30
+days by default. So the nightly sync re-pulls the last **30 days** for Ads, not one week as it
+does for the other sources. With a week, every day froze before Google was done, while the same
+period last year had long been settled: you compared an unfinished month with a finished one, and
+every month looked worse than it was.
+
+The comparison on the dashboard defaults to **the same period last year**, and says so in words:
+*"vergeleken met dezelfde periode vorig jaar (23 aug – 21 sep 2025)"* (compared with the same
+period last year). A tile also shows the figure it was measured against, so *"−20,6% t.o.v.
+€ 1.211,73"* rather than a bare percentage.
+
+<Aside type="note" title="Key events are not Ads conversions">
+Google Ads conversions and Analytics key events count different things, with their own attribution
+and their own window. Each is therefore shown under its own source and never reconciled
+against or added to the other.
+</Aside>
+
 ## Good to know
 
 - **A retry is safe for a read and never for a write.** A retried campaign create is a second

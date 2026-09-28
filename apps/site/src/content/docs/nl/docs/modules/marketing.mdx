@@ -1,15 +1,17 @@
 ---
 title: Marketing
-description: "Koppel per klant hun Google Analytics, Search Console en Google Ads, en lees de cijfers op de klantpagina in plaats van in vier browsertabbladen."
+description: "Koppel per klant hun Google Analytics, Search Console, Google Ads, SE Ranking en Rank Math, en lees de cijfers, de leads en de zichtbaarheid in AI-antwoorden op de klantpagina in plaats van in vijf browsertabbladen."
 sidebar:
-  order: 16
+  order: 17
 ---
 
 import { Aside, Steps } from '@astrojs/starlight/components';
 
-Elke klant heeft zijn eigen Analytics-property, Search Console-site en Ads-account, en die staan
-allemaal ergens anders. De marketingmodule koppelt ze aan de klant in schakl., haalt elke nacht
-de dagcijfers op en toont ze op de plek waar de rest van het klantdossier ook staat.
+Elke klant heeft zijn eigen Analytics-property, Search Console-site, Ads-account en
+rankingproject, en die staan allemaal ergens anders. De marketingmodule koppelt ze aan de klant in
+schakl., haalt elke nacht de dagcijfers op en toont ze op de plek waar de rest van het klantdossier
+ook staat. Een meetprofiel per klant maakt er een leadsdashboard van, en daaronder staat hoe vaak
+AI-antwoorden het merk van de klant noemen.
 
 ![Het marketingoverzicht over alle klanten heen, met de periode en de vergelijking als besturing erboven.](/img/docs/nl-marketing.png)
 
@@ -20,8 +22,9 @@ de dagcijfers op en toont ze op de plek waar de rest van het klantdossier ook st
 - Het paneel **Marketing** op de klantpagina, met daarboven een link naar het volledige
   marketingtabblad van die klant.
 - *Overzicht → Marketing*: één regel per gekoppelde klant.
-- *Instellingen → Marketing*: het **Google Ads-ontwikkelaarstoken** en de
-  **SE Ranking API-sleutel**.
+- *Instellingen → Marketing*: het **Google Ads-ontwikkelaarstoken**, de **SE Ranking
+  API-sleutel** (en optioneel een aparte Data API-sleutel), de standaardvergelijking, de
+  AI-zichtbaarheid, de kanaalindeling en **Namen van bronnen**.
 
 Marketing is een gelicentieerde module; je zet hem aan onder *Instellingen → Modules*. Zie
 [Licenties](/nl/docs/admin/licenses/).
@@ -35,37 +38,111 @@ Marketing is een gelicentieerde module; je zet hem aan onder *Instellingen → M
    de Data API laat de property-keuzelijst leeg terwijl de rest ingesteld lijkt), de Google
    Search Console API en de Google Ads API.
 
-2. Vul onder *Instellingen → Marketing* het **Google Ads-ontwikkelaarstoken** in. Dat maak je
-   aan in het API-center van je Google Ads-beheerdersaccount. Zonder token meldt de
-   Ads-keuzelijst dat er een ontwikkelaarstoken nodig is.
+2. Vul onder *Instellingen → Marketing* het **Google Ads-ontwikkelaarstoken** in (aan te maken
+   in het API-center van je Google Ads-beheerdersaccount) en, als je SE Ranking gebruikt, de
+   **SE Ranking API-sleutel**. **Sleutel controleren** kost niets en zegt per API of de sleutel
+   toegang heeft.
 
 3. Koppel je eigen Google-account: *Instellingen → Mijn account*, kaart **Google-account**, knop
    **Google koppelen**. Heb je het recht om marketingkoppelingen te beheren, dan zitten de
    marketingrechten in diezelfde toestemming: één keer door het scherm van Google, niet drie
    keer.
 
-4. Open een klant, klap in het paneel **Marketing** het ⋯-menu open en kies **Bewerken**. Kies
-   per bron een account in **Analytics-property**, **Search Console-site** en **Ads-account**.
-   Heeft de klant meerdere websites, kies dan eerst bij **Koppelen aan website** aan welke site
-   de koppeling hangt, of laat hem op **Hele klant** staan.
+4. Open een klant en kies **Bron koppelen** (op het marketingtabblad, of met de ＋ op de
+   klantpagina). Kies per bron een account: **Analytics-property**, **Search Console-site**,
+   **Ads-account**, **SE Ranking-project** of **Rank Math-merk**, en eventueel de
+   **Tag Manager**-container. Heeft de klant meerdere websites, kies dan bij **Koppelen aan
+   website** aan welke site de koppeling hangt, of laat hem op **Hele klant** staan.
+
+5. Voor het leadsdashboard: klik op het marketingtabblad op **Meetprofiel instellen** (zie
+   hieronder).
 </Steps>
+
+Een ontbrekende Google-koppeling blokkeert de andere bronnen niet: een SE Ranking-project of een
+Rank Math-merk koppel je ook zonder Google-account. Mist er bij Rank Math nog iets in de
+WordPress-site van de klant, dan toont de kiezer een afvinklijst met de stap die ontbreekt en een
+knop naar de juiste plek in wp-admin.
 
 ## Wat je op het dashboard ziet
 
-Per gekoppelde bron een rij KPI's met het verschil ten opzichte van de vorige periode, en een
-sparkline. Bovenin kies je de periode: **Laatste 30 dagen**, **Deze maand**, **Dit kwartaal**,
-**Laatste 90 dagen** of **Laatste 12 maanden**, telkens vergeleken met de vorige periode.
+Per gekoppelde bron een rij KPI's met de verandering en het getal waartegen gemeten is, en een
+sparkline. Bovenin kies je de periode: **Laatste 30 dagen**, **Deze maand**, **Vorige maand**,
+**Dit kwartaal**, **Laatste 90 dagen**, **Laatste 12 maanden**, een maand of kwartaal via
+**Andere periode**, of een **Eigen periode** met **Van** en **Tot en met**.
 
 | Bron | Cijfers |
 | --- | --- |
 | Google Analytics | Sessies, Gebruikers, Nieuwe gebruikers, Belangrijke gebeurtenissen, Conversies, Betrokkenheid, Omzet |
-| Search Console | Kliks, Vertoningen, CTR, Gem. positie |
+| Search Console | Kliks, Vertoningen, CTR, Gem. positie, en Vertoningen in AI na een upload (zie hieronder) |
 | Google Ads | Uitgaven, Kliks, Vertoningen, Conversies, Conversiewaarde |
+| SE Ranking | Gem. positie, Top 3, Top 10, Top 30, scorende en gevolgde zoekwoorden |
 
-Onder elke bron staan de uitsplitsingen. Die worden live bij de bron opgehaald (en ongeveer een
-uur bewaard): Toppagina's, Kanalen, Apparaten en Belangrijke gebeurtenissen per gebeurtenis uit
-Analytics; Topzoektermen, Toppagina's en Grootste stijgers en dalers uit Search Console;
-Campagnes uit Ads.
+Onder elke bron staan de uitsplitsingen: Toppagina's, Kanalen, Apparaten en Belangrijke
+gebeurtenissen per gebeurtenis uit Analytics; Topzoektermen, Toppagina's en Grootste stijgers en
+dalers uit Search Console; Campagnes uit Ads; zoekwoorden, de website-audit en AI-zoekresultaten
+uit SE Ranking. Die worden bij de bron opgehaald en een dag bewaard, en elke ochtend vroeg
+leest een taak het tabblad van elke klant alvast zoals een collega het zou openen. Wie om negen
+uur begint, wacht dus niet op Google.
+
+### Vergeleken met vorig jaar, en dat staat er ook
+
+Standaard vergelijkt elk cijfer met **dezelfde periode vorig jaar**, omdat seizoen de vergelijking
+met de maand ervoor zinloos maakt. Het scherm zegt dat in woorden, met de datums erbij:
+"vergeleken met dezelfde periode vorig jaar (23 aug – 21 sep 2025)". Onder *Instellingen →
+Marketing* kun je de standaard op **Vorige periode** zetten, en per klant kan het dashboard
+afwijken (**Vergelijken met**). Het overzicht over alle klanten gebruikt bewust voor iedereen
+dezelfde vergelijking.
+
+## Het leadsdashboard
+
+Boven de bronnen staat **Leads en formulierinzendingen**: de vragen die een bureau vroeger per
+klant in een Looker Studio-rapport bouwde, als één vaste catalogus. Wat per klant verschilt, staat
+in het **Meetprofiel** van die klant:
+
+- **Gebeurtenisrollen**: welke GA4-gebeurtenis bij deze klant een **Aanvraag**, **Formulier
+  gestart**, **Formulier verzonden**, **Formulierfout**, **Telefoonklik**, **E-mailklik** of
+  **Sollicitatie** is (is precies, begint met, bevat of voldoet aan regex).
+- **Dimensies**: de GA4-velden waarop het dashboard mag uitsplitsen, zoals een eigen parameter
+  voor de dienst, met een label per waarde (`internationaal-transport = Internationaal transport`)
+  en of hij als filter wordt aangeboden.
+- **Formuliertypes die als offerte tellen**, de **Google Ads-conversieacties** met hun dienst, en
+  de **Meetbreukpunten**: de datums waarop de meting veranderde.
+
+De editor haalt gebeurtenisnamen, dimensies en conversieacties uit de eigen property en het eigen
+Ads-account van de klant, dus je typt niets uit je hoofd. Daarna toont het dashboard onder meer
+**Aanvragen**, **Waarvan offertes**, **Tel- en e-mailcontact**, **Aanvragen per dienst**, **Waar
+komt het vandaan?**, **Welke pagina?**, **Gestart versus verzonden**, **Mislukte verzendingen per
+pagina** en een advertentiedeel met kosten, conversies en **Gemiste advertentievertoningen per
+campagne**.
+
+- Een klik op een filterchip of op een rij filtert de hele pagina, via de URL: een gefilterd
+  dashboard is een link en de terugknop maakt de klik ongedaan.
+- Een onderdeel dat het profiel niet kan beantwoorden, verschijnt niet als nul maar onder
+  "onderdelen niet getoond", met de reden.
+- Een steekproef van GA4, thresholding, een dimensie die in GA4 niet is geregistreerd, of een week
+  met verkeer en geen enkele aanvraag staat als waarschuwing naast de cijfers.
+- GA4-gebeurtenissen en advertentiekosten worden nooit op datum aan elkaar geknoopt. Een
+  conversiewaarde is een stuurwaarde en geen omzet, dus er staat geen ROAS.
+
+## Zichtbaarheid in AI-antwoorden
+
+**Zichtbaarheid in AI-zoekmachines** (onder de bronnen) komt uit de AI Search-cijfers van
+SE Ranking: **Merkvermeldingen**, **Links naar de site**, **Gemiddelde positie** en **Potentieel
+AI-verkeer**, over ChatGPT, Perplexity, Gemini en de AI-overzichten en AI-modus van Google. Het
+toont altijd vorige maand tegen de maand ervoor, met een grafiek over zes maanden.
+
+Elke uitlezing kost units van je eigen SE Ranking Data API-abonnement, dus het staat standaard
+uit. Je zet het aan voor één klant (**Inschakelen voor deze klant**) of voor iedereen, en de prijs
+staat op elke knop die units uitgeeft. Een maand wordt één keer gelezen en bewaard. Merk, domein,
+landendatabase en engines stel je per klant in, met de huisinstelling als standaard. SE Ranking
+geeft per API een eigen sleutel uit; staat de Data API op een andere sleutel, vul die dan in als
+**SE Ranking Data API-sleutel**.
+
+**Zichtbaarheid in AI-overzichten en AI-modus** is het Generatieve AI-rapport van Search Console.
+Google toont die cijfers in Search Console maar geeft ze niet via de API terug, en de kaart zegt
+dat ook. Wel biedt het rapport een exportknop: exporteer per dag en upload het bestand met
+**Export uploaden**. Daarna is **Vertoningen in AI** een gewone tegel met trend en vergelijking.
+Een periode waarover niets is geüpload, blijft leeg en wordt nooit nul.
 
 ## De indeling die de klant ziet
 
@@ -78,56 +155,65 @@ Onder **Sleutelgebeurtenissen** geef je elke GA4-gebeurtenis een naam die de kla
 GA4-gebeurtenisnaam blijft de referentie. Een gebeurtenis die nog niet is langsgekomen voeg je
 toe op zijn ruwe GA4-naam.
 
+Onder *Instellingen → Marketing → Namen van bronnen* geef je een bron je eigen naam. Die naam
+staat op de marketingpagina, op de klantpagina en in het portaal, ook in de zinnen eromheen. Laat
+je het veld leeg, dan leest een klant in het portaal een naam zonder leverancier erin. Een klant
+ziet ook geen links naar Google en geen collega's.
+
 ## Synchronisatie
 
 Elke koppeling draagt een status: **Gesynchroniseerd**, **Eerste synchronisatie loopt**,
 **Synchronisatiefout** of **Verbinding verbroken**, met de datum van de laatste synchronisatie
-erbij. Een nachtelijke taak haalt de dagcijfers op; een nieuwe koppeling krijgt daarnaast een
-eenmalige inhaalslag van ruim dertien maanden, zodat sparklines en de vergelijking met vorig
-jaar meteen kloppen.
+erbij. Een nachtelijke taak haalt de dagcijfers op en haalt de laatste week opnieuw op, want late
+cijfers worden nog bijgesteld. Voor Google Ads is dat **dertig dagen**: Google schrijft een
+conversie tot het einde van het conversievenster toe aan de dag van de klik, dus een maand die maar
+een week opnieuw gelezen werd, vergeleek onvolledige conversies met een vorig jaar dat allang
+definitief was. Een nieuwe koppeling krijgt een eenmalige inhaalslag van ruim dertien maanden,
+zodat sparklines en de vergelijking met vorig jaar meteen kloppen.
 
 Ontkoppelen verwijdert de historie niet: de koppeling wordt gedeactiveerd, en dezelfde property
 opnieuw koppelen zet hem weer aan.
+
+## De assistent
+
+De ingebouwde assistent heeft zes leestools voor marketing: een klant opzoeken, de cijfers van een
+klant met de vergeleken periode erbij, de tabel achter een tegel, wat er gekoppeld is en welke bron
+de zoekwoordposities levert, het overzicht per klant en het overzicht over alle klanten. Elke tool
+vraagt hetzelfde recht als het scherm, dus het overzicht over alle klanten is er alleen voor wie
+`marketing.overview.read` heeft. Koppelen en instellen kan de assistent niet.
 
 ## Rechten
 
 | Recht | Wat het opent | Standaard bij |
 | --- | --- | --- |
 | `marketing.metrics.read` | Marketingcijfers bekijken (paneel, tabblad, portaaltegel) | Beheerder, Medewerker, Klant |
-| `marketing.link.manage` | Marketingkoppelingen beheren, en *Instellingen → Marketing* | Beheerder |
+| `marketing.link.manage` | Marketingkoppelingen en meetprofielen beheren, en *Instellingen → Marketing* | Beheerder |
 | `marketing.overview.read` | Het marketingoverzicht over alle klanten | Beheerder |
 
 Instellen doe je per rol onder *Instellingen → Rollen*.
 
 ## Goed om te weten
 
-- **Een koppeling synchroniseert via het Google-account van één collega**, en elk scherm noemt
-  wie dat is. Vertrekt die collega, dan stopt de aanvoer voor die klant totdat iemand anders de
-  koppeling overneemt.
+- **Een Google-koppeling synchroniseert via het account van één collega.** Valt die verbinding
+  weg, dan noemt het scherm wie dat is, zodat je weet aan wie je het vraagt.
 - **Een uitgezette API en een verlopen toegang geven allebei een foutmelding van Google, maar
-  hebben niet dezelfde oplossing.** schakl leest de reden uit het antwoord: staat de API niet
+  hebben niet dezelfde oplossing.** schakl. leest de reden uit het antwoord: staat de API niet
   aan in het Google Cloud-project, dan helpt opnieuw koppelen niet en wordt het ook niet
   aangeboden; ontbreken de rechten, dan is opnieuw koppelen wél de oplossing.
-- **Beheerdersaccounts (MCC) worden uitgeklapt.** Google levert alleen directe toegangen; schakl
+- **Beheerdersaccounts (MCC) worden uitgeklapt.** Google levert alleen directe toegangen; schakl.
   loopt de hiërarchie na en biedt de onderliggende klantaccounts aan. Het beheerdersaccount zelf
   is nooit kiesbaar, want Google weigert daar cijfers over te geven.
+- **Tag Manager is een verbinding, geen bron.** Een container heeft geen dagcijfers; het paneel
+  toont hoeveel tags live staan en hoeveel wijzigingen nog niet gepubliceerd zijn. Zie
+  [Google Tag Manager](/nl/docs/integrations/google-tag-manager/).
 - **Bij een verlopen licentie gaat de module alleen-lezen**: koppelen, ontkoppelen en de
   instellingen weigeren, en de nachtelijke synchronisatie staat stil. Paneel, tabblad en
   overzicht blijven de al opgehaalde cijfers tonen.
 
-<Aside type="caution" title="SE Ranking: sleutel wel, schermen nog niet">
-De SE Ranking API-sleutel (één sleutel voor het hele bureau, in *Instellingen → Marketing*)
-levert de hoofdstukken zoekwoordposities, website-audit en zichtbaarheid in AI-zoekresultaten
-aan de [maandrapportage](/nl/docs/modules/reporting/). De keuzelijsten op de klantpagina bieden
-op dit moment alleen Google Analytics, Search Console en Google Ads; een SE Ranking-project koppel
-je vandaag via de API. Weigert SE Ranking je sleutel, kijk dan eerst naar de opzet van de
-`Authorization`-header en naar het pad waarop de projectenlijst wordt opgehaald: dat zijn de twee
-plekken waar accounts van elkaar kunnen verschillen, en alles eromheen leest defensief, dus een
-afwijking valt op als een lege lijst en niet als een half gevulde.
-</Aside>
-
 ## Verder lezen
 
+- [Marketingbronnen](/nl/docs/integrations/marketing-sources/): per bron wat je in Google en
+  SE Ranking moet klaarzetten.
 - [Rapportage](/nl/docs/modules/reporting/): de maandrapportage die op deze cijfers wordt
   gebouwd.
 - [Klanten](/nl/docs/modules/companies/): het klantdossier waar het paneel op staat.

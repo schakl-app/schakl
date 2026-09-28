@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, Query
 from app.core.entitlements import license_write_gate
 from app.core.permissions.deps import require_permission
 from app.core.tenancy import RequestContext, require_context
+from app.errors import AppError
 from app.integrations.wordpress.bridge import WordPressBridgeService
 from app.integrations.wordpress.schemas import (
     WordPressAbility,
@@ -39,6 +40,9 @@ from app.integrations.wordpress.schemas import (
     WordPressBridgeTerm,
     WordPressBridgeTermCreate,
     WordPressBridgeTermList,
+    WordPressCacheInfo,
+    WordPressCachePurge,
+    WordPressCachePurged,
     WordPressContentCreate,
     WordPressContentList,
     WordPressContentRead,
@@ -75,6 +79,13 @@ from app.integrations.wordpress.schemas import (
     WordPressStringList,
     WordPressStringResult,
     WordPressStringUpdate,
+    WordPressThemeFile,
+    WordPressThemeFileCreate,
+    WordPressThemeFileList,
+    WordPressThemeFileRestore,
+    WordPressThemeFileUpdate,
+    WordPressThemeHistory,
+    WordPressThemeInfo,
     WordPressTranslationCreate,
     WordPressTranslations,
     WordPressVerifyResult,
@@ -511,8 +522,21 @@ async def bridge_list_records(
     post_type: str = Query("page", max_length=40),
     search: str | None = Query(None, max_length=200),
     status: str | None = Query(None, max_length=60, description="Comma-separated, or 'any'."),
-    lang: str | None = Query(None, max_length=10),
+    lang: str | None = Query(
+        None,
+        max_length=10,
+        description=(
+            "WPML language code, 'all', or a language that was switched off but still holds "
+            "records (bridge info lists them as inactive_languages)."
+        ),
+    ),
     parent: int | None = Query(None),
+    taxonomy: str | None = Query(
+        None, max_length=40, description="With term: only records in that term."
+    ),
+    term: str | None = Query(
+        None, max_length=200, description="A term id or slug (with taxonomy)."
+    ),
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
     fields: str = Query(
@@ -527,8 +551,16 @@ async def bridge_list_records(
 ) -> WordPressRecordList:
     """Records of any post type through the plugin — REST-hidden types included — with the
     page path, status, and WPML language and translation ids per row. `search` matches the
-    title, the body and the ACF fields; `fields=text` returns every record with its readable
-    text in one call (every FAQ item with its answer)."""
+    title, the body and the ACF fields; `taxonomy` + `term` narrow the list to one term (the
+    FAQ items of one category); `fields=text` returns every record with its readable text in
+    one call (every FAQ item with its answer)."""
+    if bool(taxonomy) != bool(term):
+        raise AppError(
+            "validation",
+            "errors.wordpress_bridge_term_pair",
+            status_code=422,
+            fields={("term" if taxonomy else "taxonomy"): "errors.wordpress_bridge_term_pair"},
+        )
     return await WordPressBridgeService(ctx).list_records(
         site_id,
         post_type=post_type,
@@ -539,6 +571,8 @@ async def bridge_list_records(
         page=page,
         per_page=per_page,
         fields=fields,
+        taxonomy=taxonomy,
+        term=term,
     )
 
 
@@ -1045,3 +1079,226 @@ async def bridge_translate_form(
     form serves every language (the Contact Form 7 Multilingual add-on) the plugin answers
     409 and points at `strings` on the update."""
     return await WordPressBridgeService(ctx).translate_form(site_id, wp_id, payload)
+
+
+# --- the theme's files and the caches (plugin 1.5.0) ------------------------------------------ #
+_THEME_Q = Query(
+    None, max_length=200, description="A theme by its directory; the active theme when omitted."
+)
+
+
+@router.get(
+    "/sites/{site_id}/bridge/theme",
+    response_model=WordPressThemeInfo,
+    dependencies=[require_permission("wordpress.theme.read")],
+)
+async def bridge_theme(
+    site_id: uuid.UUID,
+    refresh: bool = Query(
+        False, description="Check the loopback now instead of using the remembered answer."
+    ),
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressThemeInfo:
+    """The site's active theme and the installed ones, and whether its files can be changed:
+    `editing.allowed` (the switch in the plugin's settings, wp-config.php, the credential's
+    capability) and `editing.php.allowed` — PHP files are only written while the site can
+    request its own pages to check a change for fatal errors (`editing.php.loopback`). Says
+    why when the answer is no. Read this before writing a theme file."""
+    return await WordPressBridgeService(ctx).theme(site_id, refresh=refresh)
+
+
+@router.get(
+    "/sites/{site_id}/bridge/theme/files",
+    response_model=WordPressThemeFileList,
+    dependencies=[require_permission("wordpress.theme.read")],
+)
+async def bridge_theme_files(
+    site_id: uuid.UUID,
+    theme: str | None = _THEME_Q,
+    path: str | None = Query(
+        None, max_length=400, description="A directory inside the theme; all of it when omitted."
+    ),
+    recursive: bool = Query(True, description="Walk into subdirectories."),
+    extensions: str | None = Query(
+        None, max_length=200, description="Only these file types, comma-separated: php,css"
+    ),
+    search: str | None = Query(
+        None,
+        max_length=200,
+        description="Only files whose content holds this string (case-insensitive); each "
+        "comes with the matching lines and their numbers.",
+    ),
+    limit: int = Query(500, ge=1, le=2000),
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressThemeFileList:
+    """The files of the site's theme with size, modification time and whether each is text.
+    `search` is how to find which template prints a field or where a CSS class is defined.
+    node_modules and vendor are not walked unless `path` points into them."""
+    return await WordPressBridgeService(ctx).theme_files(
+        site_id,
+        theme=theme,
+        path=path,
+        recursive=recursive,
+        extensions=extensions,
+        search=search,
+        limit=limit,
+    )
+
+
+@router.get(
+    "/sites/{site_id}/bridge/theme/file",
+    response_model=WordPressThemeFile,
+    dependencies=[require_permission("wordpress.theme.read")],
+)
+async def bridge_theme_file(
+    site_id: uuid.UUID,
+    path: str = Query(
+        ..., min_length=1, max_length=400, description="The file, relative to the theme directory."
+    ),
+    theme: str | None = _THEME_Q,
+    from_line: int | None = Query(None, ge=1, description="First line to return (1-based)."),
+    to_line: int | None = Query(None, ge=1, description="Last line to return."),
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressThemeFile:
+    """One text file of the theme: its `content`, its `hash` (pass it as `expected_hash` when
+    replacing the file) and its line count. `from_line` / `to_line` return part of a long
+    file; the hash is always the whole file's. Binary files and files over 1 MB are refused."""
+    return await WordPressBridgeService(ctx).theme_file(
+        site_id, theme=theme, path=path, from_line=from_line, to_line=to_line
+    )
+
+
+@router.get(
+    "/sites/{site_id}/bridge/theme/file/history",
+    response_model=WordPressThemeHistory,
+    dependencies=[require_permission("wordpress.theme.read")],
+)
+async def bridge_theme_file_history(
+    site_id: uuid.UUID,
+    path: str | None = Query(
+        None, max_length=400, description="The file; every file of the theme when omitted."
+    ),
+    theme: str | None = _THEME_Q,
+    revision: int | None = Query(None, ge=1, description="One revision, with its content."),
+    limit: int = Query(20, ge=1, le=100),
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressThemeHistory:
+    """The versions the plugin kept of a theme file, newest first: each is the file as it was
+    before the change named in `before`, with who made that change and when. `revision` alone
+    returns one version with its content. The last twenty per file are kept."""
+    return await WordPressBridgeService(ctx).theme_history(
+        site_id, theme=theme, path=path, revision=revision, limit=limit
+    )
+
+
+@router.put(
+    "/sites/{site_id}/bridge/theme/file",
+    response_model=WordPressThemeFile,
+    dependencies=[require_permission("wordpress.theme.write")],
+)
+async def bridge_update_theme_file(
+    site_id: uuid.UUID,
+    payload: WordPressThemeFileUpdate,
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressThemeFile:
+    """Change a file of the site's theme — live at once. Pass `edits` (each `old_string` must
+    match the file exactly and once) or the whole `content` with `expected_hash`. Nothing is
+    written when an edit does not apply or the file changed since it was read (409). A PHP
+    file is parsed first — a syntax error is refused with its line — and once written the site
+    requests its own pages to see whether PHP still runs: a change that breaks the site is put
+    back and the error returned (422, `details.rolled_back`). The previous version is kept as
+    `revision`. Refused with 409 where the site owner has not switched theme editing on, or
+    where the site cannot check itself and the file is PHP."""
+    return await WordPressBridgeService(ctx).theme_file_update(site_id, payload)
+
+
+@router.post(
+    "/sites/{site_id}/bridge/theme/file",
+    response_model=WordPressThemeFile,
+    status_code=201,
+    dependencies=[require_permission("wordpress.theme.write")],
+)
+async def bridge_create_theme_file(
+    site_id: uuid.UUID,
+    payload: WordPressThemeFileCreate,
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressThemeFile:
+    """A new text file in the site's theme — a template, a template part, a stylesheet, a
+    script — with the directories it needs; 409 when it is already there. A PHP file is parsed
+    first and the site checks itself afterwards, as on an update; one that breaks the site is
+    removed again."""
+    return await WordPressBridgeService(ctx).theme_file_create(site_id, payload)
+
+
+@router.delete(
+    "/sites/{site_id}/bridge/theme/file",
+    response_model=WordPressThemeFile,
+    dependencies=[require_permission("wordpress.theme.write")],
+)
+async def bridge_delete_theme_file(
+    site_id: uuid.UUID,
+    path: str = Query(
+        ..., min_length=1, max_length=400, description="The file, relative to the theme directory."
+    ),
+    theme: str | None = _THEME_Q,
+    expected_hash: str | None = Query(
+        None, max_length=80, description="Refuse if the file changed since this version."
+    ),
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressThemeFile:
+    """Remove a text file from the site's theme. Its content is kept as a revision, so
+    `bridge_restore_theme_file` brings it back. Deleting a PHP file the site needs is caught
+    by the same check as a write, and undone. style.css is never deleted."""
+    return await WordPressBridgeService(ctx).theme_file_delete(
+        site_id, theme=theme, path=path, expected_hash=expected_hash
+    )
+
+
+@router.post(
+    "/sites/{site_id}/bridge/theme/file/restore",
+    response_model=WordPressThemeFile,
+    dependencies=[require_permission("wordpress.theme.write")],
+)
+async def bridge_restore_theme_file(
+    site_id: uuid.UUID,
+    payload: WordPressThemeFileRestore,
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressThemeFile:
+    """Put a theme file back to a kept version: its content as it was then, or gone if the
+    revision is from before the file was created. A write like any other — checked the same
+    way, and the version it replaces is kept in turn, so a restore can itself be undone."""
+    return await WordPressBridgeService(ctx).theme_file_restore(site_id, payload)
+
+
+@router.get(
+    "/sites/{site_id}/bridge/cache",
+    response_model=WordPressCacheInfo,
+    dependencies=[require_permission("wordpress.site.read")],
+)
+async def bridge_cache(
+    site_id: uuid.UUID,
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressCacheInfo:
+    """Which caches stand between a change and a visitor on this site: the page-cache and
+    optimisation plugins found (LiteSpeed, WP Rocket, W3 Total Cache, Autoptimize, …) with
+    what each holds, whether the object cache is persistent, and whether PHP's opcode cache
+    can be reset."""
+    return await WordPressBridgeService(ctx).cache(site_id)
+
+
+@router.post(
+    "/sites/{site_id}/bridge/cache/purge",
+    response_model=WordPressCachePurged,
+    dependencies=[require_permission("wordpress.content.publish")],
+)
+async def bridge_purge_cache(
+    site_id: uuid.UUID,
+    payload: WordPressCachePurge,
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressCachePurged:
+    """Empty the site's caches so visitors get the current version: the page cache, the
+    generated CSS/JS and the opcode cache, the object cache when named, single pages with
+    `urls`. Answers what was emptied and what was skipped, with the reason. A cache at the
+    host or a CDN outside WordPress is not reached. Visitors get uncached pages until the
+    cache refills, hence `publish`."""
+    return await WordPressBridgeService(ctx).cache_purge(site_id, payload)

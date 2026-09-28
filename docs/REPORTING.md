@@ -314,6 +314,21 @@ live instance held exactly thirty days of history each, which is what that looks
 outside. A window that ended before the horizon begins is not a request to make, and the change
 log — a nicety riding on the same credential — now fails alone.
 
+## The register
+
+`/reports` is the shared `DataTable`: a sort the API applies (`?sort=`), a status set beside the
+client and audience filters (`?status=draft,failed`, absent meaning every status), the column
+picker and the shared pager. **Which columns are the desk's is stated on the column**
+(`audience: "staff"` → `columnsForViewer`), so a client's table has no *Voor wie* and no *Status*,
+and neither can be ticked back on in the picker (#373).
+
+The selection offers **delete and nothing else** (`reporting/bulk.py`): publishing and sending are
+decisions about one document and one client. It rides `reporting.report.write`, the key the
+record's own delete declares — the module has no separate delete key, and a bulk route asking for
+one would be a second answer to "may this person delete a report". A report that was sent is
+refused per row (`errors.reporting.already_sent`) and counted out of the button beforehand; an
+internal analysis the caller may not read is *not found*, never refused.
+
 ## Who may read what
 
 | Key | Scope | Guards |

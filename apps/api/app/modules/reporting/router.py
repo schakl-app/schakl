@@ -256,6 +256,10 @@ async def save_profile(
 async def list_reports(
     company_id: uuid.UUID | None = Query(None),
     audience: ReportAudience | None = Query(None),
+    status: str | None = Query(None, description="Comma-separated set; absent means every status"),
+    sort: str | None = Query(
+        None, description="company | period | audience | status | sent_at | created_at"
+    ),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     count: bool = Query(True),
@@ -264,6 +268,8 @@ async def list_reports(
     return await ReportService(ctx).list(
         company_id=company_id,
         audience=audience.value if audience else None,
+        status=status,
+        sort=sort,
         limit=limit,
         offset=offset,
         count=count,

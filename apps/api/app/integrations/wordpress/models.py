@@ -198,6 +198,13 @@ class WordPressSite(
     #: which the panel says as "not reported", not as "cannot update".
     bridge_updates: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
+    #: Where theme file editing stands on the site, as the plugin's ``info`` last reported
+    #: (bridge 1.5.0+): the active theme, whether the stored credential may change its files
+    #: and PHP among them, and the site's own switches and loopback behind that answer. NULL
+    #: where no probe has seen a plugin that reports it. An observation: a theme write is
+    #: decided by the call, and this may be a settings change stale.
+    bridge_theme: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
     last_verified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

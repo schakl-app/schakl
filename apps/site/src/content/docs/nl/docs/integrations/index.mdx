@@ -1,6 +1,6 @@
 ---
 title: Koppelingen
-description: "Waar schakl. met diensten van buiten praat: betalen, boekhouding, domeinen, Google, de sites die je host en je eigen scripts, elk met je eigen account."
+description: "Waar schakl. met diensten van buiten praat: betalen, boekhouding, tijdregistratie, domeinen, Google, Microsoft 365, de sites die je host en je eigen scripts, elk met je eigen account."
 sidebar:
   order: 0
 ---
@@ -8,7 +8,8 @@ sidebar:
 import { Aside, CardGrid, LinkCard } from '@astrojs/starlight/components';
 
 schakl. draait op je eigen server en praat daarvandaan met de diensten die je bureau al gebruikt:
-je betaalprovider, je boekhoudpakket, je registrar, je DNS, Google Workspace, je marketingbronnen,
+je betaalprovider, je boekhoudpakket, je registrar, je DNS, Google Workspace of Microsoft 365, je
+marketingbronnen,
 de sites die je host en je eigen scripts. Elke koppeling gebruikt **jouw eigen account bij die
 dienst**. De sleutel of het token staat versleuteld bij jouw organisatie in de database, niet in
 een configuratiebestand op de server, en je kunt hem op elk moment vervangen of weghalen.
@@ -41,7 +42,7 @@ en een module uitvinken zegt bij naam welke koppelingen daarmee meegaan: vóór 
 scherm dat ze niet eens toont.
 
 Sleutels voor je eigen scripts staan los van allebei: persoonlijke sleutels onder
-*Instellingen → Mijn account*, sectie **API en MCP**, en sleutels die iemands vertrek overleven
+*Instellingen → API en MCP*, en sleutels die iemands vertrek overleven
 onder *Instellingen → Service-accounts*.
 
 ## Beschikbaar, of op de roadmap
@@ -75,6 +76,16 @@ proefronde: doe die één keer, met een testsleutel of op één domein, voordat 
   />
 </CardGrid>
 
+## Tijdregistratie
+
+<CardGrid>
+  <LinkCard
+    title="Timeon"
+    href="/nl/docs/integrations/timeon/"
+    description="Uren en projecten gelijk houden met Timeon zolang je overstap duurt: per soort een richting, gefactureerde uren beschermd, conflicten als beslissing."
+  />
+</CardGrid>
+
 ## Domeinen, sites en hosting
 
 <CardGrid>
@@ -91,7 +102,7 @@ proefronde: doe die één keer, met een testsleutel of op één domein, voordat 
   <LinkCard
     title="WordPress"
     href="/nl/docs/integrations/wordpress/"
-    description="Eén applicatiewachtwoord per website, en de AI-zichtbaarheid van Rank Math als vijfde marketingbron."
+    description="Eén applicatiewachtwoord per website: de AI-zichtbaarheid van Rank Math als marketingbron, en pagina's, formulieren en media van elke klantsite voor agents via MCP."
   />
   <LinkCard
     title="Uptime Kuma"
@@ -100,7 +111,7 @@ proefronde: doe die één keer, met een testsleutel of op één domein, voordat 
   />
 </CardGrid>
 
-## Google
+## Google en Microsoft
 
 <CardGrid>
   <LinkCard
@@ -121,7 +132,12 @@ proefronde: doe die één keer, met een testsleutel of op één domein, voordat 
   <LinkCard
     title="Marketingbronnen"
     href="/nl/docs/integrations/marketing-sources/"
-    description="Analytics, Search Console, Google Ads, SE Ranking en Rank Math als cijfers per klant, op het klantdossier en in je rapportages."
+    description="Analytics, Search Console, Google Ads, SE Ranking en Rank Math als cijfers per klant, op het klantdossier en in je rapportages, en Analytics en Search Console als eigen MCP-sectie."
+  />
+  <LinkCard
+    title="Microsoft 365"
+    href="/nl/docs/integrations/microsoft-365/"
+    description="Outlook-agenda, OneDrive en Outlook-mail, per organisatie gekoppeld met je eigen Entra-app-registratie, naast of in plaats van Google."
   />
 </CardGrid>
 
@@ -141,7 +157,7 @@ proefronde: doe die één keer, met een testsleutel of op één domein, voordat 
   <LinkCard
     title="MCP-server"
     href="/nl/docs/integrations/mcp/"
-    description="Dezelfde API als gereedschap voor AI-clients, met dezelfde rechten per sleutel."
+    description="Dezelfde API als gereedschap voor AI-clients: Claude en ChatGPT koppelen via OAuth, andere clients met een sleutel, met dezelfde rechten."
   />
 </CardGrid>
 

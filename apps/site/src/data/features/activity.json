@@ -1,7 +1,7 @@
 {
   "name": "Activiteit en audit",
   "slug": "activity",
-  "order": 190,
+  "order": 200,
   "icon": "🕓",
   "lucide": "activity",
   "demo": "activity",
@@ -43,8 +43,8 @@
           "en": "The person stays named"
         },
         "body": {
-          "nl": "De naam van wie iets deed wordt bij het schrijven vastgelegd, niet pas bij het lezen opgezocht. Zolang het account bestaat wint de actuele naam; vertrekt iemand, dan lees je 'Naam (verwijderd)' in plaats van dat het werk stilletjes 'het systeem' wordt. Een auditspoor waarvan de actor verdampt is geen auditspoor.",
-          "en": "The name of whoever acted is captured at write time, not looked up later when you read the trail. While the account exists, its live name wins; once someone leaves, you read 'Name (deleted)' rather than the work quietly becoming 'the system'. An audit trail whose actor evaporates is not an audit trail."
+          "nl": "De naam van wie iets deed wordt bij het schrijven vastgelegd, niet pas bij het lezen opgezocht. Zolang het account bestaat wint de actuele naam. Vertrekt iemand, dan deactiveer je hem en blijft alles gewoon op zijn naam staan; wordt het account toch verwijderd, dan lees je 'Naam (verwijderd)' in plaats van dat het werk stilletjes 'het systeem' wordt. Een auditspoor waarvan de actor verdampt is geen auditspoor.",
+          "en": "The name of whoever acted is captured at write time, not looked up later when you read the trail. While the account exists, its live name wins. When someone leaves you deactivate them and everything simply stays in their name; if the account is removed anyway, you read 'Name (deleted)' rather than the work quietly becoming 'the system'. An audit trail whose actor evaporates is not an audit trail."
         }
       },
       {

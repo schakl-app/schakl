@@ -1,7 +1,7 @@
 {
   "name": "Personeelsdossier",
   "slug": "hr",
-  "order": 130,
+  "order": 140,
   "icon": "🗂️",
   "lucide": "hr",
   "title": {

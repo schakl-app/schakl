@@ -5,71 +5,82 @@
   "category": "automation",
   "status": "live",
   "lucide": "bot",
-  "mark": { "monogram": "MC", "color": "#6366F1" },
+  "mark": {
+    "monogram": "MC",
+    "color": "#6366F1"
+  },
   "tagline": {
-    "nl": "Je eigen API als toolset voor AI-clients",
-    "en": "Your own API as a toolset for AI clients"
+    "nl": "Je eigen API als toolset voor AI-clients, met OAuth of een sleutel",
+    "en": "Your own API as a toolset for AI clients, over OAuth or a key"
   },
   "summary": {
-    "nl": "schakl. draait een MCP-server op /mcp. Elke operatie van /api/v1 is daar een tool, gegenereerd uit de OpenAPI-spec van je eigen instance en in-process teruggeproxied naar diezelfde API. Een tool-aanroep gaat dus door precies dezelfde poort als het web: hostname naar organisatie, RLS gebonden, rechten opgelost.",
-    "en": "schakl. runs an MCP server at /mcp. Every /api/v1 operation is a tool there, generated from your own instance's OpenAPI spec and proxied in-process back to that same API. So a tool call travels exactly the same gate as the web app: hostname to organisation, RLS bound, permissions resolved."
+    "nl": "schakl. draait een MCP-server op /mcp. Elke operatie van /api/v1 is daar een tool, gegenereerd uit de OpenAPI-spec van je eigen instance en in-process teruggeproxied naar diezelfde API. Een tool-aanroep gaat dus door precies dezelfde poort als het web: hostname naar organisatie, RLS gebonden, rechten opgelost. Claude en ChatGPT koppelen met alleen het adres via OAuth 2.1; andere clients met een API-sleutel. Smallere adressen als /mcp/compact en /mcp/google-ads bieden een deel van de tools aan, voor clients die niet alles in hun context passen.",
+    "en": "schakl. runs an MCP server at /mcp. Every /api/v1 operation is a tool there, generated from your own instance's OpenAPI spec and proxied in-process back to that same API. A tool call therefore passes through exactly the same gate as the web app: hostname to organisation, RLS bound, permissions resolved. Claude and ChatGPT connect with nothing but the address, over OAuth 2.1; other clients use an API key. Narrower addresses such as /mcp/compact and /mcp/google-ads offer part of the tools, for clients that cannot fit everything in their context."
   },
   "highlights": {
     "nl": [
       "Elke /api/v1-operatie is een tool, met de naam van de operatie: list_companies, create_task, team_time_summary",
-      "Sleutels zijn tenant-gebonden, intrekbaar en dragen precies de scopes die je aanvinkt",
-      "Aansluiten in één regel met claude mcp add --transport http"
+      "OAuth 2.1 met zelfregistratie: Claude en ChatGPT koppelen met alleen de URL, de toestemming loopt over je gewone sessie",
+      "Wat een koppeling mag kies je bij de toestemming: alles wat je zelf mag, alleen lezen, of zelf kiezen",
+      "Secties per module en per klus (/mcp/growth, /mcp/infra) en een compacte veertien voor chatclients",
+      "Sleutels zijn tenant-gebonden, intrekbaar en nooit ruimer dan hun eigenaar"
     ],
     "en": [
       "Every /api/v1 operation is a tool, named after the operation: list_companies, create_task, team_time_summary",
-      "Keys are tenant-scoped, revocable and carry exactly the scopes you tick",
-      "Connect in one line with claude mcp add --transport http"
+      "OAuth 2.1 with self-registration: Claude and ChatGPT connect with just the URL, and consent runs on your ordinary session",
+      "You choose what a connection may do at consent: everything you may do, read only, or choose yourself",
+      "Sections per module and per job (/mcp/growth, /mcp/infra) and a compact fourteen for chat clients",
+      "Keys are tenant-bound, revocable and never wider than their owner"
     ]
   },
   "where": {
-    "nl": "Instellingen → Mijn account, sectie API-sleutels voor een persoonlijke sleutel, of Instellingen → Service-accounts voor een sleutel die iemands vertrek overleeft. Het endpoint zelf is https://<je-host>/mcp.",
-    "en": "Instellingen → Mijn account (Settings → My account), section API-sleutels, for a personal key, or Instellingen → Service-accounts (Settings → Service accounts) for a key that outlives an employee. The endpoint itself is https://<your-host>/mcp."
+    "nl": "Instellingen → API en MCP: een sleutel aanmaken met de koppelinstructies erbij, de gekoppelde OAuth-clients, en voor beheerders de OAuth-clients met een client-ID en secret. Instellingen → Service-accounts voor een sleutel die iemands vertrek overleeft. Het endpoint zelf is https://<je-host>/mcp.",
+    "en": "Instellingen → API en MCP (Settings → API and MCP): mint a key with the connection instructions attached, the connected OAuth clients, and for admins the OAuth clients with a client id and secret. Instellingen → Service-accounts for a key that outlives someone leaving. The endpoint itself is https://<your-host>/mcp."
   },
   "docs": "/docs/integrations/mcp/",
   "page": {
     "lead": {
-      "nl": "Wijs een AI-client naar je eigen instance en stel je vraag in gewone taal. Er wordt niets geëxporteerd en er ontstaat geen tweede datapad: de MCP-server praat in-process met dezelfde API als de webapp.",
-      "en": "Point an AI client at your own instance and ask in plain language. Nothing gets exported and no second data path appears: the MCP server talks in-process to the same API the web app uses."
+      "nl": "Wijs een AI-client naar je eigen instance en stel je vraag in gewone taal. Er wordt niets geëxporteerd en er ontstaat geen tweede datapad: de MCP-server praat in-process met dezelfde API als de webapp. Een client die OAuth spreekt heeft niet eens een sleutel nodig, alleen het adres.",
+      "en": "Point an AI client at your own instance and ask in plain language. Nothing gets exported and no second data path appears: the MCP server talks in-process to the same API the web app uses. A client that speaks OAuth does not even need a key, just the address."
     },
     "requirements": {
       "nl": [
         "Je eigen tenant-hostname over HTTPS: het geverifieerde eigen domein, of <slug>.<basisdomein>",
         "Een licentie die de sku mcp dekt; zonder dekking antwoordt de hele /mcp-mount met 402",
         "SCHAKL_MCP_ENABLED mag niet op false staan (standaard staat hij aan)",
-        "Het recht apikeys.personal.manage voor een persoonlijke sleutel, of apikeys.service_account.manage voor een service-account",
-        "Een client die Streamable HTTP spreekt, bijvoorbeeld Claude Code of Claude Desktop"
+        "Voor een sleutel: het recht apikeys.personal.manage, of apikeys.service_account.manage voor een service-account. Voor OAuth: niets extra, alleen een gewone login",
+        "Voor een OAuth-client met een vaste client-ID en secret: het recht settings.oauth.manage om hem aan te maken",
+        "Een client die Streamable HTTP spreekt, bijvoorbeeld Claude, Claude Code, Claude Desktop of ChatGPT"
       ],
       "en": [
         "Your own tenant hostname over HTTPS: the verified custom domain, or <slug>.<base domain>",
         "A licence covering the mcp sku; without it the whole /mcp mount answers 402",
         "SCHAKL_MCP_ENABLED must not be false (it is on by default)",
-        "The apikeys.personal.manage permission for a personal key, or apikeys.service_account.manage for a service account",
-        "A client that speaks Streamable HTTP, for example Claude Code or Claude Desktop"
+        "For a key: the apikeys.personal.manage permission, or apikeys.service_account.manage for a service account. For OAuth: nothing extra, just an ordinary login",
+        "For an OAuth client with a fixed client id and secret: the settings.oauth.manage permission to create it",
+        "A client that speaks Streamable HTTP, for example Claude, Claude Code, Claude Desktop or ChatGPT"
       ]
     },
     "steps": {
       "nl": [
         "Controleer je licentie onder <strong>Instellingen → Licentie</strong>. MCP heeft een eigen sku (<code>mcp</code>); wordt die niet gedekt, dan antwoordt <code>/mcp</code> met een 402 en is er niets aan te sluiten.",
-        "Maak een persoonlijke sleutel aan onder <strong>Instellingen → Mijn account</strong>, sectie <strong>API-sleutels</strong>. Vul <strong>Naam</strong> in, laat <strong>Verloopt op</strong> leeg voor een sleutel die nooit verloopt, en vink onder <strong>Scopes</strong> precies de rechten aan die de AI mag uitoefenen. Druk op <strong>Sleutel aanmaken</strong>.",
-        "Of maak een sleutel die niemands account nodig heeft: <strong>Instellingen → Service-accounts</strong> → <strong>Service-account toevoegen</strong>, daarna <strong>Nieuwe sleutel</strong> met zijn eigen scopes.",
-        "Kopieer de sleutel meteen. Hij heeft de vorm <code>schakl_&lt;prefix&gt;_&lt;secret&gt;</code> en wordt één keer getoond; daarna geeft de API alleen nog <code>schakl_&lt;prefix&gt;_********</code> terug.",
-        "Koppel Claude Code: <code>claude mcp add --transport http schakl https://&lt;je-host&gt;/mcp --header \"Authorization: Bearer schakl_…\"</code>",
-        "Een andere Streamable-HTTP-client: endpoint <code>https://&lt;je-host&gt;/mcp</code>, header <code>Authorization: Bearer schakl_…</code> of <code>X-API-Key: schakl_…</code>. Gebruik altijd je eigen tenant-hostname; een sleutel die op de hostname van een andere organisatie wordt aangeboden, wordt simpelweg niet gevonden.",
-        "Klaar met de koppeling of sleutel kwijt: druk op <strong>Intrekken</strong> naast de sleutel, of verwijder het hele service-account. Alles wat hem nog gebruikt, verliest per direct toegang."
+        "<strong>Claude of ChatGPT als connector:</strong> voeg <code>https://&lt;je-host&gt;/mcp</code> toe als eigen connector (ChatGPT: <code>/mcp/compact</code>). De client registreert zichzelf, je komt op het inlogscherm van je eigen werkruimte en daarna op <strong>Toegang toestaan</strong>, waar je kiest tussen <strong>Alles wat ik zelf mag</strong>, <strong>Alleen lezen</strong> of <strong>Zelf kiezen</strong>. Er wordt nergens een geheim gekopieerd.",
+        "<strong>Een client met een sleutel:</strong> open <strong>Instellingen → API en MCP</strong>, kies bij <strong>Wat koppel je?</strong> voor <strong>AI-assistent (MCP)</strong>, geef de sleutel een <strong>Naam</strong>, kies bij <strong>Wat mag die doen?</strong> (standaard <strong>Alleen lezen</strong>) en bij <strong>Welke tools</strong> de sectie. Laat <strong>Verloopt op</strong> leeg voor een sleutel die nooit verloopt en druk op <strong>Sleutel aanmaken</strong>.",
+        "Het scherm drukt de koppelregel voor je client af met de nieuwe sleutel er al in, bijvoorbeeld voor Claude Code: <code>claude mcp add --transport http schakl https://&lt;je-host&gt;/mcp --header \"Authorization: Bearer schakl_…\"</code>. De sleutel wordt één keer getoond.",
+        "Een sleutel die niemands account nodig heeft: <strong>Instellingen → Service-accounts</strong> → <strong>Service-account toevoegen</strong>, daarna <strong>Nieuwe sleutel</strong> met zijn eigen scopes.",
+        "Een tool die om een vaste client-ID en secret vraagt (een zakelijke connectorconfiguratie, een automatiseringstool): een beheerder maakt die aan onder <strong>OAuth-clients</strong> op hetzelfde scherm, met één redirect-URI per regel. Het secret wordt één keer getoond.",
+        "Gebruik altijd je eigen tenant-hostname; een sleutel die op de hostname van een andere organisatie wordt aangeboden, wordt simpelweg niet gevonden.",
+        "Klaar met een koppeling: <strong>Ontkoppelen</strong> bij <strong>Gekoppelde clients</strong> beëindigt elke sessie van die client, <strong>Intrekken</strong> naast een sleutel haalt de toegang er per direct af."
       ],
       "en": [
-        "Check your licence under <strong>Instellingen → Licentie</strong> (Settings → Licence). MCP has its own sku (<code>mcp</code>); if it is not covered, <code>/mcp</code> answers 402 and there is nothing to connect to.",
-        "Mint a personal key under <strong>Instellingen → Mijn account</strong> (Settings → My account), section <strong>API-sleutels</strong> (API keys). Fill in <strong>Naam</strong> (Name), leave <strong>Verloopt op</strong> (Expires on) empty for a key that never expires, and under <strong>Scopes</strong> tick exactly the permissions the AI may exercise. Press <strong>Sleutel aanmaken</strong> (Create key).",
-        "Or mint a key that needs nobody's account: <strong>Instellingen → Service-accounts</strong> → <strong>Service-account toevoegen</strong> (Add service account), then <strong>Nieuwe sleutel</strong> (New key) with its own scopes.",
-        "Copy the key straight away. It has the form <code>schakl_&lt;prefix&gt;_&lt;secret&gt;</code> and is shown exactly once; afterwards the API only ever returns <code>schakl_&lt;prefix&gt;_********</code>.",
-        "Connect Claude Code: <code>claude mcp add --transport http schakl https://&lt;your-host&gt;/mcp --header \"Authorization: Bearer schakl_…\"</code>",
-        "Any other Streamable-HTTP client: endpoint <code>https://&lt;your-host&gt;/mcp</code>, header <code>Authorization: Bearer schakl_…</code> or <code>X-API-Key: schakl_…</code>. Always use your own tenant hostname; a key presented on another organisation's hostname is simply not found.",
-        "Done with the client, or lost the key: press <strong>Intrekken</strong> (Revoke) beside it, or delete the whole service account. Anything still using it loses access immediately."
+        "Check your licence under <strong>Instellingen → Licentie</strong> (Settings → Licence). MCP has its own sku (<code>mcp</code>); if it is not covered, <code>/mcp</code> answers 402 and there is nothing to connect.",
+        "<strong>Claude or ChatGPT as a connector:</strong> add <code>https://&lt;your-host&gt;/mcp</code> as a custom connector (ChatGPT: <code>/mcp/compact</code>). The client registers itself, you land on your own workspace's sign-in screen and then on <strong>Toegang toestaan</strong> (Allow access), where you choose between <strong>Alles wat ik zelf mag</strong> (everything I may do), <strong>Alleen lezen</strong> (read only) or <strong>Zelf kiezen</strong> (choose myself). No secret is copied anywhere.",
+        "<strong>A client with a key:</strong> open <strong>Instellingen → API en MCP</strong>, choose <strong>AI-assistent (MCP)</strong> under <strong>Wat koppel je?</strong> (what are you connecting), give the key a <strong>Naam</strong>, pick under <strong>Wat mag die doen?</strong> (what may it do; <strong>Alleen lezen</strong> by default) and the section under <strong>Welke tools</strong>. Leave <strong>Verloopt op</strong> empty for a key that never expires and press <strong>Sleutel aanmaken</strong>.",
+        "The screen prints the connection line for your client with the new key already in it, for Claude Code for example: <code>claude mcp add --transport http schakl https://&lt;your-host&gt;/mcp --header \"Authorization: Bearer schakl_…\"</code>. The key is shown once.",
+        "A key that needs nobody's account: <strong>Instellingen → Service-accounts</strong> → <strong>Service-account toevoegen</strong>, then <strong>Nieuwe sleutel</strong> with its own scopes.",
+        "A tool that asks for a fixed client id and secret (an enterprise connector config, an automation tool): an admin creates one under <strong>OAuth-clients</strong> on the same screen, with one redirect URI per line. The secret is shown once.",
+        "Always use your own tenant hostname; a key presented on another organisation's hostname is simply not found.",
+        "Done with a connection: <strong>Ontkoppelen</strong> (disconnect) under <strong>Gekoppelde clients</strong> ends every session of that client, <strong>Intrekken</strong> (revoke) beside a key cuts access immediately."
       ]
     },
     "sections": [
@@ -85,12 +96,22 @@
       },
       {
         "heading": {
+          "nl": "OAuth geeft een sleutel uit, geen tweede soort toegang",
+          "en": "OAuth mints a key, not a second kind of access"
+        },
+        "body": {
+          "nl": "Clients die een connector willen in plaats van een geplakt geheim, Claude en ChatGPT voorop, krijgen een volledige OAuth 2.1-flow: zelfregistratie, autorisatiecode met PKCE, vernieuwen, intrekken en discovery. Wat die flow oplevert is een gewone API-sleutel van de persoon die toestemming gaf, dus elke regel die voor een persoonlijke sleutel geldt, geldt ook hier. En de autorisatieserver logt niemand in: de toestemming loopt over de sessie die de webapp al heeft, met je wachtwoord en tweestapsverificatie of met de SSO van je organisatie. Een anonieme aanroep op /mcp krijgt een 401 met de uitnodiging om OAuth te doen, zodat een client de server vindt door geweigerd te worden en een onbekende niet kan zien welke modules je draait.",
+          "en": "Clients that want a connector rather than a pasted secret, Claude and ChatGPT first among them, get a full OAuth 2.1 flow: self-registration, authorization code with PKCE, refresh, revocation and discovery. What that flow hands back is an ordinary API key belonging to the person who consented, so every rule that governs a personal key governs this too. And the authorization server signs nobody in: consent runs on the session the web app already holds, with your password and two-factor verification or with your organisation's SSO. An anonymous call to /mcp gets a 401 with the invitation to do OAuth, so a client discovers the server by being refused and a stranger cannot see which modules you run."
+        }
+      },
+      {
+        "heading": {
           "nl": "Read-first is een keuze bij het aanmaken",
           "en": "Read-first is a choice at mint time"
         },
         "body": {
-          "nl": "De toolset bevat ook schrijfacties, omdat de hele API erin zit. Wat een client feitelijk mag, staat in de scopes van de sleutel: vink alleen leesrechten aan en er valt niets te veranderen. Een persoonlijke sleutel wordt daarbovenop bij elk verzoek afgetopt op de actuele rechten van de eigenaar, dus wie gedegradeerd wordt, verliest dat via zijn sleutels ook. Een service-account-sleutel draagt precies de scopes die je hem gaf.",
-          "en": "The tool surface includes writes, because the whole API is in it. What a client may actually do lives in the key's scopes: tick read permissions only and there is nothing to change. A personal key is additionally capped by its owner's live permissions on every request, so demoting someone narrows their keys with them. A service-account key carries exactly the scopes you granted it."
+          "nl": "De toolset bevat ook schrijfacties, omdat de hele API erin zit. Wat een client feitelijk mag, staat in de rechten van zijn sleutel, en het scherm begint op Alleen lezen. Een persoonlijke sleutel en een OAuth-koppeling worden daarbovenop bij elk verzoek afgetopt op de actuele rechten van de eigenaar, dus wie gedegradeerd wordt, verliest dat via zijn koppelingen ook. Kies je bij de toestemming voor Alles wat ik zelf mag of Alleen lezen, dan wordt dat bewaard als regel en niet als lijst van vandaag: komt er later een module bij, dan hoort die er vanzelf bij, zonder dat een chatclient om opnieuw toestemming hoeft te vragen, en nooit ruimer dan de persoon zelf. Zelf kiezen blijft een vaste lijst, en het scherm zegt dat erbij. Een service-account-sleutel draagt precies de scopes die je hem gaf.",
+          "en": "The tool surface includes writes, because the whole API is in it. What a client may actually do lives in its key's permissions, and the screen starts on read only. A personal key and an OAuth connection are additionally capped by their owner's live permissions on every request, so demoting someone narrows their connections with them. Choose everything I may do or read only at consent and that is stored as a rule rather than as today's list: a module that arrives later is included by itself, without a chat client having to ask for consent again, and never wider than the person. Choose myself stays a fixed list, and the screen says so. A service-account key carries exactly the scopes you granted it."
         },
         "bullets": {
           "nl": [
@@ -102,6 +123,36 @@
             "Scopes come from the same permission catalogue as roles, including the own/any variant such as time.entry.read:own",
             "The API's deny-by-default rule answers every call, an AI's included",
             "Only enabled modules contribute routes, so the tool surface tracks what you actually run"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "Een adres per klus",
+          "en": "An address per job"
+        },
+        "body": {
+          "nl": "Het volledige oppervlak telt zo'n 620 tools. Een programmeerassistent leest die lijst één keer; een chatclient zet elke tool bij elke beurt in de context van het model, en ChatGPT staat voor alle tools samen 5.000 tokens toe. Dezelfde server antwoordt daarom ook op smallere adressen. Een modulesectie wordt afgeleid uit de routes van die module, dus wat er morgen bij komt staat er morgen in; een bundel noemt modules en nooit losse tools; en de compacte veertien is de enige lijst die met de hand is samengesteld, omdat een extern plafond dat afdwingt. Een smallere lijst is geen kleiner recht: wat een sleutel mag, bepaal je bij het aanmaken.",
+          "en": "The full surface is some 620 tools. A coding assistant reads that list once; a chat client puts every tool in the model's context on every turn, and ChatGPT allows 5,000 tokens for all tools together. So the same server also answers on narrower addresses. A module section is derived from that module's routes, so whatever arrives tomorrow is in it tomorrow; a bundle names modules and never individual tools; and the compact fourteen is the only hand-picked list, because an outside ceiling forces it. A narrower list is not a smaller permission: what a key may do is decided when it is minted."
+        },
+        "bullets": {
+          "nl": [
+            "/mcp/compact: veertien alleen-lezen tools, de juiste keuze voor ChatGPT",
+            "/mcp/agent: klanten, contactpersonen, projecten, taken, uren en contactmomenten",
+            "/mcp/infra: domeinen, websites, hosting, Cloudflare, OXXA, uptime en WordPress",
+            "/mcp/finance: facturen, abonnementen en betalingen",
+            "/mcp/growth: Google Ads, Analytics, Search Console, Tag Manager, marketing en rapportage",
+            "/mcp/<module>: één module, bijvoorbeeld /mcp/google-analytics, /mcp/google-search-console of /mcp/wordpress",
+            "Een adres dat nergens naar verwijst wordt geweigerd met de lijst van wat wel bestaat"
+          ],
+          "en": [
+            "/mcp/compact: fourteen read-only tools, the right choice for ChatGPT",
+            "/mcp/agent: clients, contacts, projects, tasks, hours and contact moments",
+            "/mcp/infra: domains, websites, hosting, Cloudflare, OXXA, uptime and WordPress",
+            "/mcp/finance: invoices, subscriptions and payments",
+            "/mcp/growth: Google Ads, Analytics, Search Console, Tag Manager, marketing and reporting",
+            "/mcp/<module>: one module, for example /mcp/google-analytics, /mcp/google-search-console or /mcp/wordpress",
+            "An address that points at nothing is refused with the list of what does exist"
           ]
         }
       },
@@ -126,21 +177,26 @@
         "key": "apikeys.service_account.manage",
         "nl": "Serviceaccounts beheren: gedeelde, persoonsonafhankelijke sleutels. Standaard alleen voor beheerders.",
         "en": "Manage service accounts: shared principals that belong to no one person. Admin only by default."
+      },
+      {
+        "key": "settings.oauth.manage",
+        "nl": "OAuth-clients met een vaste client-ID en secret aanmaken, een nieuw secret uitgeven en een client intrekken, met elke sleutel die hij ooit uitgaf. Standaard alleen beheerders, want een blijvende toegang tot MCP is een beslissing van de organisatie.",
+        "en": "Create OAuth clients with a fixed client id and secret, issue a new secret and revoke a client along with every key it ever issued. Admin only by default, because a standing credential onto MCP is the organisation's decision."
       }
     ],
     "limits": {
       "nl": [
-        "Geen OAuth 2.1: de resource-server-laag (RFC 9728) is nog niet gebouwd. Een client die een volledige OAuth-flow eist, kan vandaag niet koppelen; een API-sleutel is de enige credential.",
         "Niet alles is een tool: /api/v1/auth, /api/v1/setup, /api/v1/instance, /api/v1/users en de upload-endpoints van import (/inspect en /import) zitten er bewust niet in. De kolommenlijst en de export van import & export blijven wel bereikbaar.",
-        "De handgeschreven tools per module (companies.find, projects.budget_status) voeden vandaag de assistent in de app; de MCP-toolset komt puur uit de OpenAPI-spec.",
+        "Een route die een bestand als multipart neemt is geen tool; waar dat ertoe doet is er een JSON-tweeling, zoals het uploaden van een bijlage als base64.",
+        "Een OAuth-koppeling die met Zelf kiezen is gemaakt houdt de lijst van die dag. Een module die later aangaat komt er pas bij als je opnieuw koppelt.",
         "De oudere SSE-transport wordt niet aangeboden, die is afgeschreven.",
         "600 verzoeken per minuut per sleutel is een vaste grens, geen instelling.",
         "SCHAKL_MCP_ENABLED=false haalt de hele /mcp-surface weg; er is geen uitschakeling per tool."
       ],
       "en": [
-        "No OAuth 2.1: the resource-server layer (RFC 9728) has not been built. A client that requires the full OAuth flow cannot connect today; an API key is the only credential.",
         "Not everything is a tool: /api/v1/auth, /api/v1/setup, /api/v1/instance, /api/v1/users and the import upload endpoints (/inspect and /import) are deliberately excluded. The column list and the export side of import and export stay reachable.",
-        "The hand-written per-module tools (companies.find, projects.budget_status) feed the in-app assistant today; the MCP tool surface is derived purely from the OpenAPI spec.",
+        "A route that takes a file as multipart is not a tool; where it matters there is a JSON twin, such as uploading an attachment as base64.",
+        "An OAuth connection made with choose myself keeps that day's list. A module switched on later only joins when you reconnect.",
         "The older SSE transport is not offered, it is deprecated.",
         "600 requests per minute per key is a fixed ceiling, not a setting.",
         "SCHAKL_MCP_ENABLED=false removes the whole /mcp surface; there is no per-tool switch."

@@ -2,22 +2,27 @@
 title: Client portal
 description: "Give a client's contact person their own login into your app: their own dashboard, their own invoices and their own reports."
 sidebar:
-  order: 18
+  order: 19
 ---
 
 import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
 
 The client portal gives a client's contact person their own login into your own app, under your own
-branding. That person sees the marketing overview you composed for them, their own company's
-invoices and the reports you published. Everything else stays invisible — not because somebody
+branding. That person sees what is asked of them and what you are doing for them, the marketing
+overview you composed for them, the reports you published, and their own company's subscriptions,
+invoices and domain names. Everything else stays invisible — not because somebody
 remembered to tick a box, but because the link to their company is what decides what they can ask
 for at all.
 
 ## Where to find it
 
-There is no settings screen of its own. The button sits on the person: *Contactpersonen* (Contacts) →
-open the contact → the **Klantportaal** (Client portal) card. Under *Instellingen → Modules*
-(Settings → Modules) the module is called "Klantportaal".
+- A login is given on the person: *Contactpersonen* (Contacts) → open the contact → the
+  **Klantportaal** (Client portal) card.
+- The overview of every client login is under *Instellingen → Team & gebruikers* (Settings → Team &
+  users), in the **Klantlogins** (client logins) section below your team: per login the clients it
+  belongs to and whether the access is still live, with the same actions as the card and a link to
+  the contact. It is a register, not a second editor: the person is edited on their own page.
+- Under *Instellingen → Modules* (Settings → Modules) the module is called "Klantportaal".
 
 ## Inviting someone
 
@@ -46,18 +51,33 @@ another organisation) is refused. A portal login needs an address of its own.
 ## What the client sees
 
 The client signs in at the same web address, in the same branding, and lands on **Jouw dashboard**
-(Your dashboard): a widget board they arrange themselves. With more than one company they get a
-company switcher at the top, showing the selected company's own logo.
+(Your dashboard): one column, top to bottom. With more than one company they get a company
+switcher at the top, showing the selected company's own logo, and the whole dashboard shows one
+company at a time: every tile switches along.
 
+- **Jullie taken** (your tasks): the open tasks assigned to one of their own contact people, naming who.
+- **Werkzaamheden** (work in progress): the open work your agency is doing on their account, by
+  urgency. A task is always in exactly one of these two tiles.
+- **Jullie rapportage** (your report): the cover of the latest published report, with open and
+  download. A report that is not published yet is never visible to them.
 - **Marketing**: the overview your agency composed for them. They may move or drop tiles, but never
   add anything you did not expose.
-- **Facturen** (Invoices): only their own companies' invoices, with status and the same PDF you send
-  out. An invoice with status *Concept* (Draft) is never visible to them.
-- **Rapportages** (Reports): published reports only.
-- **Taken** (Tasks): commenting on their own tasks.
+- **Mijn abonnementen** (my subscriptions): what they cost and when the next invoice comes, with a
+  page of their own per subscription. Drafts and your internal notes stay hidden.
+- **Mijn facturen** (my invoices): open invoices first, then the most recent, with the same PDF you
+  send out. An invoice with status *Concept* (Draft) is never visible to them.
+- **Mijn domeinnamen** (my domain names): the domain names on their account and when they renew.
+
+In the menu, *Klanten* reads **Bedrijven** (companies) for a client login. What is for the agency
+alone never reaches them: the activity trail, a task's labels, a project's budget and burn, the
+repeat rule behind a planned task, and columns such as a domain's registrar or a website's hosting.
 
 That is the whole write surface: comments on their own tasks, the layout of their own dashboard and
 menu, and their own notifications. Nothing else.
+
+When a contact person is named in a comment, or a task assigned to them gets a comment, they are
+told. A client login gets that straight away by email by default, because the bell is not where a
+client lives.
 
 ## Switching access off again
 
@@ -102,7 +122,8 @@ on their own tasks.
   licence makes the module read-only, not gone.
 - A client login linked to no company sees nothing at all, whatever its role holds. *Instellingen →
   Team & gebruikers* (Settings → Team & users) therefore badges such an account **Ziet geen klanten**
-  (Sees no clients).
+  (Sees no clients), and the Klantlogins register says the login is attached to no client and sees
+  nothing.
 - Contacts are the only kind of portal subject today.
 - A contact outside your own client groups does not exist for you: you get "not found" rather than
   "no access".

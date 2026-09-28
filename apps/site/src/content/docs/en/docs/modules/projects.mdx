@@ -61,11 +61,27 @@ With the right permissions you also get **Facturabele waarde** (billable value) 
 logged it; hours booked by people with no rate are called out separately and left out of the
 total. There is no project-level rate.
 
-<Aside type="tip">
-Assigned staff are notified when an active, budgeted project passes **75 %** and again at
-**100 %** — once per budget period, so a monthly budget warns again next month. Each person
-turns that on or off under *Instellingen → Meldingen* (Settings → Notifications).
-</Aside>
+The colours follow one scale: green below 75%, amber below 100%, red from 100%. They are the
+state's colours, never your brand colour.
+
+## Budget alerts
+
+Assigned staff are notified when an active, budgeted project passes the **warning threshold** and
+again at **100 %** — once per budget period, so a monthly budget warns again next month. Each
+person turns the notification on or off under *Instellingen → Meldingen* (Settings →
+Notifications).
+
+Under *Instellingen → Projecten* (Settings → Projects) you set, for the whole organisation:
+
+- **Waarschuwingsgrens (%)** (warning threshold): when a project counts as almost spent, 75 by
+  default. The bell and the email read the same threshold.
+- **Stuur budgetwaarschuwingen per e-mail naar de toegewezen medewerkers** (email budget alerts to
+  the assigned staff): a mail in your house style with an hours bar marking the threshold, the
+  hours behind the percentage and the period they cover. Client logins never get it, and everyone
+  gets it in their own language.
+
+A mail goes once per level and period. If the burn drops back under the threshold, or you raise
+the threshold, it can come again.
 
 ## Hours that come from a subscription
 
@@ -95,8 +111,11 @@ time entry is always the logger's call. The change is written to the project's a
 
 ## The list
 
-Search, a client filter and a **Mijn projecten** (my projects) toggle that keeps only the
-projects you are on. You choose your own columns; that choice is personal and is remembered.
+The list opens on **Niet gearchiveerd** (not archived); **Alles** (all) brings the archive in.
+Beyond that: search, a client filter, a **Mijn projecten** (my projects) toggle that keeps only the
+projects you are on, and the budget bands **Over budget**, **Bijna op** (almost spent) and
+**Binnen budget** (within budget), exactly the bands the Budgetstatus tile on the dashboard counts
+and opens. You choose your own columns; that choice is personal and is remembered.
 Sorting works on name, status, assigned employee, budget and the dates.
 
 The ✎ switches the checkboxes on and lets you change a whole selection at once: **status**,
@@ -114,6 +133,7 @@ The `company` column matches on the exact client name. See
 | `projects.project.read` | Administrator, Member, Client |
 | `projects.project.write` | Administrator |
 | `projects.project.delete` | Administrator |
+| `projects.settings.manage` | Administrator |
 
 The owner role holds everything. You set this per role under *Instellingen → Rollen* (Settings
 → Roles). The money figures on the project page hang off two further permissions:
@@ -122,12 +142,16 @@ everyone (`leave.rate.read:any`). Without both you see the hours bar but no amou
 
 ## Good to know
 
+- **A client in the portal never sees the budget, the burn or a task's estimate.**
+- **On the client page** the running projects come first; finished and archived projects fold
+  behind a line of their own.
 - **Deleting a project takes nothing with it.** Tasks and time entries stay; they simply lose
   their project link.
 - **The budget bar counts the whole team's hours**, not only yours.
 - **Custom fields** can be added per project under *Instellingen → Aangepaste velden*
   (Settings → Custom fields); they appear in the form, on the page and in the export.
-- The **Dashboard** carries a **Projectbudgetten** (project budgets) widget: the budgeted
+- The **Dashboard** carries the **Budgetstatus** widget (every hour budget as over, almost spent
+  or within, with the hours over) and **Projectbudgetten** (project budgets): the budgeted
   projects burning hottest.
 
 ## Read next

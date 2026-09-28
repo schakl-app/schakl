@@ -28,6 +28,7 @@ from __future__ import annotations
 from arq import cron, func
 
 from app.core.narratives import register_narrative_provider
+from app.modules.reporting.bulk import REPORT_BULK
 from app.modules.reporting.emails import REPORTING_EMAIL_KINDS
 from app.modules.reporting.jobs import (
     reporting_reap_stale_runs,
@@ -49,6 +50,7 @@ module = ModuleDescriptor(
     sku="reporting",
     panels=[reporting_company_panel],
     permissions=REPORTING_PERMISSIONS,
+    bulk=[REPORT_BULK],
     email_templates=REPORTING_EMAIL_KINDS,
     # Hourly, not daily: the hour a report is produced is a per-org setting and the worker's
     # clock is UTC, so a tenant in Lisbon and one in Warsaw asking for 08:00 mean two

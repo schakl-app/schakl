@@ -20,7 +20,7 @@ dezelfde rechten en dezelfde afscherming als een medewerker in het scherm.
   gebied, met het recht dat ervoor nodig is. Leesbaar zonder eigen omgeving.
 - **De interactieve referentie**: `https://<jouw-adres>/api/docs` (Swagger UI). Daarnaast
   `https://<jouw-adres>/api/redoc` en het document zelf op `https://<jouw-adres>/api/openapi.json`.
-- **Persoonlijke sleutels**: *Instellingen → Mijn account*, blok **API en MCP**.
+- **Persoonlijke sleutels**: *Instellingen → API en MCP*.
 - **Sleutels voor automatisering**: *Instellingen → Service-accounts* (groep "Team & toegang").
 
 Gebruik ze allebei, voor verschillende vragen. De referentie hier is de **kaart**: wat er bestaat,
@@ -37,7 +37,7 @@ de 404-pagina van de app terecht.
 
 | | Persoonlijke sleutel | Service-account |
 | --- | --- | --- |
-| Waar | *Instellingen → Mijn account* | *Instellingen → Service-accounts* |
+| Waar | *Instellingen → API en MCP* | *Instellingen → Service-accounts* |
 | Handelt als | jou | een eigen account zonder persoon erachter |
 | Rechten | jouw actuele rechten, beperkt tot de scopes van de sleutel | precies de aangevinkte scopes |
 | Bij een rolwijziging | de sleutel krimpt met je mee | ongewijzigd |
@@ -50,15 +50,16 @@ medewerker die het ooit aanzette.
 ## Een sleutel aanmaken
 
 <Steps>
-1. Ga naar *Instellingen → Mijn account* en zoek het blok **API-sleutels**. Voor automatisering ga
-   je in plaats daarvan naar *Instellingen → Service-accounts*, maak je met **Service-account
+1. Ga naar *Instellingen → API en MCP* en kies bij **Wat koppel je?** voor **Automatiseringstool**
+   (of **Iets anders**). Voor een sleutel die bij niemand hoort ga je in plaats daarvan naar *Instellingen → Service-accounts*, maak je met **Service-account
    toevoegen** eerst een account aan en klik je daarna op **Nieuwe sleutel**.
 2. Vul een **Naam** in (bijvoorbeeld "n8n-automatisering"). Die naam is het enige waaraan je de
    sleutel later terugkent.
 3. Kies bij **Verloopt op** een datum, of laat het veld leeg voor een sleutel die nooit verloopt.
    Een datum mag maximaal een jaar vooruit liggen en niet in het verleden.
-4. Vink onder **Scopes** aan wat de sleutel mag. Er moet er minstens één aan. De lijst toont alleen
-   rechten die je zelf hebt: een sleutel kan nooit meer verlenen dan de maker bezit.
+4. Kies bij **Wat mag die doen?** wat de sleutel mag: **Alleen lezen**, **Lezen en schrijven**, of
+   **Kies per recht** om zelf aan te vinken. De lijst toont alleen rechten die je zelf hebt: een
+   sleutel kan nooit meer verlenen dan de maker bezit.
 5. Klik **Sleutel aanmaken** en kopieer de sleutel meteen.
 </Steps>
 

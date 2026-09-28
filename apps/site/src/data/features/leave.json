@@ -1,7 +1,7 @@
 {
   "name": "Verlof en roosters",
   "slug": "leave",
-  "order": 120,
+  "order": 130,
   "icon": "🌴",
   "lucide": "leave",
   "demo": "leave",
@@ -113,22 +113,22 @@
           "en": "Approval, and the rest of the platform"
         },
         "body": {
-          "nl": "Zelf goedkeuren staat standaard uit: wie mag goedkeuren is op zijn eigen aanvragen een gewone aanvrager, en Instellingen → Verlof zet dat terug voor een vertrouwde goedkeurder (is er maar één goedkeurder, dan mag die altijd zichzelf regelen, want een bureau van één persoon moet niet vastlopen). Kan een rooster iets niet uitdrukken (vier uur op een dag waarop niemand gepland stond), dan legt een manager de uren handmatig vast, op zijn naam. Fiatteurs werken op het tabblad Team naast Mijn verlof: de goedkeuringswachtrij met het tekort erbij, de saldi en aanvragen per medewerker per jaar, de contracturen ernaast, en goedkeuren of afwijzen over een hele selectie. Daarna gaat goedgekeurd verlof vanzelf de rest van het platform in. Verlof is een uitbreidingsmodule: de kern van schakl. is open source (AGPL) en modules als deze draaien op een licentiesleutel die de beheerder invoert onder Instellingen → Licentie; verloopt die, dan wordt de module alleen-lezen en blijven saldi, roosters en aanvragen gewoon leesbaar.",
-          "en": "Self-approval is off by default: whoever may approve is, on their own requests, an ordinary requester, and Instellingen → Verlof (Settings → Leave) restores that for a trusted approver — where there is only one approver, they may always manage themselves, because a one-person agency must not deadlock. When a schedule can't express something (four hours on a day no one was scheduled), a manager sets the hours by hand, recorded against their name. Approvers work on the Team tab beside Mijn verlof: the approval queue with the shortfall spelled out, balances and requests per employee per year, the contract hours alongside, and approve or reject across a whole selection. From there, approved leave travels into the rest of the platform on its own. Verlof is an extension module: the core of schakl. is open source (AGPL) and modules like this one run on a licence key the administrator installs under Instellingen → Licentie; when it lapses the module goes read-only and balances, schedules and requests stay readable."
+          "nl": "Zelf goedkeuren staat standaard uit: wie mag goedkeuren is op zijn eigen aanvragen een gewone aanvrager, en Instellingen → Verlof zet dat terug voor een vertrouwde goedkeurder (is er maar één goedkeurder, dan mag die altijd zichzelf regelen, want een bureau van één persoon moet niet vastlopen). Kan een rooster iets niet uitdrukken (vier uur op een dag waarop niemand gepland stond), dan legt een manager de uren handmatig vast, op zijn naam. Fiatteurs werken op het tabblad Team naast Mijn verlof: de goedkeuringswachtrij met het tekort erbij, de saldi en aanvragen per medewerker per jaar, de contracturen ernaast, en goedkeuren of afwijzen over een hele selectie. Die tabel opent op de collega's die hier nog werken; wie gedeactiveerd is, staat ingeklapt en geteld eronder, met saldo en aanvragen bewaard. Daarna gaat goedgekeurd verlof vanzelf de rest van het platform in. Verlof is een uitbreidingsmodule: de kern van schakl. is open source (AGPL) en modules als deze draaien op een licentiesleutel die de beheerder invoert onder Instellingen → Licentie; verloopt die, dan wordt de module alleen-lezen en blijven saldi, roosters en aanvragen gewoon leesbaar.",
+          "en": "Self-approval is off by default: whoever may approve is, on their own requests, an ordinary requester, and Instellingen → Verlof (Settings → Leave) restores that for a trusted approver — where there is only one approver, they may always manage themselves, because a one-person agency must not deadlock. When a schedule can't express something (four hours on a day no one was scheduled), a manager sets the hours by hand, recorded against their name. Approvers work on the Team tab beside Mijn verlof: the approval queue with the shortfall spelled out, balances and requests per employee per year, the contract hours alongside, and approve or reject across a whole selection. That table opens on the colleagues who still work here; anyone deactivated sits folded and counted below, balance and requests kept. From there, approved leave travels into the rest of the platform on its own. Verlof is an extension module: the core of schakl. is open source (AGPL) and modules like this one run on a licence key the administrator installs under Instellingen → Licentie; when it lapses the module goes read-only and balances, schedules and requests stay readable."
         },
         "bullets": {
           "nl": [
             "Weekstaat: goedgekeurd verlof staat als eigen regel op de urenstaat en valt buiten de facturabele capaciteit, nooit een tweede keer geteld als urenregistratie",
             "Agenda: een eigen feed naast de feestdagen, met kleur per verloftype of per collega, per persoon te tonen of te verbergen, en een dag die je naar een andere datum sleept wordt door de server herberekend en zo nodig opnieuw ter goedkeuring gezet",
             "Verloftypen op 'per uur' worden als geplaatst uurblok in de dag- en weekweergave getekend in plaats van als hele-dagbalk",
-            "Google Calendar: goedgekeurd verlof spiegelt naar de eigen agenda van de medewerker, hele dag of getimed volgens dezelfde instelling",
+            "Google Calendar en Outlook: goedgekeurd verlof spiegelt naar de eigen agenda van de medewerker, hele dag of getimed volgens dezelfde instelling",
             "Mijn dag: je eigen saldo, de wachtrij 'goed te keuren' voor fiatteurs, en wie er vandaag niet is"
           ],
           "en": [
             "Timesheet: approved leave appears as a row of its own and falls outside billable capacity, never counted a second time as a time entry",
             "Agenda: its own feed beside the public holidays, coloured per leave type or per colleague, shown or hidden per person, and a day you drag to another date is recomputed by the server and sent back for approval where that is needed",
             "Types set to \"per uur\" are drawn as a positioned hour block in the day and week views instead of a full-day chip",
-            "Google Calendar: approved leave mirrors to the employee's own calendar, all-day or timed by that same setting",
+            "Google Calendar and Outlook: approved leave mirrors to the employee's own calendar, all-day or timed by that same setting",
             "My Day: your own balance, the approver's \"goed te keuren\" queue, and who is out today"
           ]
         }

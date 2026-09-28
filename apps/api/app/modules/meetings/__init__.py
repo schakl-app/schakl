@@ -14,6 +14,7 @@ from __future__ import annotations
 from arq import cron, func
 
 from app.core.trash import register_trash_dependent
+from app.modules.meetings.bulk import MEETING_BULK
 from app.modules.meetings.jobs import (
     RUN_TIMEOUT_SECONDS,
     meetings_process,
@@ -36,6 +37,7 @@ module = ModuleDescriptor(
     sku="meetings",
     panels=[meetings_company_panel],
     permissions=MEETING_PERMISSIONS,
+    bulk=[MEETING_BULK],
     # Curated read tools beside the generated route tools (§12): the register, the
     # words, the minutes — what an agent asks about a meeting.
     mcp_tools=MEETING_MCP_TOOLS,

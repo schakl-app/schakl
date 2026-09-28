@@ -16,7 +16,7 @@ from app.core.permissions.deps import no_permission_required, require_permission
 from app.core.tenancy import RequestContext, require_context
 from app.errors import AppError
 from app.modules.invoicing import accounting
-from app.modules.invoicing.models import InvoiceStatus
+from app.modules.invoicing.models import InvoiceStatus, VatPeriod
 from app.modules.invoicing.payments import InvoicePaymentService, handle_webhook
 from app.modules.invoicing.public import (
     PublicInvoice,
@@ -45,6 +45,7 @@ from app.modules.invoicing.schemas import (
     InvoicingSettingsRead,
     InvoicingSettingsWrite,
     InvoicingSummary,
+    InvoicingVatStats,
     OriginalsBatchReport,
     OutstandingRead,
     PaymentWrite,
@@ -430,6 +431,25 @@ async def invoicing_revenue_stats(
     excl. and incl. tax. The ledger's turnover — ``time/stats/revenue`` is the hours' worth."""
     return InvoicingRevenueStats.model_validate(
         await InvoiceService(ctx).revenue_stats(year=year)
+    )
+
+
+@router.get(
+    "/stats/vat",
+    response_model=InvoicingVatStats,
+    dependencies=[require_permission(_READ, _MODULE)],
+)
+async def invoicing_vat_stats(
+    period: VatPeriod | None = Query(
+        None, description="month | quarter | year. Absent: the org's own VAT return period."
+    ),
+    ctx: RequestContext = Depends(require_context),
+) -> InvoicingVatStats:
+    """The VAT charged on what was invoiced in the current return period, and in the one
+    before it. Sales only: nothing the agency bought is recorded here, so no input VAT is
+    deducted and this is the top line of a return, not the amount to transfer."""
+    return InvoicingVatStats.model_validate(
+        await InvoiceService(ctx).vat_stats(period=period.value if period else None)
     )
 
 

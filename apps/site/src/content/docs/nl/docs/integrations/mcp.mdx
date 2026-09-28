@@ -1,6 +1,6 @@
 ---
 title: MCP-server
-description: "Koppel Claude of een andere MCP-client aan je eigen schakl-installatie, met een API-sleutel die precies bepaalt wat de AI mag zien en doen."
+description: "Koppel Claude, ChatGPT of een andere MCP-client aan je eigen schakl-installatie, via OAuth of met een API-sleutel, en bepaal precies wat de AI mag zien en doen."
 sidebar:
   order: 7
 ---
@@ -15,9 +15,11 @@ geeft.
 
 ## Waar je het vindt
 
-De server draait op `https://<jouw-adres>/mcp`, op het eigen adres van je organisatie. Er is geen
-scherm voor: je regelt het aan de kant van de client, met een sleutel uit
-*Instellingen → Mijn account* (blok **API-sleutels**) of uit *Instellingen → Service-accounts*.
+De server draait op `https://<jouw-adres>/mcp`, op het eigen adres van je organisatie. Het scherm
+erbij is *Instellingen → API en MCP*: daar maak je een sleutel aan en krijg je de koppelregel voor
+je client er meteen bij, staan de clients die je via OAuth hebt gekoppeld, en maakt een beheerder
+OAuth-clients met een vaste client-ID en secret. Sleutels die bij niemand horen staan onder
+*Instellingen → Service-accounts*.
 
 <Aside type="caution">
 De MCP-server is een **gelicentieerde** module. Zonder dekkende licentie antwoordt `/mcp` in zijn
@@ -25,21 +27,61 @@ geheel met een licentiefout, ook op lezen. Dat is bewust: MCP wordt vooral gebru
 een lezen-mag-toch-splitsing zou hier niets afschermen. Zie [Licenties](/nl/docs/admin/licenses/).
 </Aside>
 
-## Aansluiten
+## Aansluiten zonder sleutel: OAuth
+
+Claude (als eigen connector, in de browser of in Claude Desktop) en ChatGPT spreken OAuth 2.1, en
+hebben dan alleen het adres nodig.
 
 <Steps>
-1. Maak een sleutel aan zoals beschreven bij de [REST API](/nl/docs/integrations/rest-api/). Vink
-   onder **Scopes** alleen aan wat de AI mag; voor vragen stellen is dat meestal alleen leesrecht.
-2. Kopieer de sleutel meteen. Hij wordt maar één keer getoond.
-3. Voeg de server toe aan je client. Voor Claude Code:
+1. Voeg in je client een eigen connector toe met het adres `https://<jouw-adres>/mcp`. Voor
+   ChatGPT is dat `https://<jouw-adres>/mcp/compact`: de volledige lijst past niet in zijn budget.
+2. De client registreert zichzelf en stuurt je naar het inlogscherm van je eigen werkruimte. Je
+   logt in zoals altijd, met tweestapsverificatie of de SSO van je organisatie.
+3. Op **Toegang toestaan** kies je wat de client mag:
+   - **Alles wat ik zelf mag**: lezen en wijzigen, in elke module waar je toegang toe hebt;
+   - **Alleen lezen**: alles wat je mag lezen, zonder ooit iets te wijzigen;
+   - **Zelf kiezen**: een lijst die je zelf aanvinkt, gegroepeerd per module.
+4. Druk op **Toestaan**. Er wordt nergens een geheim gekopieerd.
+</Steps>
+
+Wat die flow oplevert is een gewone persoonlijke API-sleutel, geen tweede soort toegang: elk
+verzoek wordt afgetopt op jouw actuele rechten en je klantselectie. De eerste twee keuzes worden
+bewaard als **regel**, niet als de lijst van vandaag: gaat er later een module aan, dan hoort die er
+vanzelf bij, want een chatclient vraagt nooit opnieuw om toestemming. **Zelf kiezen** blijft een vaste
+lijst; een nieuwe module komt er pas bij als je opnieuw koppelt.
+
+Je ziet je koppelingen onder **Gekoppelde clients** op *Instellingen → API en MCP*.
+**Ontkoppelen** beëindigt elke sessie van die client, en die kan zichzelf niet vernieuwen.
+
+### Een client die om een client-ID en secret vraagt
+
+Claude heeft geen client-ID nodig. Tools die zichzelf niet registreren, zoals een zakelijke
+connectorconfiguratie of een automatiseringstool, vragen wel om een vaste client-ID en secret. Een
+beheerder met `settings.oauth.manage` maakt die aan onder **OAuth-clients** op hetzelfde scherm: een
+naam en één redirect-URI per regel. Het secret wordt precies één keer getoond. Dezelfde kaart toont
+ook de clients die zichzelf registreerden, apart gemarkeerd, met **Nieuw secret** (alleen voor
+clients die hier zijn aangemaakt) en **Intrekken**, dat de client uitschakelt met elke sleutel die
+hij ooit uitgaf, van wie dan ook.
+
+## Aansluiten met een sleutel
+
+<Steps>
+1. Open *Instellingen → API en MCP*. Kies bij **Wat koppel je?** voor **AI-assistent (MCP)**.
+2. Geef de sleutel een **Naam** en kies bij **Wat mag die doen?**: **Alleen lezen** (de standaard, en
+   meestal genoeg), **Lezen en schrijven**, of **Kies per recht**.
+3. Kies bij **Welke tools** de sectie die bij je client past (zie hieronder). Laat **Verloopt op**
+   leeg voor een sleutel die nooit verloopt en druk op **Sleutel aanmaken**.
+4. Het scherm drukt de koppelregel af met de sleutel er al in. Voor Claude Code:
 
    ```bash
    claude mcp add --transport http schakl https://<jouw-adres>/mcp \
      --header "Authorization: Bearer schakl_…"
    ```
-4. Een andere client die Streamable HTTP spreekt, wijs je naar hetzelfde adres met de header
+
+   Kopieer hem meteen: de sleutel wordt maar één keer getoond.
+5. Een andere client die Streamable HTTP spreekt, wijs je naar hetzelfde adres met de header
    `Authorization: Bearer schakl_…` of `X-API-Key: schakl_…`.
-5. Vraag de client de tools op te halen. Verschijnt er niets, controleer dan of je het eigen adres
+6. Vraag de client de tools op te halen. Verschijnt er niets, controleer dan of je het eigen adres
    van je organisatie gebruikt: een sleutel bestaat alleen op de hostnaam van zijn eigen organisatie.
 </Steps>
 
@@ -80,7 +122,18 @@ past:
 | `/mcp` | Alles. De standaard, en wat een programmeerassistent wil |
 | `/mcp/compact` | Een samengestelde, alleen-lezen veertien, klein genoeg voor het plafond van een chatclient |
 | `/mcp/<module>` | De endpoints van één module, bijvoorbeeld `/mcp/google-ads` of `/mcp/invoicing` |
-| `/mcp/<bundel>` | Een benoemde klus over meerdere modules heen, bijvoorbeeld `/mcp/infra` of `/mcp/growth` |
+| `/mcp/<bundel>` | Een benoemde klus over meerdere modules heen (zie hieronder) |
+
+| Bundel | Modules |
+| --- | --- |
+| `/mcp/agent` | Klanten, contactpersonen, projecten, taken, uren, contactmomenten |
+| `/mcp/infra` | Domeinen, websites, hosting, Cloudflare, OXXA, uptime, WordPress |
+| `/mcp/finance` | Facturatie, abonnementen, Mollie |
+| `/mcp/growth` | Google Ads, Google Analytics, Search Console, Tag Manager, marketing, rapportage |
+
+Google Analytics, Search Console en WordPress hebben daarnaast hun eigen sectie
+(`/mcp/google-analytics`, `/mcp/google-search-console`, `/mcp/wordpress`): een agent die de
+Analytics van een klant moet doorlopen wil zeventien tools, niet de honderd van de hele bundel.
 
 Een modulesectie wordt afgeleid uit de routes van die module zelf, dus een endpoint dat er morgen
 bij komt wordt morgen aangeboden; een bundel noemt *modules* en nooit tools, waardoor hij zichzelf
@@ -117,6 +170,7 @@ iemand op **Opslaan** klikt.
 | --- | --- | --- |
 | `apikeys.personal.manage` | Eigen API-sleutels beheren | Beheerder, Medewerker |
 | `apikeys.service_account.manage` | Serviceaccounts beheren | Beheerder |
+| `settings.oauth.manage` | OAuth-clients met een vaste client-ID en secret beheren | Beheerder |
 
 Daarna bepaalt de sleutel zelf alles: elke aangevinkte scope is een recht uit dezelfde catalogus als
 *Instellingen → Rollen*. Een persoonlijke sleutel wordt daarbovenop elk verzoek opnieuw begrensd
@@ -124,15 +178,18 @@ door de actuele rechten van de eigenaar.
 
 ## Goed om te weten
 
-- **API-sleutels zijn vandaag de enige manier om in te loggen.** De volledige OAuth-aanmeldstroom
-  die sommige MCP-clients verwachten is nog niet ingebouwd; zo'n client kan dus (nog) niet koppelen.
+- **Een anonieme aanroep krijgt een 401**, met de uitnodiging om OAuth te doen. Zo vindt een
+  client de server door geweigerd te worden, en ziet een onbekende niet welke modules je draait.
 - Het transport is Streamable HTTP met losstaande JSON-antwoorden. De oudere SSE-variant wordt niet
   aangeboden.
 - 600 aanroepen per minuut per sleutel. Een AI die enthousiast doorzoekt kan daar tegenaan lopen.
 - **Intrekken** in het sleutelscherm haalt de toegang er per direct af, zonder dat er aan de kant
   van de client iets hoeft te gebeuren.
 - De toollijst komt volledig uit de API-beschrijving. Handgeschreven, slimmere tools (zoals "zoek
-  deze klant") bestaan wel binnen de app-assistent, maar zitten niet in deze lijst.
+  deze klant" of de prestaties van een klant met de vergelijking al uitgerekend) bestaan wel binnen
+  de [assistent in de app](/nl/docs/modules/ai/), maar zitten niet in deze lijst.
+- Een route die een bestand als multipart neemt is geen tool. Waar dat ertoe doet is er een
+  JSON-tweeling, zoals een bijlage uploaden als base64.
 - Wil je de server helemaal niet aanbieden, dan zet je op de server `SCHAKL_MCP_ENABLED=false`.
   Daarmee verdwijnt `/mcp` volledig.
 

@@ -61,11 +61,26 @@ Wie de juiste rechten heeft, krijgt daaronder **Facturabele waarde** en **Kosten
 uren van mensen zonder tarief worden apart genoemd en niet meegerekend. Er is geen tarief op
 projectniveau.
 
-<Aside type="tip">
+De kleuren volgen één schaal: groen onder 75%, amber onder 100%, rood vanaf 100%. Het zijn de
+kleuren van de toestand, nooit je merkkleur.
+
+## Budgetwaarschuwingen
+
 Toegewezen medewerkers krijgen een melding zodra een actief project met urenbudget door de
-**75%** en door de **100%** gaat: één keer per budgetperiode, dus een maandbudget waarschuwt
-volgende maand opnieuw. Aan of uit zet je dat per persoon onder *Instellingen → Meldingen*.
-</Aside>
+**waarschuwingsgrens** en door de **100%** gaat: één keer per budgetperiode, dus een maandbudget
+waarschuwt volgende maand opnieuw. Aan of uit zet je de melding per persoon onder *Instellingen →
+Meldingen*.
+
+Onder *Instellingen → Projecten* stel je voor de hele organisatie in:
+
+- **Waarschuwingsgrens (%)**: wanneer een project als bijna verbruikt telt, standaard 75. De bel
+  en de e-mail gebruiken dezelfde grens.
+- **Stuur budgetwaarschuwingen per e-mail naar de toegewezen medewerkers**: een mail in je
+  huisstijl met een urenbalk waarop de grens staat, de uren achter het percentage en de periode
+  die ze beslaan. Klantlogins krijgen hem nooit, en ieder krijgt hem in zijn eigen taal.
+
+Een mail gaat één keer per niveau en periode. Zakt het verbruik terug onder de grens, of zet je
+de grens hoger, dan kan hij opnieuw komen.
 
 ## Uren uit een abonnement
 
@@ -95,7 +110,10 @@ schrijft alsnog zelf. De wijziging komt in het activiteitenspoor van het project
 
 ## De lijst
 
-Zoeken, filteren op klant en de knop **Mijn projecten** (alleen projecten waar jij op staat).
+De lijst opent op **Niet gearchiveerd**; met **Alles** komt het archief erbij. Verder zoeken,
+filteren op klant, de knop **Mijn projecten** (alleen projecten waar jij op staat) en de
+budgetbanden **Over budget**, **Bijna op** en **Binnen budget**, precies de banden die de tegel
+Budgetstatus op het dashboard telt en opent.
 Kolommen kies je zelf; die keuze is persoonlijk en blijft bewaard. Sorteren kan op naam, status,
 toegewezen medewerker, budget en de datums.
 
@@ -114,6 +132,7 @@ aangemaakt. De kolom `company` matcht op de exacte klantnaam. Zie
 | `projects.project.read` | Beheerder, Medewerker, Klant |
 | `projects.project.write` | Beheerder |
 | `projects.project.delete` | Beheerder |
+| `projects.settings.manage` | Beheerder |
 
 De eigenaarsrol heeft alles. Je stelt het per rol in onder *Instellingen → Rollen*. De
 bedragen op de projectpagina hangen aan twee andere rechten: *Urenoverzicht en rapportages
@@ -122,13 +141,17 @@ bekijken* (`time.report.read`) én *Uurtarieven bekijken* voor iedereen
 
 ## Goed om te weten
 
+- **Een klant in het portaal ziet het budget, de verbranding en de schatting van een taak nooit.**
+- **Op de klantpagina** staan de lopende projecten eerst; afgeronde en gearchiveerde projecten zijn
+  ingeklapt achter een eigen regel.
 - **Een verwijderd project neemt niets mee.** Taken en urenregistraties blijven staan en raken
   alleen hun projectkoppeling kwijt.
 - **De budgetbalk telt de uren van het hele team**, niet alleen die van jou.
 - **Eigen velden** kun je per project toevoegen onder *Instellingen → Aangepaste velden*; ze
   verschijnen in het formulier, op de pagina en in de export.
-- Op het **Dashboard** staat de widget **Projectbudgetten**: de budgetprojecten met de hoogste
-  verbranding.
+- Op het **Dashboard** staan de widgets **Budgetstatus** (alle urenbudgetten als over budget,
+  bijna op of binnen budget, met hoeveel uur eroverheen) en **Projectbudgetten** (de
+  budgetprojecten met de hoogste verbranding).
 
 ## Verder lezen
 

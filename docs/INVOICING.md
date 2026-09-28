@@ -352,6 +352,32 @@ drive behaviour: exempt and reverse-charge groups charge nothing whatever their 
 and reverse charge prints its notice + codes `AE` in UBL. `ledger_code` is the mapping seam
 for accounting packages.
 
+## The VAT a return starts from (`GET /invoicing/stats/vat`)
+
+The overview draws one figure an agency otherwise works out by hand every quarter: the VAT charged
+in the return period that is running, beside the one that has closed.
+
+- **The period is the tenant's** (`invoicing_settings.vat_period`: `month` / `quarter` / `year`,
+  Instellingen → Facturatie → Btw-aangifte). Quarter is the seeded value because it is what most
+  Dutch businesses file; vocabulary, never law (CLAUDE.md §14's rule). `?period=` overrides it for
+  one call, which is what an agent asking "and over the whole year?" needs.
+- **Sales only, and every surface says so.** The platform records what the agency invoices and
+  nothing it buys, so no input VAT is deducted: this is the top line of a return, not the amount
+  that leaves the bank. A figure labelled "to pay" that ignores the deductions would be an
+  overstatement nobody could check — hence *verkoop* in the tile's hint and the sentence in
+  settings.
+- **The rules are the revenue report's**, because a second set would be a second answer: a document
+  counts in the period of its `issue_date`, drafts and cancelled documents never count, a credit
+  note's negated totals net the period it was issued in, a foreign document converts through its
+  stored exchange rate, and the company horizon narrows the figure for restricted staff. A
+  reverse-charged or exempt line charges nothing, so it is in `excl` and not in `tax`.
+- **The span is whole** (`app.core.periods.calendar_span`), unlike a chart's period-to-date: a
+  return covers the quarter, not the quarter so far. It is resolved against the org's day (§8).
+- **One statement** over both spans (`FILTER`), pinned by `tests/test_invoicing_stats.py`.
+- **On the screen** the tile is read only while the overview is on the current year — beside
+  2024's turnover it would be a number from another page — and two periods with no tax at all
+  draw no tile ("nothing is a number").
+
 ## Deep links
 
 - **Time (module `time`)**: "to invoice" = approved AND billable AND `invoiced_at IS NULL`

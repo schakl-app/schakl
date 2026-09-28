@@ -52,6 +52,12 @@
             "body": "Een factuur bouw je uit wat er al staat: goedgekeurde uren, abonnementsperiodes en domeinverlengingen. Wat je op het scherm ziet is precies wat er gedrukt wordt, en met een betaallink boekt de betaling zichzelf op de factuur."
           },
           {
+            "demo": "meetings",
+            "overline": "Vergaderingen",
+            "title": "Van overleg naar verslag en taken",
+            "body": "Neem een overleg op in de browser. De spraakprovider van je organisatie schrijft het uit, je eigen AI stelt het verslag op, en elk besluit staat met een citaat uit het transcript. Na jouw bevestiging worden de actiepunten taken en komt het verslag als contactmoment bij de klant."
+          },
+          {
             "demo": "marketing",
             "overline": "Marketing",
             "title": "De cijfers van je klant, waar je werkt",
@@ -171,6 +177,12 @@
             "overline": "Invoicing",
             "title": "From logged hours to paid",
             "body": "An invoice is built from what is already there: approved hours, subscription periods and domain renewals. What you see on screen is exactly what prints — and with a payment link, the payment books itself onto the invoice."
+          },
+          {
+            "demo": "meetings",
+            "overline": "Meetings",
+            "title": "From meeting to minutes and tasks",
+            "body": "Record a meeting in the browser. Your organisation's speech provider transcribes it, your own AI drafts the minutes, and every decision carries a quote from the transcript. Once you confirm, the action items become tasks and the minutes land on the client as a contact moment."
           },
           {
             "demo": "marketing",

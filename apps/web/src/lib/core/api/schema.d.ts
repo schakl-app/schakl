@@ -999,6 +999,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bulk/meeting/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Delete Meeting
+         * @description Delete a selection of meeting records. Permanent, and per row: the rows the batch could do are done, and the rest come back in `failed`.
+         */
+        post: operations["bulk_delete_meeting_api_v1_bulk_meeting_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/bulk/project/delete": {
         parameters: {
             query?: never;
@@ -1033,6 +1053,26 @@ export interface paths {
          * @description Set fields on a selection of project records: `status`, `company`, `billable_default`. Keys are the entity's own stable column keys (the ones its CSV export uses). An absent key leaves every row's own value alone; an explicit `null` clears it where the field allows that. Rows are independent — an ineligible one is reported in `failed`, never rolled back over the rest.
          */
         post: operations["bulk_update_project_api_v1_bulk_project_update_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bulk/report/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Delete Report
+         * @description Delete a selection of report records. Permanent, and per row: the rows the batch could do are done, and the rest come back in `failed`.
+         */
+        post: operations["bulk_delete_report_api_v1_bulk_report_delete_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7956,6 +7996,28 @@ export interface paths {
          *     excl. and incl. tax. The ledger's turnover — ``time/stats/revenue`` is the hours' worth.
          */
         get: operations["invoicing_revenue_stats_api_v1_invoicing_stats_revenue_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoicing/stats/vat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Invoicing Vat Stats
+         * @description The VAT charged on what was invoiced in the current return period, and in the one
+         *     before it. Sales only: nothing the agency bought is recorded here, so no input VAT is
+         *     deducted and this is the top line of a return, not the amount to transfer.
+         */
+        get: operations["invoicing_vat_stats_api_v1_invoicing_stats_vat_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -15390,6 +15452,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/wordpress/sites/{site_id}/bridge/cache": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bridge Cache
+         * @description Which caches stand between a change and a visitor on this site: the page-cache and
+         *     optimisation plugins found (LiteSpeed, WP Rocket, W3 Total Cache, Autoptimize, …) with
+         *     what each holds, whether the object cache is persistent, and whether PHP's opcode cache
+         *     can be reset.
+         */
+        get: operations["bridge_cache_api_v1_wordpress_sites__site_id__bridge_cache_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}/bridge/cache/purge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bridge Purge Cache
+         * @description Empty the site's caches so visitors get the current version: the page cache, the
+         *     generated CSS/JS and the opcode cache, the object cache when named, single pages with
+         *     `urls`. Answers what was emptied and what was skipped, with the reason. A cache at the
+         *     host or a CDN outside WordPress is not reached. Visitors get uncached pages until the
+         *     cache refills, hence `publish`.
+         */
+        post: operations["bridge_purge_cache_api_v1_wordpress_sites__site_id__bridge_cache_purge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/wordpress/sites/{site_id}/bridge/forms": {
         parameters: {
             query?: never;
@@ -15696,8 +15805,9 @@ export interface paths {
          * Bridge List Records
          * @description Records of any post type through the plugin — REST-hidden types included — with the
          *     page path, status, and WPML language and translation ids per row. `search` matches the
-         *     title, the body and the ACF fields; `fields=text` returns every record with its readable
-         *     text in one call (every FAQ item with its answer).
+         *     title, the body and the ACF fields; `taxonomy` + `term` narrow the list to one term (the
+         *     FAQ items of one category); `fields=text` returns every record with its readable text in
+         *     one call (every FAQ item with its answer).
          */
         get: operations["bridge_list_records_api_v1_wordpress_sites__site_id__bridge_records_get"];
         put?: never;
@@ -15839,6 +15949,142 @@ export interface paths {
          *     as the translation of another term.
          */
         post: operations["bridge_create_term_api_v1_wordpress_sites__site_id__bridge_terms_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}/bridge/theme": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bridge Theme
+         * @description The site's active theme and the installed ones, and whether its files can be changed:
+         *     `editing.allowed` (the switch in the plugin's settings, wp-config.php, the credential's
+         *     capability) and `editing.php.allowed` — PHP files are only written while the site can
+         *     request its own pages to check a change for fatal errors (`editing.php.loopback`). Says
+         *     why when the answer is no. Read this before writing a theme file.
+         */
+        get: operations["bridge_theme_api_v1_wordpress_sites__site_id__bridge_theme_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}/bridge/theme/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bridge Theme File
+         * @description One text file of the theme: its `content`, its `hash` (pass it as `expected_hash` when
+         *     replacing the file) and its line count. `from_line` / `to_line` return part of a long
+         *     file; the hash is always the whole file's. Binary files and files over 1 MB are refused.
+         */
+        get: operations["bridge_theme_file_api_v1_wordpress_sites__site_id__bridge_theme_file_get"];
+        /**
+         * Bridge Update Theme File
+         * @description Change a file of the site's theme — live at once. Pass `edits` (each `old_string` must
+         *     match the file exactly and once) or the whole `content` with `expected_hash`. Nothing is
+         *     written when an edit does not apply or the file changed since it was read (409). A PHP
+         *     file is parsed first — a syntax error is refused with its line — and once written the site
+         *     requests its own pages to see whether PHP still runs: a change that breaks the site is put
+         *     back and the error returned (422, `details.rolled_back`). The previous version is kept as
+         *     `revision`. Refused with 409 where the site owner has not switched theme editing on, or
+         *     where the site cannot check itself and the file is PHP.
+         */
+        put: operations["bridge_update_theme_file_api_v1_wordpress_sites__site_id__bridge_theme_file_put"];
+        /**
+         * Bridge Create Theme File
+         * @description A new text file in the site's theme — a template, a template part, a stylesheet, a
+         *     script — with the directories it needs; 409 when it is already there. A PHP file is parsed
+         *     first and the site checks itself afterwards, as on an update; one that breaks the site is
+         *     removed again.
+         */
+        post: operations["bridge_create_theme_file_api_v1_wordpress_sites__site_id__bridge_theme_file_post"];
+        /**
+         * Bridge Delete Theme File
+         * @description Remove a text file from the site's theme. Its content is kept as a revision, so
+         *     `bridge_restore_theme_file` brings it back. Deleting a PHP file the site needs is caught
+         *     by the same check as a write, and undone. style.css is never deleted.
+         */
+        delete: operations["bridge_delete_theme_file_api_v1_wordpress_sites__site_id__bridge_theme_file_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}/bridge/theme/file/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bridge Theme File History
+         * @description The versions the plugin kept of a theme file, newest first: each is the file as it was
+         *     before the change named in `before`, with who made that change and when. `revision` alone
+         *     returns one version with its content. The last twenty per file are kept.
+         */
+        get: operations["bridge_theme_file_history_api_v1_wordpress_sites__site_id__bridge_theme_file_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}/bridge/theme/file/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bridge Restore Theme File
+         * @description Put a theme file back to a kept version: its content as it was then, or gone if the
+         *     revision is from before the file was created. A write like any other — checked the same
+         *     way, and the version it replaces is kept in turn, so a restore can itself be undone.
+         */
+        post: operations["bridge_restore_theme_file_api_v1_wordpress_sites__site_id__bridge_theme_file_restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}/bridge/theme/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bridge Theme Files
+         * @description The files of the site's theme with size, modification time and whether each is text.
+         *     `search` is how to find which template prints a field or where a CSS class is defined.
+         *     node_modules and vendor are not walked unless `path` points into them.
+         */
+        get: operations["bridge_theme_files_api_v1_wordpress_sites__site_id__bridge_theme_files_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -25758,6 +26004,8 @@ export interface components {
             reminders_enabled: boolean;
             /** Tax Country */
             tax_country: string;
+            /** @default quarter */
+            vat_period: components["schemas"]["VatPeriod"];
         };
         /** InvoicingSettingsWrite */
         InvoicingSettingsWrite: {
@@ -25793,6 +26041,7 @@ export interface components {
             reminders_enabled?: boolean | null;
             /** Tax Country */
             tax_country?: string | null;
+            vat_period?: components["schemas"]["VatPeriod"] | null;
         };
         /**
          * InvoicingSummary
@@ -25817,6 +26066,34 @@ export interface components {
             quotes_open_count: number;
             /** Quotes Open Total */
             quotes_open_total: number;
+        };
+        /**
+         * InvoicingVatStats
+         * @description The VAT charged in the agency's current return period, beside the period before it.
+         *
+         *     **Sales only.** The platform records what the agency invoices and nothing it buys, so this
+         *     is the tax *charged*, before any input VAT is deducted — the top line of a return, not the
+         *     amount that will leave the bank. Every screen that prints it says so, because a figure
+         *     labelled "to pay" that ignores the deductions is an overstatement nobody could check.
+         *
+         *     The rules are ``InvoicingRevenueStats``'s: a document counts in the period of its
+         *     ``issue_date``, drafts and cancelled documents never count, a credit note's negated totals
+         *     net its own period down, and a foreign document converts through its stored exchange rate.
+         *     A reverse-charged or exempt line charges no tax, so it is in ``excl`` and not in ``tax``.
+         *
+         *     ``current`` is the **whole** period today falls in (a return covers the quarter, not the
+         *     quarter so far), so its figure is still growing until ``current.end``. ``previous`` is the
+         *     one that has closed — the return that is usually still to be filed in the month after.
+         */
+        InvoicingVatStats: {
+            current: components["schemas"]["VatSpan"];
+            period: components["schemas"]["VatPeriod"];
+            previous: components["schemas"]["VatSpan"];
+            /**
+             * Today
+             * Format: date
+             */
+            today: string;
         };
         /** KpiValue */
         KpiValue: {
@@ -36995,6 +37272,11 @@ export interface components {
                 [key: string]: number;
             };
             /**
+             * Create Missing Customers
+             * @default false
+             */
+            create_missing_customers: boolean;
+            /**
              * Create Missing Projects
              * @default false
              */
@@ -37004,6 +37286,8 @@ export interface components {
              * @default false
              */
             create_missing_users: boolean;
+            /** @default off */
+            customers_direction: components["schemas"]["SyncDirection"];
             /** History Floor */
             history_floor?: string | null;
             hours_direction: components["schemas"]["SyncDirection"];
@@ -37087,10 +37371,13 @@ export interface components {
             /** Base Url */
             base_url?: string | null;
             conflict_policy?: components["schemas"]["ConflictPolicy"] | null;
+            /** Create Missing Customers */
+            create_missing_customers?: boolean | null;
             /** Create Missing Projects */
             create_missing_projects?: boolean | null;
             /** Create Missing Users */
             create_missing_users?: boolean | null;
+            customers_direction?: components["schemas"]["SyncDirection"] | null;
             /** History Floor */
             history_floor?: string | null;
             hours_direction?: components["schemas"]["SyncDirection"] | null;
@@ -37181,10 +37468,12 @@ export interface components {
          * TimeonLinkKind
          * @description Which of schakl's records a pairing is about.
          *
-         *     ``user`` and ``customer`` are pairings too, even though nothing is ever written to either
-         *     side for them: they are *resolution*, and storing them is what stops every run re-deriving
-         *     "which schakl user is Timeon user 2004392" from an e-mail address that somebody may since
-         *     have changed. A resolution that is only ever recomputed is a resolution that silently moves.
+         *     ``user`` is a pairing even though nothing is ever written to either side for it: it is
+         *     *resolution*, and storing it is what stops every run re-deriving "which schakl user is
+         *     Timeon user 2004392" from an e-mail address that somebody may since have changed. A
+         *     resolution that is only ever recomputed is a resolution that silently moves. ``customer``
+         *     was the same until ``customers_direction`` existed; with a direction set it is a synced
+         *     record, and its link carries the per-field record of what the two sides last agreed on.
          * @enum {string}
          */
         TimeonLinkKind: "hour" | "project" | "customer" | "user";
@@ -37263,7 +37552,7 @@ export interface components {
          * @description What a run set out to do. One vocabulary for the cron, the button and the screen.
          * @enum {string}
          */
-        TimeonSyncKind: "verify" | "adopt" | "users" | "projects" | "hours" | "full";
+        TimeonSyncKind: "verify" | "adopt" | "users" | "projects" | "customers" | "hours" | "full";
         /**
          * TimeonSyncRequest
          * @description What one manual run should do.
@@ -38524,6 +38813,38 @@ export interface components {
             type: string;
         };
         /**
+         * VatPeriod
+         * @description How often this agency files its VAT return — vocabulary, not law (§14's rule).
+         *
+         *     The Dutch default is the quarter; a business the tax office moved to monthly returns, or one
+         *     allowed a yearly one, says so here. It decides only which span the overview's VAT figure is
+         *     summed over, so the values are :class:`app.core.periods.CalendarUnit`'s own.
+         * @enum {string}
+         */
+        VatPeriod: "month" | "quarter" | "year";
+        /**
+         * VatSpan
+         * @description One VAT period: its two dates (both inclusive) and what was invoiced inside them.
+         */
+        VatSpan: {
+            /**
+             * End
+             * Format: date
+             */
+            end: string;
+            /** Excl */
+            excl: number;
+            /** Invoice Count */
+            invoice_count: number;
+            /**
+             * Start
+             * Format: date
+             */
+            start: string;
+            /** Tax */
+            tax: number;
+        };
+        /**
          * WatchRead
          * @description Tri-state: ``True`` following, ``False`` muted, ``None`` the default fan-out.
          */
@@ -39275,6 +39596,51 @@ export interface components {
             [key: string]: unknown;
         };
         /**
+         * WordPressBridgeTheme
+         * @description Where theme file editing stands on the site, as the plugin last reported it
+         *     (bridge 1.5.0+). ``editing`` and ``php`` answer for the stored credential — what a theme
+         *     write through schakl would meet; the rest says why, and which switch is the site's.
+         */
+        WordPressBridgeTheme: {
+            /** Config */
+            config?: string | null;
+            /**
+             * Editing
+             * @default false
+             */
+            editing: boolean;
+            /** Loopback */
+            loopback?: boolean | null;
+            /** Loopback Error */
+            loopback_error?: string | null;
+            /** Name */
+            name?: string | null;
+            /**
+             * Php
+             * @default false
+             */
+            php: boolean;
+            /**
+             * Php Setting
+             * @default false
+             */
+            php_setting: boolean;
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Setting
+             * @default false
+             */
+            setting: boolean;
+            /** Stylesheet */
+            stylesheet?: string | null;
+            /**
+             * Writable
+             * @default false
+             */
+            writable: boolean;
+        };
+        /**
          * WordPressBridgeUpdates
          * @description Whether the bridge plugin can update itself from its GitHub releases (bridge 1.3.1+).
          *
@@ -39305,6 +39671,51 @@ export interface components {
             latest?: string | null;
             /** Token */
             token: string;
+        };
+        /** WordPressCacheInfo */
+        WordPressCacheInfo: {
+            /** Kinds */
+            kinds?: string[];
+            /** Providers */
+            providers?: {
+                [key: string]: unknown;
+            }[];
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * WordPressCachePurge
+         * @description Empty the site's caches. Without ``what``: the page cache, the generated CSS/JS and
+         *     the opcode cache.
+         */
+        WordPressCachePurge: {
+            /**
+             * Urls
+             * @description Pages of the site to empty from the page cache instead of all of it: paths ("/contact/") or URLs.
+             */
+            urls?: string[] | null;
+            /**
+             * What
+             * @description Kinds to empty. "object" (Redis/Memcached where the site has one) is only emptied when named; "all" is every kind.
+             */
+            what?: ("page" | "assets" | "object" | "opcache" | "all")[] | null;
+        };
+        /** WordPressCachePurged */
+        WordPressCachePurged: {
+            /** Message */
+            message?: string | null;
+            /** Purged */
+            purged?: {
+                [key: string]: unknown;
+            }[];
+            /** Requested */
+            requested?: string[];
+            /** Skipped */
+            skipped?: {
+                [key: string]: unknown;
+            }[];
+        } & {
+            [key: string]: unknown;
         };
         /**
          * WordPressContentCreate
@@ -40295,6 +40706,7 @@ export interface components {
             active: boolean;
             /** Base Url */
             base_url: string;
+            bridge_theme?: components["schemas"]["WordPressBridgeTheme"] | null;
             bridge_updates?: components["schemas"]["WordPressBridgeUpdates"] | null;
             /** Bridge Version */
             bridge_version?: string | null;
@@ -40463,6 +40875,213 @@ export interface components {
             /** Value */
             value: string;
         };
+        /** WordPressThemeEdit */
+        WordPressThemeEdit: {
+            /**
+             * New String
+             * @description What replaces it; empty to remove.
+             */
+            new_string: string;
+            /**
+             * Old String
+             * @description Text that is in the file, exactly — whitespace and line endings included. It must occur once: include enough surrounding lines to name one place.
+             */
+            old_string: string;
+            /**
+             * Replace All
+             * @description Replace every occurrence instead of requiring exactly one.
+             */
+            replace_all?: boolean | null;
+        };
+        /**
+         * WordPressThemeFile
+         * @description One theme file, or the answer to a write on it: ``hash`` is what ``expected_hash``
+         *     takes, ``revision`` the kept previous version, ``checks`` what was verified (syntax, the
+         *     site's own loopback), ``caches`` what was emptied afterwards.
+         */
+        WordPressThemeFile: {
+            /** Content */
+            content?: string | null;
+            /** Hash */
+            hash?: string | null;
+            /** Message */
+            message?: string | null;
+            /**
+             * Path
+             * @default
+             */
+            path: string;
+            /** Revision */
+            revision?: number | null;
+            /**
+             * Theme
+             * @default
+             */
+            theme: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * WordPressThemeFileCreate
+         * @description A new text file in the theme, with the directories it needs.
+         */
+        WordPressThemeFileCreate: {
+            /**
+             * Check Urls
+             * @description PHP files only: pages of the site to request beside the front page when the change is checked for fatal errors — a page that uses the template you changed. Paths ("/contact/") or URLs of the site, five at most.
+             */
+            check_urls?: string[] | null;
+            /**
+             * Content
+             * @description The file's content.
+             */
+            content: string;
+            /**
+             * Path
+             * @description The file, relative to the theme directory: "functions.php", "template-parts/header.php". Letters, digits, dot, dash and underscore.
+             */
+            path: string;
+            /**
+             * Purge
+             * @description Empty the page cache and generated CSS/JS after the write (default true).
+             */
+            purge?: boolean | null;
+            /**
+             * Theme
+             * @description A theme by its directory (stylesheet); the active theme when omitted.
+             */
+            theme?: string | null;
+        };
+        /** WordPressThemeFileList */
+        WordPressThemeFileList: {
+            /** Directories */
+            directories?: string[];
+            /** Items */
+            items?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Path
+             * @default
+             */
+            path: string;
+            /**
+             * Theme
+             * @default
+             */
+            theme: string;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * WordPressThemeFileRestore
+         * @description Put a theme file back to a kept version.
+         */
+        WordPressThemeFileRestore: {
+            /**
+             * Check Urls
+             * @description PHP files only: pages of the site to request beside the front page when the change is checked for fatal errors — a page that uses the template you changed. Paths ("/contact/") or URLs of the site, five at most.
+             */
+            check_urls?: string[] | null;
+            /**
+             * Purge
+             * @description Empty the page cache and generated CSS/JS after the write (default true).
+             */
+            purge?: boolean | null;
+            /**
+             * Revision
+             * @description The revision id, from the file's history or from the write that made it.
+             */
+            revision: number;
+        };
+        /**
+         * WordPressThemeFileUpdate
+         * @description Change an existing theme file — live at once. Either ``edits`` or the whole
+         *     ``content`` with ``expected_hash``.
+         */
+        WordPressThemeFileUpdate: {
+            /**
+             * Check Urls
+             * @description PHP files only: pages of the site to request beside the front page when the change is checked for fatal errors — a page that uses the template you changed. Paths ("/contact/") or URLs of the site, five at most.
+             */
+            check_urls?: string[] | null;
+            /**
+             * Content
+             * @description The whole file, instead of edits. Needs expected_hash.
+             */
+            content?: string | null;
+            /**
+             * Edits
+             * @description Replacements applied in order. Nothing is written when one does not apply.
+             */
+            edits?: components["schemas"]["WordPressThemeEdit"][] | null;
+            /**
+             * Expected Hash
+             * @description The hash of the version you read; the write is refused if the file changed since. Required with content, optional with edits.
+             */
+            expected_hash?: string | null;
+            /**
+             * Path
+             * @description The file, relative to the theme directory: "functions.php", "template-parts/header.php". Letters, digits, dot, dash and underscore.
+             */
+            path: string;
+            /**
+             * Purge
+             * @description Empty the page cache and generated CSS/JS after the write (default true).
+             */
+            purge?: boolean | null;
+            /**
+             * Theme
+             * @description A theme by its directory (stylesheet); the active theme when omitted.
+             */
+            theme?: string | null;
+        };
+        /**
+         * WordPressThemeHistory
+         * @description A file's kept versions, newest first — or, asked for one ``revision``, that version
+         *     with its ``content``.
+         */
+        WordPressThemeHistory: {
+            /** Items */
+            items?: {
+                [key: string]: unknown;
+            }[];
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * WordPressThemeInfo
+         * @description The active theme, the installed ones, and where editing stands: ``editing.allowed``
+         *     (the site owner's switch, wp-config.php, the credential's capability) and
+         *     ``editing.php.allowed`` with ``editing.php.loopback`` — PHP files are only written while
+         *     the site can request its own pages to check a change for fatal errors.
+         */
+        WordPressThemeInfo: {
+            /** Active */
+            active?: {
+                [key: string]: unknown;
+            };
+            /** Editing */
+            editing?: {
+                [key: string]: unknown;
+            };
+            /** Themes */
+            themes?: {
+                [key: string]: unknown;
+            }[];
+        } & {
+            [key: string]: unknown;
+        };
         /**
          * WordPressTranslationCreate
          * @description WPML: create a record's translation in another language, linked to it. The source is
@@ -40554,6 +41173,7 @@ export interface components {
         WordPressVerifyResult: {
             /** Brand Count */
             brand_count?: number | null;
+            bridge_theme?: components["schemas"]["WordPressBridgeTheme"] | null;
             bridge_updates?: components["schemas"]["WordPressBridgeUpdates"] | null;
             /** Bridge Version */
             bridge_version?: string | null;
@@ -43010,6 +43630,39 @@ export interface operations {
             };
         };
     };
+    bulk_delete_meeting_api_v1_bulk_meeting_delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkActionResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     bulk_delete_project_api_v1_bulk_project_delete_post: {
         parameters: {
             query?: never;
@@ -43053,6 +43706,39 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["BulkUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkActionResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_delete_report_api_v1_bulk_report_delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkDeleteRequest"];
             };
         };
         responses: {
@@ -56449,6 +57135,38 @@ export interface operations {
             };
         };
     };
+    invoicing_vat_stats_api_v1_invoicing_stats_vat_get: {
+        parameters: {
+            query?: {
+                /** @description month | quarter | year. Absent: the org's own VAT return period. */
+                period?: components["schemas"]["VatPeriod"] | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvoicingVatStats"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     summary_api_v1_invoicing_summary_get: {
         parameters: {
             query?: never;
@@ -59190,6 +59908,8 @@ export interface operations {
                 /** @description Comma-separated set; absent means every status */
                 status?: string | null;
                 q?: string | null;
+                /** @description title | kind | occurred_at | duration | status | owner | created_at */
+                sort?: string | null;
                 limit?: number;
                 offset?: number;
                 count?: boolean;
@@ -63877,6 +64597,10 @@ export interface operations {
             query?: {
                 company_id?: string | null;
                 audience?: components["schemas"]["ReportAudience"] | null;
+                /** @description Comma-separated set; absent means every status */
+                status?: string | null;
+                /** @description company | period | audience | status | sent_at | created_at */
+                sort?: string | null;
                 limit?: number;
                 offset?: number;
                 count?: boolean;
@@ -71325,6 +72049,72 @@ export interface operations {
             };
         };
     };
+    bridge_cache_api_v1_wordpress_sites__site_id__bridge_cache_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressCacheInfo"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_purge_cache_api_v1_wordpress_sites__site_id__bridge_cache_purge_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WordPressCachePurge"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressCachePurged"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     bridge_forms_api_v1_wordpress_sites__site_id__bridge_forms_get: {
         parameters: {
             query?: {
@@ -72020,8 +72810,13 @@ export interface operations {
                 search?: string | null;
                 /** @description Comma-separated, or 'any'. */
                 status?: string | null;
+                /** @description WPML language code, 'all', or a language that was switched off but still holds records (bridge info lists them as inactive_languages). */
                 lang?: string | null;
                 parent?: number | null;
+                /** @description With term: only records in that term. */
+                taxonomy?: string | null;
+                /** @description A term id or slug (with taxonomy). */
+                term?: string | null;
                 page?: number;
                 per_page?: number;
                 /** @description Also read each record's ACF fields: compact | visible | full, or text for each record as one readable text. Default none: rows only. */
@@ -72433,6 +73228,305 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WordPressBridgeTerm"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_theme_api_v1_wordpress_sites__site_id__bridge_theme_get: {
+        parameters: {
+            query?: {
+                /** @description Check the loopback now instead of using the remembered answer. */
+                refresh?: boolean;
+            };
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressThemeInfo"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_theme_file_api_v1_wordpress_sites__site_id__bridge_theme_file_get: {
+        parameters: {
+            query: {
+                /** @description The file, relative to the theme directory. */
+                path: string;
+                /** @description A theme by its directory; the active theme when omitted. */
+                theme?: string | null;
+                /** @description First line to return (1-based). */
+                from_line?: number | null;
+                /** @description Last line to return. */
+                to_line?: number | null;
+            };
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressThemeFile"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_update_theme_file_api_v1_wordpress_sites__site_id__bridge_theme_file_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WordPressThemeFileUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressThemeFile"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_create_theme_file_api_v1_wordpress_sites__site_id__bridge_theme_file_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WordPressThemeFileCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressThemeFile"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_delete_theme_file_api_v1_wordpress_sites__site_id__bridge_theme_file_delete: {
+        parameters: {
+            query: {
+                /** @description The file, relative to the theme directory. */
+                path: string;
+                /** @description A theme by its directory; the active theme when omitted. */
+                theme?: string | null;
+                /** @description Refuse if the file changed since this version. */
+                expected_hash?: string | null;
+            };
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressThemeFile"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_theme_file_history_api_v1_wordpress_sites__site_id__bridge_theme_file_history_get: {
+        parameters: {
+            query?: {
+                /** @description The file; every file of the theme when omitted. */
+                path?: string | null;
+                /** @description A theme by its directory; the active theme when omitted. */
+                theme?: string | null;
+                /** @description One revision, with its content. */
+                revision?: number | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressThemeHistory"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_restore_theme_file_api_v1_wordpress_sites__site_id__bridge_theme_file_restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WordPressThemeFileRestore"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressThemeFile"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_theme_files_api_v1_wordpress_sites__site_id__bridge_theme_files_get: {
+        parameters: {
+            query?: {
+                /** @description A theme by its directory; the active theme when omitted. */
+                theme?: string | null;
+                /** @description A directory inside the theme; all of it when omitted. */
+                path?: string | null;
+                /** @description Walk into subdirectories. */
+                recursive?: boolean;
+                /** @description Only these file types, comma-separated: php,css */
+                extensions?: string | null;
+                /** @description Only files whose content holds this string (case-insensitive); each comes with the matching lines and their numbers. */
+                search?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressThemeFileList"];
                 };
             };
             /** @description Validation Error */

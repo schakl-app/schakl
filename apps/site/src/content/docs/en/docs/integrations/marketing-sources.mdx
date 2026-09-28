@@ -1,6 +1,6 @@
 ---
 title: Marketing sources
-description: "What Google Analytics, Search Console, Google Ads, SE Ranking and Rank Math each need, and what every source contributes to the client dashboard."
+description: "What Google Analytics, Search Console, Google Ads, SE Ranking and Rank Math each need, what every source contributes to the client dashboard, and where Tag Manager sits beside them."
 sidebar:
   order: 5
 ---
@@ -8,16 +8,21 @@ sidebar:
 import { Aside, Steps } from '@astrojs/starlight/components';
 
 The marketing module reads five sources, and each has its own requirements: three ride an
-employee's Google connection, one rides a single API key held by the whole agency, and one rides a
-credential stored on a single website. This page is about the linking itself. What you then see on the dashboard is covered under
-[Marketing](/en/docs/modules/marketing/).
+employee's Google connection, one rides an API key held by the whole agency, and one rides a
+credential stored on a single website. Beside them, Google Tag Manager sits in the same picker, as
+a connection with no numbers of its own. This page is about the linking itself. What you then see
+on the dashboard is covered under [Marketing](/en/docs/modules/marketing/).
 
 ## Where to find it
 
-- The **Marketing** panel on the client page, via ⋯ → **Bewerken** (Edit): this is where you link
-  accounts per client.
-- *Instellingen → Marketing* (Settings → Marketing): the **Google Ads-ontwikkelaarstoken** (Google
-  Ads developer token) and the **SE Ranking API-sleutel** (SE Ranking API key).
+- The **Marketing** panel on the client page, via ⋯ → **Bewerken** (Edit), or the ＋ on the
+  client's Marketing tab: this is where you link accounts per client, for all five sources and Tag
+  Manager.
+- *Instellingen → Marketing* (Settings → Marketing): the **SE Ranking API-sleutel** (SE Ranking API
+  key), the optional **SE Ranking Data API-sleutel** (Data API key), the house default for the
+  comparison and the AI Search overview, and the names under which a client reads the sources.
+- *Instellingen → Google Ads*: the **developer token**. See
+  [Google Ads](/en/docs/integrations/google-ads/).
 - *Instellingen → Google Workspace*: the OAuth client three of the five sources ride on. See
   [Google Workspace](/en/docs/integrations/google-workspace/).
 - The **WordPress** card on a website: the Application Password the Rank Math source rides on. See
@@ -28,9 +33,9 @@ credential stored on a single website. This page is about the linking itself. Wh
 | Source | What you link | What you prepare first | What it gives you |
 | --- | --- | --- | --- |
 | Google Analytics | a GA4 property | Analytics Admin API **and** Analytics Data API | Sessions, Users, New users, Key events, Conversions, Engagement, Revenue |
-| Search Console | a verified site (domain or URL prefix) | Search Console API | Clicks, Impressions, CTR, Average position |
+| Search Console | a verified site (domain or URL prefix) | Search Console API | Clicks, Impressions, CTR, Average position, and Impressions in AI once you upload the export |
 | Google Ads | a client account, never a manager account | Google Ads API and a developer token | Cost, Clicks, Impressions, Conversions, Conversion value |
-| SE Ranking | a project | one API key for the agency | Average position, Top 3, Top 10, Top 30, Ranking and Tracked keywords |
+| SE Ranking | a project | an API key for the agency, and for the AI Search overview access to the Data API | Average position, Top 3, Top 10, Top 30, Ranking and Tracked keywords, and the AI Search overview |
 | Rank Math | a connected website | an Application Password on that WordPress site, and a Content AI subscription | AI visibility score, Mentions, Citations, Average sentiment, Average rank |
 
 You enable the APIs in the Google Cloud project of your own OAuth client, under **APIs & Services
@@ -44,8 +49,8 @@ You enable the APIs in the Google Cloud project of your own OAuth client, under 
    the property picker stays empty while everything else looks configured.
 
 2. Create a developer token in the **API Center** of your Google Ads manager account and enter it
-   under *Instellingen → Marketing* in **Google Ads-ontwikkelaarstoken**. It is stored encrypted
-   and never returned; leave the field empty later to keep it.
+   under *Instellingen → Google Ads*. It is stored encrypted and never returned; leave the field
+   empty later to keep it.
 
 3. Connect your own Google account under *Instellingen → Mijn account* (Settings → My account),
    card **Google-account**, button **Google koppelen** (Connect Google). If you may manage
@@ -55,13 +60,17 @@ You enable the APIs in the Google Cloud project of your own OAuth client, under 
 4. Open a client, use the ⋯ menu on the **Marketing** panel and choose **Bewerken** (Edit). Pick an
    account in **Analytics-property**, **Search Console-site** and **Ads-account**. If the client
    has more than one website, first choose under **Koppelen aan website** (Link to website) which
-   site the link belongs to; otherwise it stays on **Hele klant** (Whole client).
+   site the link belongs to; otherwise it stays on **Hele klant** (Whole client). A client with
+   exactly one website has it chosen already.
 </Steps>
 
 A picker shows what **your** connection can reach at Google, not what the agency holds. If it stays
 empty it says why: no Google account yet (with a **Google koppelen** link), missing scopes
-(**Google opnieuw koppelen**, reconnect), or for Ads that a developer token is still needed. If a
-colleague already reaches that source, it names them.
+(**Google opnieuw koppelen**, reconnect), or for Ads that a developer token is still needed.
+
+A missing Google connection decides a sentence, never whether the rest is drawn. A client with a
+working SE Ranking project and a Rank Math link gets its pickers and figures as usual, even on an
+install without a single Google account.
 
 Several links per source per client are allowed: a client with two sites gets two Search Console
 links and two properties, each attached to its own website.
@@ -69,46 +78,127 @@ links and two properties, each attached to its own website.
 ## SE Ranking
 
 SE Ranking works differently from the three Google sources: no OAuth, no personal connection, but
-one **SE Ranking API-sleutel** for the whole agency under *Instellingen → Marketing*. Every client
-project is linked to that one key, so keyword positions, the site audit and AI-search visibility
-all work at once. Without a key schakl. says a key is needed; if SE Ranking rejects it, it says
-that too.
+an **SE Ranking API-sleutel** for the whole agency under *Instellingen → Marketing*. Every client
+project is linked to it, in the same picker as the other sources, under **SE Ranking-project**.
+Keyword positions, the site audit and the AI Result Tracker then work everywhere at once.
 
-<Aside type="caution" title="SE Ranking: the key, but not yet the screens">
-The account pickers on the client page currently offer Google Analytics, Search Console and Google
-Ads only; an SE Ranking project is linked over the API today. The SE Ranking figures end up in the
-keyword-positions, site-audit and AI-search-visibility chapters of the
-[monthly report](/en/docs/modules/reporting/). If SE Ranking refuses your key, look first at the
-`Authorization` header scheme and at the path the project list is read from: those are the two
-places accounts can differ.
+SE Ranking sells two APIs and issues a key for each: the project API (rankings, audit) and the Data
+API (AI search). Often one key works for both, often it does not. If you have a separate Data API
+key, put it in **SE Ranking Data API-sleutel (optioneel)**; empty means the first key serves both.
+**Sleutel controleren** (Check key) asks each API with the key actually used for it, shows how many
+Data API units you have left, and costs nothing itself.
+
+### The AI Search overview
+
+From the Data API schakl. reads four figures per client about AI answers: **Merkvermeldingen**
+(brand mentions), **Links naar de site** (links to the site), **Gemiddelde positie** (average
+position, lower is better) and **Potentieel AI-verkeer** (AI opportunity traffic). It is always
+about the last whole month, compared with the month before, and it sits on the client's dashboard
+and as a chapter in the report.
+
+<Aside type="caution" title="Off by default, because it costs units">
+One read costs 800 units of your own Data API plan, per engine choice, per client, per month. An
+upgrade must not start spending that quietly, so it stays off until somebody switches on
+**AI-zichtbaarheid**: as the house default under *Instellingen → Marketing*, or per client on the
+Marketing tab. The price is on every button that spends units. A paid read is made once and stored
+per month.
 </Aside>
+
+When the house default applies, schakl. only asks for clients with an active marketing link. The
+domain comes from the linked project or the client's first website, the brand from what SE Ranking
+recognises on that domain; you can fill in either per client yourself. In the Dutch database only
+Google AI Overviews has a monthly series, so for a Dutch client **Alle engines samen** (all engines
+together) is the useful choice. A site SE Ranking does not know gets a sentence instead of four
+dashes.
+
+## Impressions in AI Overviews: the Search Console export
+
+Since June 2026 Search Console shows how often a site appears in AI Overviews and AI Mode, in a
+**Generative AI report** of its own. The API does not return those figures, so schakl. does not
+estimate them either. The dashboard therefore carries a card **Zichtbaarheid in AI-overzichten en
+AI-modus** with a link to the report and the button **Export uploaden** (Upload export).
+
+<Steps>
+1. Open the report from the card and export it **by day**. A weekly or monthly export is refused,
+   with a sentence saying why.
+2. Upload the file on the card. Both the CSV of the dates table and Google's whole zip are read,
+   with English or Dutch column headers.
+3. The figure appears as **Vertoningen in AI** (impressions in AI): a tile, a trend, the
+   comparison, a column in the cross-client overview and the AI Overviews chapter in the report.
+</Steps>
+
+The card says when the last upload was and which days it covered. The nightly sync never overwrites
+an upload. For a client nothing has been uploaded for, there is no tile and no chapter: absent is
+never zero.
+
+## Tag Manager: a connection, not a source
+
+Below the five sources, the same picker holds **Tag Manager**. A container has no daily numbers,
+so it gets no tiles; it is attached through Tag Manager's own route and then sits on the panel's row
+with the number of live tags and unpublished changes. The Tag Manager integration must be on and
+you must be allowed to link containers. See
+[Google Tag Manager](/en/docs/integrations/google-tag-manager/).
 
 ## What happens after you link
 
 A new link gets a one-off backfill of a little over thirteen months, so the sparklines and the
 year-on-year comparison work straight away. After that, a nightly job collects the daily figures
 and re-pulls the last week while it is there: Search Console only finalises its numbers two to
-three days later, and attribution in Analytics and Ads keeps moving for a few days as well. Late
-figures therefore correct themselves.
+three days later, and attribution in Analytics keeps moving for a few days as well. For Google Ads
+it reaches back 30 days, because Google credits a conversion to the day of the click until the end
+of the conversion window; with a week, a month would be compared before Google has finished
+counting. Late figures therefore correct themselves.
+
+The drill-downs under the tiles are read live from the source and kept for a day. At night they
+are fetched ahead for every client, so whoever opens a tab in the morning does not wait for Google.
 
 Every link carries its state visibly: **Gesynchroniseerd** (Synced), **Eerste synchronisatie
 loopt** (First sync running), **Synchronisatiefout** (Sync error) or **Verbinding verbroken**
-(Connection lost), with **Laatst gesynchroniseerd** (Last synced) beside it. It also names whose
-Google account the link runs through.
+(Connection lost), with **Laatst gesynchroniseerd** (Last synced) beside it. A broken link names
+whose Google account it ran through, because that is who to ask.
 
 Unlinking erases nothing. The link is deactivated and the collected history stays; linking the same
 property again switches it back on.
+
+## What a source is called
+
+If your agency sells a source under a name of its own, set it under *Instellingen → Marketing*.
+That name then appears on the dashboard, in the sentences about that source and in a report's
+warnings. A client in the portal reads a source under your name or a neutral one, with no link to a
+console and without the colleague's name behind it.
+
+## Analytics and Search Console as integrations of their own
+
+The dashboard asks Analytics and Search Console one question: how is this client doing. For every
+other question there are the **Google Analytics** and **Google Search Console** integrations, which
+you switch on under *Instellingen → Integraties*. They read live under the same Google consent,
+store nothing, do not need the Marketing module and never write.
+
+| Integration | What it reads | MCP section |
+| --- | --- | --- |
+| Google Analytics | seventeen routes: properties, data streams, key events, custom dimensions and metrics, overview, daily series, breakdown, real time, metadata, a free-form report and a pivot | `/mcp/google-analytics` |
+| Google Search Console | thirteen routes: sites, sitemaps, overview, search types, daily and hourly figures, breakdown, movers, URL inspection, AI visibility and a free-form query | `/mcp/google-search-console` |
+
+Both also join the `growth` bundle. Ask Search Console's assistant tools about AI visibility and
+the answer says the API does not have that figure and gives the link to the report, instead of a
+number nothing could contradict. See [MCP server](/en/docs/integrations/mcp/).
 
 ## Permissions
 
 | Permission | What it opens | Default roles |
 | --- | --- | --- |
-| `marketing.link.manage` | Create and remove links, and *Instellingen → Marketing* | Administrator |
+| `marketing.link.manage` | Create and remove links, upload a Search Console export, and *Instellingen → Marketing* | Administrator |
 | `marketing.metrics.read` | View the figures (panel, tab, portal tile) | Administrator, Member, Client |
 | `marketing.overview.read` | The cross-client overview | Administrator |
 | `google.connection.manage` | Connect your own Google account | Administrator, Member |
+| `google_analytics.property.read` | Analytics' own read surface | Administrator, Member |
+| `google_analytics.report.run` | The free-form report, the pivot and the compatibility check | Administrator |
+| `google_search_console.site.read` | Search Console's own read surface | Administrator, Member |
+| `google_search_console.report.run` | The free-form query | Administrator |
 
-Set these per role under *Instellingen → Rollen* (Settings → Roles).
+Set these per role under *Instellingen → Rollen* (Settings → Roles). The two integrations'
+permissions never go to the Client role: the agency's Google consent reaches every client's
+properties.
 
 ## Good to know
 
@@ -122,10 +212,12 @@ Set these per role under *Instellingen → Rollen* (Settings → Roles).
   every request is refused. It looks like a broken module. The fix is to update schakl.; in an
   emergency the administrator can pin a current version on the server.
 - **The developer token belongs in the screen, not in the server settings.** If it only exists in
-  the server environment, *Instellingen → Marketing* says so and you can still store it in the
-  database instead.
+  the server environment, the screen says so and you can still store it in the database instead.
+- **An SE Ranking project without the AI Result Tracker is not a refused key.** The drill-down says
+  this project has no access to the tracker, and the rest of SE Ranking is read as usual.
 - **An expired licence makes the module read-only**: linking, unlinking and the settings refuse,
-  and the nightly sync stands down. The figures already collected stay visible.
+  and the nightly sync stands down. The figures already collected stay visible, and the two
+  integrations keep reading.
 
 ## Read next
 

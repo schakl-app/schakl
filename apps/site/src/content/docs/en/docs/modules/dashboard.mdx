@@ -29,12 +29,14 @@ first place — a dashboard does not draw a card that would refuse.
 | --- | --- |
 | Uren vandaag | What you have logged today, and whether a timer is running |
 | Team deze maand | Total, billable share, revenue, and what still needs approving |
-| Mijn openstaande taken | Yours, soonest first |
-| Openstaande taken per project / klant | Where the open work sits, with overdue counts |
+| Mijn openstaande taken | Yours, in four sections: overdue, today, this week and later |
+| Openstaande taken per project / klant | Where the open work sits: per row how many are late, due today and due this week, ranked by urgency |
 | Verlof | Your own balance, in hours and in days |
 | Vandaag afwezig | Who is away, today |
 | Openstaande facturen | What is outstanding, and how much of it is overdue |
 | Openstaande offertes | Quotes still waiting for an answer |
+| Budgetstatus | Every hour budget as over, almost spent or within, with the hours over |
+| Projectbudgetten | The budgeted projects burning hottest, with their hours bar |
 | Terugkerende omzet | The retainer book, per year, and what renews next |
 | Nog te factureren | Work that is finished and not yet on an invoice |
 | E-mails te beoordelen | Mail waiting for you to accept or reject it onto a client |
@@ -46,6 +48,28 @@ first place — a dashboard does not draw a card that would refuse.
 somebody holding the permission to read other people's hours. That split is why the same
 dashboard is useful to a developer and to an owner without either of them configuring anything.
 </Aside>
+
+## Every figure opens the list it counts
+
+A tile counts over the whole set, not over the rows it happens to show, and every figure opens
+exactly the list it is about.
+
+- **Mijn openstaande taken** has four sections: *Over tijd* (overdue), *Vandaag* (today), *Deze
+  week* (this week) and *Later*. Each heading carries its count and opens the task list with the
+  same filter, so the heading and the list always agree. *Vandaag* is drawn at zero too, with its
+  own sentence, so "nothing today" never looks like a missing section. Every row names the date and
+  the distance (*24 aug · over 3 dagen*, *6 dagen te laat*); *Later* starts folded. Tasks due on the
+  same day are ordered by priority.
+- **Openstaande taken per project / klant** puts on each row how many tasks are late, due today and
+  due this week, and ranks on that; a zero draws nothing. Every number opens those tasks.
+- **Budgetstatus** divides every hour budget into three bands: *Over budget*, *Bijna op* (almost
+  spent) and *Binnen budget* (within budget), with the hours over summed under the first. Each band
+  opens the project list with the same filter; an over-budget project visibly runs past the budget
+  line in its bar.
+
+The colours are the state's (late, today, soon, fine) and never your brand colour, and every state
+carries a glyph as well, so the tile still reads in grey. When a tile is capped, it says so and
+points to the rest.
 
 ## Making it yours
 
@@ -66,9 +90,13 @@ deliberately no button that overwrites a colleague's arrangement.
 
 ## The client's dashboard is a different board
 
-A client with a portal login lands on a board of their own. It draws from the same machinery and
-a different gallery: a tile that links into a screen a client cannot open is never offered there,
-and the marketing tile a client sees is the curated one rather than the agency's full set.
+A client with a portal login lands on a board of their own: one column, their tasks first, then
+their report, then the figures. It draws from the same machinery and a different gallery: a tile
+that links into a screen a client cannot open is never offered there, and your team's house layout
+does not apply to them. Their tiles are *Jullie taken*, *Werkzaamheden*, *Jullie rapportage*,
+*Marketing* (the curated version, not the agency's full set), *Mijn abonnementen*, *Mijn facturen*
+and *Mijn domeinnamen*. With several companies the board shows one company at a time and every tile
+switches along. See [Client portal](/en/docs/modules/portal/).
 
 ## Permissions
 

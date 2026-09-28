@@ -14,19 +14,19 @@
     "en": "Your own model, on your own server"
   },
   "summary": {
-    "nl": "Alles wat de chat-API van OpenAI spreekt op een basis-URL van jezelf: Azure OpenAI, Mistral, of een Ollama of vLLM in je eigen rack. Het veld Basis-URL is bij deze aanbieder verplicht; opslaan zonder levert een validatiefout op precies dat veld. Verder werken de vier functies, het budget en de meter exact hetzelfde als bij een aanbieder in de cloud.",
-    "en": "Anything that speaks the OpenAI chat API on a base URL of your own: Azure OpenAI, Mistral, or an Ollama or vLLM in your own rack. The Basis-URL (base URL) field is mandatory for this provider; saving without it is a validation error on that exact field. Beyond that, the four features, the budget and the meter work exactly as they do with a cloud provider."
+    "nl": "Alles wat de chat-API van OpenAI spreekt op een basis-URL van jezelf: Azure OpenAI, Mistral, of een Ollama of vLLM in je eigen rack. Het veld Basis-URL is bij deze aanbieder verplicht; opslaan zonder levert een validatiefout op precies dat veld. Verder werken de functies, het budget en de meter exact hetzelfde als bij een aanbieder in de cloud.",
+    "en": "Anything that speaks the OpenAI chat API on a base URL of your own: Azure OpenAI, Mistral, or an Ollama or vLLM in your own rack. The Basis-URL (base URL) field is mandatory for this provider; saving without it is a validation error on that exact field. Beyond that, the features, the budget and the meter work exactly as they do with a cloud provider."
   },
   "highlights": {
     "nl": [
       "Azure OpenAI, Mistral, een lokale Ollama of vLLM: alles wat de OpenAI chat-API spreekt",
       "Basis-URL is hier verplicht, bijvoorbeeld https://ai.example.com/v1",
-      "Kan ook spraak naar tekst, als jouw server dat endpoint implementeert"
+      "Kan ook spraak naar tekst, als jouw server dat endpoint implementeert; voor de transcriptie van Mistral is er een eigen spraakaanbieder"
     ],
     "en": [
       "Azure OpenAI, Mistral, a local Ollama or vLLM: anything speaking the OpenAI chat API",
       "Base URL is mandatory here, for example https://ai.example.com/v1",
-      "Can also do speech to text, if your server implements that endpoint"
+      "Can also do speech to text, if your server implements that endpoint; Mistral's transcription has a speech provider of its own"
     ]
   },
   "where": {
@@ -114,8 +114,8 @@
           "en": "Speech to text, if your server can do it"
         },
         "body": {
-          "nl": "Dictaat op Uren werkt met deze aanbieder zodra jouw endpoint het transcriptie-endpoint implementeert. Je kiest onder Spraak naar tekst voor een eigen server met eigen basis-URL en sleutel, of je laat Spraakaanbieder op Uit staan en dan wordt hetzelfde chat-endpoint hergebruikt. Het audioverbruik heeft een eigen maandbudget in seconden, omdat een audiomodel geen tokens rapporteert.",
-          "en": "Dictation on Uren works with this provider as soon as your endpoint implements the transcription endpoint. Under Spraak naar tekst you either pick your own server with its own base URL and key, or leave Spraakaanbieder on Uit and the same chat endpoint is reused. Audio has its own monthly budget in seconds, because an audio model reports no token usage."
+          "nl": "Inspreken werkt met deze aanbieder zodra jouw endpoint het transcriptie-endpoint implementeert. Je kiest onder Spraak naar tekst voor een eigen server met eigen basis-URL en sleutel, of je laat Spraakaanbieder op Uit staan en dan wordt hetzelfde chat-endpoint hergebruikt. Een vergadering met sprekerslabels lukt zo niet: een OpenAI-compatibele server kan niet vragen wie er sprak. Gebruik je Mistral, kies dan als spraakaanbieder Mistral (Voxtral), dat wel sprekers labelt en drie uur in één verzoek neemt. Het audioverbruik heeft een eigen maandbudget in seconden, omdat een audiomodel geen tokens rapporteert.",
+          "en": "Dictation works with this provider as soon as your endpoint implements the transcription endpoint. Under Spraak naar tekst you either pick your own server with its own base URL and key, or leave Spraakaanbieder on Uit and the same chat endpoint is reused. A meeting with speaker labels does not work this way: an OpenAI-compatible server cannot be asked who spoke. If you use Mistral, choose Mistral (Voxtral) as the speech provider, which does label speakers and takes three hours in one request. Audio has its own monthly budget in seconds, because an audio model reports no token usage."
         }
       }
     ],
@@ -142,16 +142,16 @@
         "schakl. controleert niet wat jouw endpoint kan. Implementeert je server geen transcriptie, dan is er simpelweg geen dictaat.",
         "Het endpoint moet bereikbaar zijn vanaf de server van schakl. De browser van een gebruiker praat nooit rechtstreeks met je model.",
         "De verbinding naar de aanbieder heeft vaste time-outs: 10 seconden om te verbinden, 180 seconden om te lezen. Een lokaal model dat daar structureel overheen gaat, valt af.",
-        "Het antwoordplafond ligt vast op 8192 tokens en er is nog geen instelling voor reasoning-effort.",
-        "De assistent blijft alleen-lezen en de Urenhulp levert een concept: ook op je eigen model wordt er nooit vanzelf een record aangemaakt of gewijzigd."
+        "Er is nog geen instelling voor reasoning-effort. Het standaard antwoordplafond is 8192 tokens; de rapportage vraagt ruimer.",
+        "De assistent schrijft alleen wat op een vaste lijst staat en alleen op jouw verzoek; de Urenhulp levert een concept. Ook op je eigen model wordt er niets aangemaakt zonder dat iemand erom vroeg."
       ],
       "en": [
         "There is no default model. You fill in the model name yourself, and a typo only surfaces as your own server's error.",
         "schakl. does not check what your endpoint can do. If your server implements no transcription, there simply is no dictation.",
         "The endpoint must be reachable from the schakl. server. A user's browser never talks to your model directly.",
         "The connection to the provider has fixed timeouts: 10 seconds to connect, 180 seconds to read. A local model that structurally exceeds that will not work.",
-        "The response ceiling is fixed at 8192 tokens, and there is no reasoning-effort setting yet.",
-        "The assistant stays read-only and the time assist returns a draft: even on your own model, nothing is ever created or changed on its own."
+        "There is no reasoning-effort setting yet. The default response ceiling is 8192 tokens; reporting asks for more.",
+        "The assistant only writes what is on a stated list and only when you ask; the time assist returns a draft. Even on your own model nothing is created without somebody asking for it."
       ]
     }
   }

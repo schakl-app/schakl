@@ -46,6 +46,7 @@ from app.core.models import OrgSettings
 from app.core.naming import document_name_of
 from app.core.numbering import format_number
 from app.core.payments import available_accounts
+from app.core.periods import calendar_span, previous_calendar_span
 from app.core.phone import normalize_phone
 from app.core.richtext import sanitize_markdown
 from app.core.sorting import apply_sort
@@ -4112,6 +4113,71 @@ class InvoiceService(_DocumentService):
             "quotes_open_total": round(float(quotes["open_total"]), 2),
         }
 
+
+    async def vat_stats(self, *, period: str | None = None) -> dict[str, Any]:
+        """The VAT charged in the current return period and the one before (``InvoicingVatStats``).
+
+        The span is the org's own ``vat_period`` unless the caller names one, resolved against
+        the org's day (§8) — a quarter is a local-calendar fact. One grouped statement over the
+        two spans, never a row per document (``tests/test_invoicing_stats.py`` pins it).
+
+        Gated and scoped exactly as :meth:`revenue_stats` is, for its reason: this is an
+        org-wide figure about the agency's own books.
+        """
+        self.ctx.require("invoicing.invoice.read:any")
+        if self.ctx.is_portal:
+            raise AppError("forbidden", "errors.forbidden", status_code=403)
+        unit = period or (await InvoicingSettingsService(self.ctx).row()).vat_period
+        today = await org_today(self.ctx)
+        current = calendar_span(unit, today)
+        previous = previous_calendar_span(unit, today)
+
+        def _span(span: tuple[date, date], row: Any | None, prefix: str) -> dict[str, Any]:
+            return {
+                "start": span[0],
+                "end": span[1],
+                "tax": round(float(row[f"{prefix}_tax"]), 2) if row else 0.0,
+                "excl": round(float(row[f"{prefix}_excl"]), 2) if row else 0.0,
+                "invoice_count": int(row[f"{prefix}_n"]) if row else 0,
+            }
+
+        scope = self.ctx.company_scope
+        row = None
+        if scope is None or scope:
+            base = "COALESCE(i.exchange_rate, 1)"
+            cur = "i.issue_date >= :cur_start"
+            prev = "i.issue_date < :cur_start"
+            stmt = text(
+                f"""
+                SELECT COALESCE(SUM(i.tax_total * {base}) FILTER (WHERE {cur}), 0) AS cur_tax,
+                       COALESCE(SUM(i.subtotal * {base}) FILTER (WHERE {cur}), 0) AS cur_excl,
+                       COUNT(*) FILTER (WHERE {cur}) AS cur_n,
+                       COALESCE(SUM(i.tax_total * {base}) FILTER (WHERE {prev}), 0) AS prev_tax,
+                       COALESCE(SUM(i.subtotal * {base}) FILTER (WHERE {prev}), 0) AS prev_excl,
+                       COUNT(*) FILTER (WHERE {prev}) AS prev_n
+                FROM invoices i
+                WHERE i.org_id = :oid
+                  AND i.status IN ('open', 'paid') AND i.issue_date IS NOT NULL
+                  AND i.issue_date >= :prev_start AND i.issue_date <= :cur_end
+                  {"" if scope is None else "AND i.company_id IN :companies"}
+                """  # noqa: S608 - splices constant SQL and a bound `IN`, never a value
+            )
+            params: dict[str, Any] = {
+                "oid": self.ctx.org.id,
+                "prev_start": previous[0],
+                "cur_start": current[0],
+                "cur_end": current[1],
+            }
+            if scope is not None:
+                stmt = stmt.bindparams(bindparam("companies", expanding=True))
+                params["companies"] = list(scope)
+            row = (await self.ctx.session.execute(stmt, params)).mappings().one()
+        return {
+            "period": unit,
+            "today": today,
+            "current": _span(current, row, "cur"),
+            "previous": _span(previous, row, "prev"),
+        }
 
     async def revenue_stats(self, *, year: int) -> dict[str, Any]:
         """A year's invoiced revenue beside the year before it (``InvoicingRevenueStats``).

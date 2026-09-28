@@ -10,45 +10,51 @@
     "color": "#4A6FA5"
   },
   "tagline": {
-    "nl": "Posities, audit en AI-zichtbaarheid",
-    "en": "Rankings, site audit, AI visibility"
+    "nl": "Posities, audit en zichtbaarheid in AI-antwoorden",
+    "en": "Rankings, audit and visibility in AI answers"
   },
   "summary": {
-    "nl": "SE Ranking is de eerste marketingbron die niet van Google komt, en dat is aan de koppeling te zien: hij draait op één API-sleutel voor het hele bureau in plaats van een grant per medewerker. Uit een gekoppeld SE Ranking-project bewaart schakl. dagelijkse positiecijfers voor het dashboard, en haalt het per rapportage de zoekwoorden, de laatste website-audit en de zichtbaarheid in AI-zoekresultaten op.",
-    "en": "SE Ranking is the first marketing source that is not Google, and the connection shows it: it rides one API key for the whole agency instead of a per-employee grant. From a linked SE Ranking project, schakl. stores daily position figures for the dashboard and, per report, fetches the keywords, the latest site audit and AI search visibility."
+    "nl": "SE Ranking is de eerste marketingbron die niet van Google komt, en dat is aan de koppeling te zien: hij draait op een API-sleutel van het hele bureau in plaats van een grant per medewerker. Uit een gekoppeld SE Ranking-project bewaart schakl. dagelijkse positiecijfers voor het dashboard, en haalt het per rapportage de zoekwoorden, de laatste website-audit en de AI Result Tracker op. Daarnaast leest het uit de Data API van SE Ranking het AI-zoekoverzicht van een klant: hoe vaak ChatGPT, Perplexity, Gemini en de AI-antwoorden van Google het merk noemen en naar de site linken, vorige maand tegen de maand ervoor.",
+    "en": "SE Ranking is the first marketing source that is not Google, and the connection shows it: it rides an API key for the whole agency instead of a per-employee grant. From a linked SE Ranking project, schakl. stores daily position figures for the dashboard and, per report, fetches the keywords, the latest site audit and the AI Result Tracker. On top of that it reads a client's AI Search overview from SE Ranking's Data API: how often ChatGPT, Perplexity, Gemini and Google's AI answers mention the brand and link to the site, last month against the month before."
   },
   "highlights": {
     "nl": [
-      "Eén sleutel voor het bureau, versleuteld opgeslagen in Instellingen → Marketing",
+      "Eén sleutel voor het bureau, versleuteld opgeslagen in Instellingen → Marketing, met een optionele tweede sleutel voor de Data API",
       "Per dag bewaard: gem. positie, top 3, top 10, top 30 en het aantal scorende zoekwoorden",
-      "Drie rapportagehoofdstukken: Zoekwoordposities, Zichtbaarheid in AI-zoekresultaten en de interne Website-audit"
+      "AI-zoekoverzicht: merkvermeldingen, links naar de site, gemiddelde positie en potentieel AI-verkeer, vorige maand tegen de maand ervoor",
+      "Staat standaard uit, want elke lezing kost units van je eigen abonnement; de prijs staat bij elke knop die ze uitgeeft",
+      "Rapportagehoofdstukken: Zoekwoordposities, Zichtbaarheid in AI-zoekmachines, Zichtbaarheid in AI-zoekresultaten en de interne Website-audit"
     ],
     "en": [
-      "One key for the whole agency, stored encrypted under Instellingen → Marketing",
+      "One key for the whole agency, stored encrypted under Instellingen → Marketing, with an optional second key for the Data API",
       "Stored per day: average position, top 3, top 10, top 30 and the number of ranking keywords",
-      "Three report chapters: rankings, AI search visibility and the internal site audit"
+      "AI Search overview: brand mentions, links to the site, average position and AI opportunity traffic, last month against the month before",
+      "Off by default, because every read costs units of your own plan; the price is on every button that spends them",
+      "Report chapters: rankings, visibility in AI search engines, AI search visibility and the internal site audit"
     ]
   },
   "where": {
-    "nl": "Instellingen → Marketing voor de sleutel, het tabblad Marketing op een klant voor de cijfers, en de hoofdstukken in Rapportages.",
-    "en": "Instellingen → Marketing (Settings → Marketing) for the key, the Marketing tab on a client for the figures, and the chapters inside Rapportages (Reports)."
+    "nl": "Instellingen → Marketing voor de sleutels en de huisstandaard, het paneel en het tabblad Marketing op een klant voor de cijfers, en de hoofdstukken in Rapportages.",
+    "en": "Instellingen → Marketing (Settings → Marketing) for the keys and the house default, the Marketing panel and tab on a client for the figures, and the chapters inside Rapportages (Reports)."
   },
   "docs": "/docs/integrations/marketing-sources/",
   "page": {
     "lead": {
-      "nl": "SE Ranking levert de cijfers waar een maandrapportage grotendeels uit bestaat: waar de zoekwoorden van een klant staan, wat de website-audit vindt, en of de klant in AI-antwoorden opduikt. Eén sleutel per bureau dekt elk klantproject.",
-      "en": "SE Ranking supplies most of what a monthly client report is made of: where a client's keywords sit, what the site audit found, and whether the client turns up in AI answers. One key per agency covers every client project."
+      "nl": "SE Ranking levert de cijfers waar een maandrapportage grotendeels uit bestaat: waar de zoekwoorden van een klant staan, wat de website-audit vindt, en of de klant in AI-antwoorden opduikt. Eén sleutel per bureau dekt elk klantproject; voor het AI-zoekoverzicht komt daar vaak de sleutel van de Data API bij.",
+      "en": "SE Ranking supplies most of what a monthly client report is made of: where a client's keywords sit, what the site audit found, and whether the client turns up in AI answers. One key per agency covers every client project; for the AI Search overview the Data API's key often joins it."
     },
     "requirements": {
       "nl": [
         "Een SE Ranking-account met een project per klant waarover je wilt rapporteren",
         "Een API-sleutel uit dat account",
+        "Voor het AI-zoekoverzicht: een abonnement op de Data API van SE Ranking. Die geeft vaak een eigen sleutel uit",
         "De module Marketing aan onder Instellingen → Modules, met een licentie die hem dekt",
         "Het recht marketing.link.manage om de sleutel te bewaren en projecten te koppelen"
       ],
       "en": [
         "An SE Ranking account with a project per client you want to report on",
         "An API key from that account",
+        "For the AI Search overview: a subscription to SE Ranking's Data API. It often issues a key of its own",
         "The Marketing module switched on under Instellingen → Modules, with a licence covering it",
         "The marketing.link.manage permission to store the key and link projects"
       ]
@@ -56,19 +62,23 @@
     "steps": {
       "nl": [
         "Zet <strong>Marketing</strong> aan onder <strong>Instellingen → Modules</strong>. Zonder dekkende licentie wordt de module na de respijtperiode alleen-lezen en stopt de nachtelijke synchronisatie; wat al binnen is blijft leesbaar.",
-        "Ga naar <strong>Instellingen → Marketing</strong> en plak je sleutel in het veld <strong>SE Ranking API-sleutel</strong>. Hij wordt versleuteld opgeslagen en nooit aan de browser teruggegeven; laat het veld bij een volgende opslag leeg om de bestaande sleutel te behouden.",
-        "Koppel per klant het bijbehorende SE Ranking-project. De koppeling loopt vandaag via de API (<code>POST /api/v1/marketing/links</code> met <code>source=seranking</code>, en <code>GET /api/v1/marketing/accounts?source=seranking</code> voor de projectenlijst); de kiezer in het Marketing-paneel biedt op dit moment de drie Google-bronnen.",
+        "Ga naar <strong>Instellingen → Marketing</strong> en plak je sleutel in het veld <strong>SE Ranking API-sleutel</strong>. Hij wordt versleuteld opgeslagen en nooit aan de browser teruggegeven; laat het veld bij een volgende opslag leeg om de bestaande sleutel te behouden. Heb je voor de Data API een aparte sleutel gekregen, zet die dan in <strong>SE Ranking Data API-sleutel (optioneel)</strong>; leeg betekent dat de eerste sleutel voor beide API's geldt.",
+        "Druk op <strong>Sleutel controleren</strong>. Dat kost geen units en laat per API zien of de sleutel die ervoor gebruikt wordt toegang heeft, en hoeveel Data API-units je abonnement nog over heeft. Werkt de sleutel voor posities maar niet voor de Data API, dan zegt het scherm dat: dat is een tweede sleutel die ontbreekt, geen kapotte eerste.",
+        "Koppel per klant het bijbehorende SE Ranking-project: open de klant, klik in het paneel <strong>Marketing</strong> op bewerken en kies het project bij <strong>SE Ranking-project</strong>.",
         "Na het koppelen start een terugvulling van ongeveer dertien maanden, zodat trendlijnen en jaar-op-jaarvergelijkingen meteen kloppen. Daarna houdt de nachtelijke synchronisatie de laatste dagen bij en wordt elke dag opnieuw weggeschreven op dezelfde sleutel, dus late correcties herstellen zichzelf.",
-        "Bekijk de cijfers op het tabblad <strong>Marketing</strong> van de klant (het paneel op de klantpagina toont vandaag alleen de drie Google-bronnen): de tegels <strong>Gem. positie</strong>, <strong>Top 3</strong>, <strong>Top 10</strong>, <strong>Top 30</strong>, <strong>Scorende zoekwoorden</strong> en <strong>Gevolgde zoekwoorden</strong>, met de uitklappers <strong>Zoekwoorden</strong>, <strong>Zoekwoordgroepen</strong>, <strong>Website-audit</strong> en <strong>Zichtbaarheid in AI-zoekresultaten</strong>.",
-        "Heb je de module Rapportage, dan verschijnen dezelfde bronnen als hoofdstuk in het maandrapport: <strong>Zoekwoordposities</strong>, <strong>Zichtbaarheid in AI-zoekresultaten</strong> en, alleen in de interne versie, <strong>Website-audit</strong>."
+        "Bekijk de cijfers op het paneel en het tabblad <strong>Marketing</strong> van de klant: de tegels <strong>Gem. positie</strong>, <strong>Top 3</strong>, <strong>Top 10</strong>, <strong>Top 30</strong>, <strong>Scorende zoekwoorden</strong> en <strong>Gevolgde zoekwoorden</strong>, met de uitklappers <strong>Zoekwoorden</strong>, <strong>Zoekwoordgroepen</strong>, <strong>Website-audit</strong> en <strong>Zichtbaarheid in AI-zoekresultaten</strong>.",
+        "Wil je het AI-zoekoverzicht? Zet <strong>AI-zichtbaarheid</strong> aan, als huisstandaard onder <strong>Instellingen → Marketing</strong> of per klant met <strong>Inschakelen voor deze klant</strong> op het tabblad Marketing. Kies daar ook de AI-engines, de landendatabase en, waar nodig, het domein en de merknaam.",
+        "Heb je de module Rapportage, dan verschijnen dezelfde bronnen als hoofdstuk in het maandrapport: <strong>Zoekwoordposities</strong> (vergeleken met de maand ervoor), <strong>Zichtbaarheid in AI-zoekmachines</strong>, <strong>Zichtbaarheid in AI-zoekresultaten</strong> en, alleen in de interne versie, <strong>Website-audit</strong>."
       ],
       "en": [
         "Switch <strong>Marketing</strong> on under <strong>Instellingen → Modules</strong> (Settings → Modules). Without a covering licence the module goes read-only after the grace period and the nightly sync stands down; everything already collected stays readable.",
-        "Go to <strong>Instellingen → Marketing</strong> (Settings → Marketing) and paste your key into <strong>SE Ranking API-sleutel</strong>. It is stored encrypted and never handed back to the browser; leave the field empty on a later save to keep the stored key.",
-        "Link each client's SE Ranking project. That link is made over the API today (<code>POST /api/v1/marketing/links</code> with <code>source=seranking</code>, and <code>GET /api/v1/marketing/accounts?source=seranking</code> for the project list); the picker in the Marketing panel currently offers the three Google sources.",
+        "Go to <strong>Instellingen → Marketing</strong> (Settings → Marketing) and paste your key into <strong>SE Ranking API-sleutel</strong>. It is stored encrypted and never handed back to the browser; leave the field empty on a later save to keep the stored key. If you were given a separate key for the Data API, put it in <strong>SE Ranking Data API-sleutel (optioneel)</strong>; empty means the first key serves both APIs.",
+        "Press <strong>Sleutel controleren</strong> (Check key). It costs no units and shows, per API, whether the key used for it has access, and how many Data API units your plan has left. If the key works for rankings but not for the Data API, the screen says so: that is a missing second key, not a broken first one.",
+        "Link each client's SE Ranking project: open the client, click edit on the <strong>Marketing</strong> panel and pick the project under <strong>SE Ranking-project</strong>.",
         "Linking kicks off a backfill of roughly thirteen months, so trend lines and year-on-year comparisons are right from day one. After that the nightly sync re-pulls the last few days and upserts each date on the same key, so late corrections heal themselves.",
-        "Read the figures on the client's <strong>Marketing</strong> tab (the panel on the client page shows only the three Google sources today): the tiles <strong>Gem. positie</strong>, <strong>Top 3</strong>, <strong>Top 10</strong>, <strong>Top 30</strong>, <strong>Scorende zoekwoorden</strong> and <strong>Gevolgde zoekwoorden</strong>, with drill-downs <strong>Zoekwoorden</strong>, <strong>Zoekwoordgroepen</strong>, <strong>Website-audit</strong> and <strong>Zichtbaarheid in AI-zoekresultaten</strong>.",
-        "With the Rapportage module licensed, the same sources become chapters in the monthly report: <strong>Zoekwoordposities</strong>, <strong>Zichtbaarheid in AI-zoekresultaten</strong> and, in the internal version only, <strong>Website-audit</strong>."
+        "Read the figures on the client's <strong>Marketing</strong> panel and tab: the tiles <strong>Gem. positie</strong>, <strong>Top 3</strong>, <strong>Top 10</strong>, <strong>Top 30</strong>, <strong>Scorende zoekwoorden</strong> and <strong>Gevolgde zoekwoorden</strong>, with drill-downs <strong>Zoekwoorden</strong>, <strong>Zoekwoordgroepen</strong>, <strong>Website-audit</strong> and <strong>Zichtbaarheid in AI-zoekresultaten</strong>.",
+        "Want the AI Search overview? Switch <strong>AI-zichtbaarheid</strong> on, as the house default under <strong>Instellingen → Marketing</strong> or per client with <strong>Inschakelen voor deze klant</strong> (Enable for this client) on the Marketing tab. Pick the AI engines, the country database and, where needed, the domain and the brand name there too.",
+        "With the Rapportage module licensed, the same sources become chapters in the monthly report: <strong>Zoekwoordposities</strong> (compared with the month before), <strong>Zichtbaarheid in AI-zoekmachines</strong> (visibility in AI search engines), <strong>Zichtbaarheid in AI-zoekresultaten</strong> and, in the internal version only, <strong>Website-audit</strong>."
       ]
     },
     "sections": [
@@ -78,8 +88,8 @@
           "en": "One key for the agency, no per-employee connection"
         },
         "body": {
-          "nl": "Google-bronnen hangen aan de persoonlijke koppeling van een collega, met scopes, intrekken en opnieuw koppelen. SE Ranking heeft daar niets van: er is één sleutel per organisatie en die is ingesteld of niet. Dat scheelt een hoop uitleg, want een ontbrekende bureausleutel is een taak voor een beheerder in Instellingen en niet iets wat een medewerker met opnieuw inloggen oplost. Weigert SE Ranking de sleutel (een 401 of 403), dan zegt het scherm dat ook letterlijk en verwijst het naar Instellingen; elke andere fout houdt de neutrale melding, want raden helpt niemand.",
-          "en": "Google sources hang off one colleague's personal grant, with scopes, revocation and a reconnect prompt. SE Ranking has none of that: there is one key per organisation, and it is configured or it is not. That removes a whole class of misdirection, because a missing agency key is an admin's job in Instellingen, not something an employee fixes by signing in again. If SE Ranking rejects the key (a 401 or 403) the screen says exactly that and points at Instellingen; any other failure keeps the neutral message, because guessing helps nobody."
+          "nl": "Google-bronnen hangen aan de persoonlijke koppeling van een collega, met scopes, intrekken en opnieuw koppelen. SE Ranking heeft daar niets van: er is één sleutel per organisatie en die is ingesteld of niet. Dat scheelt een hoop uitleg, want een ontbrekende bureausleutel is een taak voor een beheerder in Instellingen en niet iets wat een medewerker met opnieuw inloggen oplost. Weigert SE Ranking de sleutel (een 401 of 403), dan zegt het scherm dat ook letterlijk en verwijst het naar Instellingen; elke andere fout houdt de neutrale melding, want raden helpt niemand. Een project waarvan het abonnement geen AI Result Tracker heeft, krijgt daar geen weigering van de sleutel te zien: de uitklapper zegt dat dit project geen toegang heeft tot de tracker, en de rest van SE Ranking wordt gewoon gelezen.",
+          "en": "Google sources hang off one colleague's personal grant, with scopes, revocation and a reconnect prompt. SE Ranking has none of that: there is one key per organisation, and it is configured or it is not. That removes a whole class of misdirection, because a missing agency key is an admin's job in Instellingen, not something an employee fixes by signing in again. If SE Ranking rejects the key (a 401 or 403) the screen says exactly that and points at Instellingen; any other failure keeps the neutral message, because guessing helps nobody. A project whose plan has no AI Result Tracker is not shown a refused key for it: the drill-down says this project has no access to the tracker, and the rest of SE Ranking is read as usual."
         }
       },
       {
@@ -123,6 +133,42 @@
           "nl": "De audit die wordt gelezen is de laatste afgeronde audit van dat project, gevonden op het project-ID en nooit door een domeinnaam over je hele account te zoeken. Daaruit komen de score, het aantal gecontroleerde pagina's, de aantallen fouten, waarschuwingen en opmerkingen, en de bevindingen zelf met het aantal getroffen pagina's per bevinding, gesorteerd op ernst. De namen van de bevindingen komen in de taal van je SE Ranking-account en worden onvertaald doorgegeven: het is hun tekst, niet de onze. Uit de AI Result Tracker komt per ingestelde engine hoe vaak je in de antwoorden gelinkt en genoemd wordt, met de verandering ten opzichte van de vorige meting.",
           "en": "The audit read is the latest finished audit for that project, found by project id and never by fuzzy-matching a domain across your whole account. Out of it come the score, the number of pages crawled, the counts of errors, warnings and notices, and the findings themselves with the number of affected pages each, sorted by severity. Finding names arrive in your SE Ranking account's own language and are passed through untranslated: it is their text, not ours. From the AI Result Tracker comes, per configured engine, how often you are linked and mentioned in answers, with the change against the previous measurement."
         }
+      },
+      {
+        "heading": {
+          "nl": "Het AI-zoekoverzicht: vorige maand tegen de maand ervoor",
+          "en": "The AI Search overview: last month against the month before"
+        },
+        "body": {
+          "nl": "SE Ranking volgt per land een grote, vaste set prompts in ChatGPT, Perplexity, Gemini en de AI-overzichten en AI-modus van Google, en draait die elke maand opnieuw. Uit de Data API haalt schakl. daarvan vier cijfers per klant: Merkvermeldingen (antwoorden die het merk noemen), Links naar de site (antwoorden die een pagina van de site als bron noemen), Gemiddelde positie (waar die link tussen de genoemde bronnen staat, lager is beter) en Potentieel AI-verkeer (het zoekvolume achter die antwoorden, geen bezoekers). Het is altijd de laatste hele maand, vergeleken met de maand ervoor, want in een kanaal waar een jaar geleden de meeste engines niemand noemden zegt vorig jaar niets. Het overzicht staat op het dashboard van de klant en als hoofdstuk Zichtbaarheid in AI-zoekmachines in het rapport. Alle engines samen is het eigen cijfer van SE Ranking en nooit een optelling van de engines.",
+          "en": "SE Ranking tracks a large, fixed set of prompts per country in ChatGPT, Perplexity, Gemini and Google's AI Overviews and AI Mode, and re-runs it every month. From the Data API schakl. reads four figures per client: brand mentions (answers that name the brand), links to the site (answers that cite a page of the site as a source), average position (where that link sits among the cited sources, lower is better) and AI opportunity traffic (the search volume behind those answers, not visitors). It is always the last whole month, compared with the month before, because in a channel where a year ago most engines cited nobody, last year says nothing. The overview sits on the client's dashboard and as the chapter Zichtbaarheid in AI-zoekmachines in the report. All engines together is SE Ranking's own figure and never a sum of the engines."
+        },
+        "bullets": {
+          "nl": [
+            "Standaard uit: één lezing kost 800 units per engine-keuze per klant per maand, en die prijs staat in de instellingen, in de klanteditor en op de knop Opnieuw ophalen",
+            "Een betaalde lezing wordt één keer gedaan en per maand bewaard; wie het tabblad daarna opent, kost niets",
+            "Een maand die SE Ranking nog niet gepubliceerd heeft, wordt getoond als de maand die hij is en nooit onder een andere naam",
+            "Het merk dat geteld wordt staat onder de cijfers, want een verkeerd merk levert een verkeerd getal op dat er precies zo uitziet als een goed",
+            "In de Nederlandse database heeft alleen Google AI-overzichten een maandreeks; voor een Nederlandse klant is Alle engines samen de bruikbare keuze"
+          ],
+          "en": [
+            "Off by default: one read costs 800 units per engine choice per client per month, and that price is in the settings, in the client editor and on the Opnieuw ophalen (Fetch again) button",
+            "A paid read is made once and stored per month; opening the tab afterwards costs nothing",
+            "A month SE Ranking has not published yet is shown as the month it is and never under another name",
+            "The brand being counted is printed under the figures, because a wrong brand gives a wrong number that looks exactly like a right one",
+            "In the Dutch database only Google AI Overviews has a monthly series; for a Dutch client, all engines together is the useful choice"
+          ]
+        }
+      },
+      {
+        "heading": {
+          "nl": "De bron heet zoals jij hem noemt",
+          "en": "The source is called what you call it"
+        },
+        "body": {
+          "nl": "Verkoopt je bureau SE Ranking onder een eigen naam, zet die dan onder Instellingen → Marketing. Die naam staat daarna in elke zin waarin de bron genoemd wordt: in de sectie over AI-zoekmachines, in de uitklappers en in de waarschuwingen van een rapportrun. Een klant in het portaal leest de bron onder jouw naam of onder een neutrale, en ziet geen leveranciersnaam, geen weigering en geen link naar een console. Alleen het scherm met de sleutels blijft SE Ranking bij zijn eigen naam noemen.",
+          "en": "If your agency sells SE Ranking under a name of its own, set it under Instellingen → Marketing. That name then appears in every sentence that names the source: in the AI search engines section, in the drill-downs and in a report run's warnings. A client in the portal reads the source under your name or a neutral one, and sees no vendor name, no refusal and no link to a console. Only the screen holding the keys keeps calling SE Ranking by its own name."
+        }
       }
     ],
     "permissions": [
@@ -144,18 +190,16 @@
     ],
     "limits": {
       "nl": [
-        "Het koppelen van een klantproject loopt vandaag via de API; de kiezer in het Marketing-paneel biedt de drie Google-bronnen.",
         "Er wordt geen geschiedenis per zoekwoord bewaard. Alleen de dagcijfers gaan de opslag in; het detail komt live binnen en leeft daarna alleen nog in de momentopname van een rapportage.",
         "schakl. leest SE Ranking en schrijft er nooit naartoe: geen zoekwoorden toevoegen, geen audit starten, geen project aanmaken.",
         "De Website-audit is een intern hoofdstuk en komt nooit in het document dat de klant leest.",
-        "Weigert SE Ranking je sleutel, kijk dan eerst naar de vorm van de autorisatieheader en naar het pad van de projectenlijst: dat zijn de twee plekken waar accounts van elkaar kunnen verschillen. Alles eromheen leest defensief, dus een afwijking daar valt op als een lege lijst en niet als een half gevulde."
+        "Het AI-zoekoverzicht is een steekproef en geen telling van alle AI-antwoorden: het beschrijft de prompts die SE Ranking voor dat land volgt. Een kleine site komt er vaak niet in voor, en dan zegt het scherm dat in woorden in plaats van vier streepjes te tonen."
       ],
       "en": [
-        "Linking a client project runs over the API today; the picker in the Marketing panel offers the three Google sources.",
         "No per-keyword history is warehoused. Only the daily figures are stored; the detail arrives live and afterwards lives on only inside a report's snapshot.",
         "schakl. reads SE Ranking and never writes to it: no adding keywords, no starting an audit, no creating a project.",
         "The site audit is an internal chapter and never appears in the document a client reads.",
-        "If SE Ranking refuses your key, look first at the shape of the authorization header and at the project-list path: those are the two places accounts can differ. Everything around them parses defensively, so a mismatch there surfaces as an empty list rather than a half-filled one."
+        "The AI Search overview is a sample, not a count of every AI answer: it describes the prompts SE Ranking tracks for that country. A small site often does not appear in it, and then the screen says so in words instead of showing four dashes."
       ]
     }
   }

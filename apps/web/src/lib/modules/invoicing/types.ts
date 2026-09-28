@@ -65,6 +65,20 @@ export function readAutoInvoiceMode(value: FormDataEntryValue | null): AutoInvoi
   return (AUTO_INVOICE_MODES as readonly string[]).includes(raw) ? (raw as AutoInvoiceMode) : null;
 }
 
+/** How often an agency files VAT — the API's `VatPeriod`, shortest first. */
+export const VAT_PERIODS = ["month", "quarter", "year"] as const;
+
+export type VatPeriod = (typeof VAT_PERIODS)[number];
+
+/**
+ * Read the VAT period a form posted. An unrecognised value is `null` rather than a guess, so a
+ * tampered form changes nothing instead of landing on a period nobody chose.
+ */
+export function readVatPeriod(value: FormDataEntryValue | null): VatPeriod | null {
+  const raw = String(value ?? "").trim();
+  return (VAT_PERIODS as readonly string[]).includes(raw) ? (raw as VatPeriod) : null;
+}
+
 export function lineKindLabel(kind: LineKind): string {
   return t(`invoicing.line.kind.${kind}`);
 }

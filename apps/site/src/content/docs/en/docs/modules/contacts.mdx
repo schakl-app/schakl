@@ -102,6 +102,11 @@ access) and *Inloggen als deze contactpersoon* (Sign in as this contact). The la
 the portal exactly as the client sees it, for half an hour. It is recorded on this contact's
 activity trail, and everything you do meanwhile carries your name alongside.
 
+Who can sign in across all your clients is under *Instellingen → Team & gebruikers* (Settings → Team & users),
+in the **Klantlogins** (client logins) section below your team: per login the clients it belongs
+to and whether the access is still live, with the same actions as the card. See
+[Client portal](/en/docs/modules/portal/).
+
 ## Permissions
 
 Set per role under *Instellingen → Rollen* (Settings → Roles). By default:
@@ -109,14 +114,16 @@ Set per role under *Instellingen → Rollen* (Settings → Roles). By default:
 | Permission | What it does | Held by default |
 | --- | --- | --- |
 | `contacts.contact.read` | View contacts | Administrator, Member, Client |
-| `contacts.contact.write` | Create and edit | Administrator |
+| `contacts.contact.write` | Create and edit | Administrator, Member |
 | `contacts.contact.delete` | Delete | Administrator |
-| `contacts.link.write` | Attach to clients | Administrator |
+| `contacts.link.write` | Attach to clients | Administrator, Member |
 | `contacts.type.read` | View contact types | Administrator, Member, Client |
 | `contacts.type.manage` | Manage contact types | Administrator |
 
-So a **Member** may only read by default. If you want your team creating contacts, tick
-`contacts.contact.write` and `contacts.link.write` on that role. Export and import are separate
+So a **Member** may create, edit and attach contacts by default, because keeping the people at a
+client current is everyday work; deleting stays with Administrator. A control that attaches asks
+for both permissions: whoever may edit contacts but not attach them is not shown the attaching
+controls. Export and import are separate
 permissions (`impex.export`, `impex.import`) and default to Admin only.
 
 ## Good to know

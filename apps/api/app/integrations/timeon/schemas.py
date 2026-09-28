@@ -53,6 +53,7 @@ class TimeonAccountRead(BaseModel):
 
     hours_direction: SyncDirection
     projects_direction: SyncDirection
+    customers_direction: SyncDirection = SyncDirection.OFF
     conflict_policy: ConflictPolicy
     window_days: int
     history_floor: date | None = None
@@ -60,6 +61,7 @@ class TimeonAccountRead(BaseModel):
     protect_approved: bool = False
     push_approvals: bool = False
     create_missing_projects: bool = False
+    create_missing_customers: bool = False
     create_missing_users: bool = False
     auto_sync: bool = False
 
@@ -111,6 +113,7 @@ class TimeonAccountUpdate(BaseModel):
 
     hours_direction: SyncDirection | None = None
     projects_direction: SyncDirection | None = None
+    customers_direction: SyncDirection | None = None
     conflict_policy: ConflictPolicy | None = None
     window_days: int | None = Field(default=None, ge=1, le=3650)
     #: Explicit ``null`` clears the floor; omitted leaves it. §18's rule, and it matters: "no
@@ -121,6 +124,7 @@ class TimeonAccountUpdate(BaseModel):
     protect_approved: bool | None = None
     push_approvals: bool | None = None
     create_missing_projects: bool | None = None
+    create_missing_customers: bool | None = None
     create_missing_users: bool | None = None
     auto_sync: bool | None = None
     #: The schedule. Unlike ``history_floor`` above, an explicit ``null`` here is *ignored* rather
@@ -248,9 +252,11 @@ class TimeonSyncRequest(BaseModel):
     #: one month somebody noticed was wrong. Absent means the account's own ``window_days``.
     window_from: date | None = None
     window_to: date | None = None
-    #: For this run only: which side is right about a **project** field the run cannot decide
-    #: for itself — one that differs on a pairing with no record of the two ever agreeing, or
-    #: one both sides changed. Absent means the connection's own ``conflict_policy``, and under
+    #: For this run only: which side is right about a **project or client** field the run
+    #: cannot decide for itself — one that differs on a pairing with no record of the two ever
+    #: agreeing, or one both sides changed. It reaches whatever the run's ``kind`` reaches, so
+    #: ``kind: "customers"`` settles clients without touching a project.
+    #: Absent means the connection's own ``conflict_policy``, and under
     #: ``manual`` that means the field is reported and left alone. Hours are never affected:
     #: their conflicts are stored decisions with a queue of their own.
     prefer: Literal["schakl", "timeon"] | None = None

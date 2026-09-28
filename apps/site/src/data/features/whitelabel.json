@@ -1,7 +1,7 @@
 {
   "name": "Wit-label en meertalig",
   "slug": "whitelabel",
-  "order": 240,
+  "order": 250,
   "icon": "🎨",
   "lucide": "palette",
   "demo": "whiteLabel",

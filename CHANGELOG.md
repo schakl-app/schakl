@@ -2,6 +2,103 @@
 
 _Releases v0.25.0 through v0.41.0 are written up on their GitHub Releases; this file resumes at v0.42.0._
 
+## v0.59.0 — 2026-09-28
+
+Agents can now read a client site's theme files through the WordPress bridge, change them where
+the site allows it, and empty its caches. Timeon clients are created and kept in step rather
+than only paired. Meetings and Rapportages use the shared table with a bulk delete, and the
+invoicing overview shows the VAT of the running return period.
+
+Three migrations, applied in order: `e4b8a1c6d3f7` → `ec56853d27b0` → `b4e8d1a6c3f7`. The head
+moves from `f1a7c3e9b2d5` to `b4e8d1a6c3f7`. All three are purely additive:
+`timeon_accounts.customers_direction` and `create_missing_customers`, the invoicing VAT return
+period (seeded to quarter), and `wordpress_sites.bridge_theme`. Two new permission keys, both
+admin-only by default: `wordpress.theme.read` and `wordpress.theme.write`. Thirteen new routes: ten under `/wordpress/sites/{id}/bridge`, `GET /invoicing/stats/vat`, and
+`POST /bulk/meeting/delete` and `POST /bulk/report/delete`. No new environment
+variables. Changed: the WordPress site read gains `bridge_theme`, the bridge record list takes
+`taxonomy` + `term`, and the meetings and reports lists take `?sort=` (reports also `?status=`).
+The typed client and the public API reference are regenerated.
+
+### WordPress: theme files and caches through the bridge
+
+- **A theme's files can be read and changed.** Ten new tools in `/mcp/wordpress`, 43 bridge
+  tools in all. `bridge_theme_files` lists the tree and finds the files that hold a string, with
+  the lines. `bridge_update_theme_file` changes a file by `edits` or whole with `expected_hash`;
+  create, delete, history and restore have tools of their own. Every write keeps the previous
+  version on the site.
+- **PHP is checked by the site itself.** The plugin parses a PHP file before writing it, then
+  has the site request its own pages, and puts the file back if PHP died. A change that breaks a
+  site comes back as a 422 with `details.rolled_back`. PHP writes are open only where the site
+  can request itself.
+- **Two keys of their own, admin only.** `wordpress.theme.read` and `wordpress.theme.write`. The
+  read is admin-only too, because a theme is code and code is where a key gets pasted. Neither
+  is granted to a member or to an MCP key by default.
+- **No way around them.** The passthrough asks `theme.read` for a `GET` under `schakl/v1/theme`,
+  and `theme.write` for any write that reaches the theme: that path, the plugin's MCP endpoint
+  with a theme tool named in the body, or an ability's run route. `run_site_ability` asks the
+  same of the plugin's theme abilities.
+- **Caches can be listed and emptied.** `bridge_cache` says which cache plugins a site runs.
+  `bridge_purge_cache` empties the page cache, generated CSS/JS and opcode cache, and the object
+  cache when named. It asks `content.publish`, since visitors get uncached pages until the cache
+  refills.
+- **The site row says where theme editing stands.** `bridge_theme` rides on every site read, so
+  a list of forty sites shows which of them take a theme write. The panel prints it under the
+  plugin's version and links a closed site to the plugin's settings.
+- **A switch on the site is reported as a switch.** The plugin's 403 for read-only mode, theme
+  editing switched off or `DISALLOW_FILE_EDIT` used to read "the site refused the stored
+  credential". It is a 409 `errors.wordpress_bridge_switched_off` now, on every bridge route,
+  with the switch named in `details`.
+- **One term's records.** `bridge_list_records` takes `taxonomy` + `term`: the FAQ items of one
+  category instead of the whole type. One without the other is refused.
+- **An index no cache has seen.** The site's REST index is read under a query string of its own.
+  A page cache had served one site's index from before the plugin was installed, and the summary
+  listed the site without it.
+
+### Timeon: clients are created and kept in step
+
+- **Clients are a synced record.** They used to be paired by client number and nothing was
+  written on either side. They now have a direction of their own (`customers_direction`) and
+  their own "create what is missing" switch. Both default to off, so an existing connection does
+  exactly what it did.
+- **Pairing** goes by stored link, then client number, then a name that is unique on both sides.
+- **Ten fields are merged per field** against what the two sides last agreed on. A blank never
+  empties a filled field unless the record shows somebody emptied it.
+- **Fixed along the way:** a trashed client's pairing was invisible to the engine, so a run
+  would have offered to make that client a second time; `last_push_at` only moved for hours; a
+  service refusal reached the run report as its raw i18n key.
+
+### Meetings, Rapportages and invoicing
+
+- **Meetings and Rapportages use the shared table.** Columns the viewer picks and orders, a sort
+  the API applies, the shared filter bar and the pager with a saved page size.
+- **Both get a bulk delete, and no bulk edit.** Every row goes through its own service, so a
+  meeting a worker is reading and a report a client was already sent are reported per row rather
+  than removed.
+- **The overview shows the VAT of the running return period** beside the one that closed. The
+  period is a setting under Instellingen → Facturatie: month, quarter or year. Sales only:
+  nothing the agency buys is recorded, so no input VAT is deducted.
+- **Fixed:** a batch the API refused whole, on an expired licence, closed the confirm over an
+  unchanged meetings list with nothing said.
+
+### Documentation
+
+- The public site's module and integration pages are brought in step with what shipped, with new
+  pages for meetings, Timeon and Mistral.
+- A design for a Bing Webmaster Tools integration is written down; nothing of it is built.
+
+### Upgrade notes
+
+- The theme and cache tools need bridge plugin 1.5.0 on the site. An older plugin answers its
+  own "no route" error, which reads as the plugin missing; `bridge_version` on the site row says
+  which it is.
+- Theme editing is off on every site until somebody ticks *Theme files* in the plugin's
+  settings. `bridge_theme` stays empty until the site runs 1.5.0 and is verified again.
+- An MCP key that should change theme files needs `wordpress.theme.write` granted deliberately.
+- The Timeon client sync does nothing until a direction is chosen. Its write shapes were read
+  from Timeon's own web app and are exercised against the fake only; `docs/TIMEON.md` §5b has
+  the steps to take before trusting them live.
+- Every tenant's VAT return period starts at quarter.
+
 ## v0.58.0 — 2026-09-25
 
 A meeting recording that a phone interrupts now resumes by itself, and a long recording keeps

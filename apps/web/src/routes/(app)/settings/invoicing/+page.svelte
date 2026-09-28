@@ -26,7 +26,7 @@
   import TemplateEditor from "$lib/modules/invoicing/TemplateEditor.svelte";
   import { layoutForApi, toConfig } from "$lib/modules/invoicing/templateConfig";
   import type { TemplateConfig } from "$lib/modules/invoicing/templateConfig";
-  import { docMoney, taxRateLabel } from "$lib/modules/invoicing/types";
+  import { docMoney, taxRateLabel, VAT_PERIODS } from "$lib/modules/invoicing/types";
 
   let { data, form } = $props();
 
@@ -782,6 +782,32 @@
       />
       <div class="flex justify-end">
         <Button loading={busy.is("autoinvoice")} disabled={busy.active}>{t("common.save")}</Button>
+      </div>
+    </form>
+  </section>
+
+  <!-- The VAT return period: which span the overview's VAT figure is summed over. Its own
+       section and action — it changes no document, only what one tile adds up. -->
+  <section class={sectionClass} id="vat">
+    <h2 class="mb-1 text-base font-semibold text-text">
+      {t("settings.invoicing.vat_heading")}
+    </h2>
+    <p class="mb-3 text-sm text-text-muted">{t("settings.invoicing.vat_hint")}</p>
+    <form method="POST" action="?/saveVatPeriod" use:enhance={busy.keep("vat")} class="space-y-3">
+      <label class="block max-w-xs">
+        <span class="mb-1 block text-sm font-medium text-text">
+          {t("settings.invoicing.vat_period")}
+        </span>
+        <select name="vat_period" class={inputClass}>
+          {#each VAT_PERIODS as period (period)}
+            <option value={period} selected={(data.settings?.vat_period ?? "quarter") === period}>
+              {t(`settings.invoicing.vat_period.${period}`)}
+            </option>
+          {/each}
+        </select>
+      </label>
+      <div class="flex justify-end">
+        <Button loading={busy.is("vat")} disabled={busy.active}>{t("common.save")}</Button>
       </div>
     </form>
   </section>

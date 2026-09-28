@@ -38,6 +38,7 @@ from app.integrations.wordpress.client import (
     WordPressClient,
     WordPressError,
     WordPressUnreachable,
+    bridge_theme,
     bridge_updates,
     describe_failure,
 )
@@ -57,6 +58,9 @@ from app.integrations.wordpress.schemas import (
     WordPressBridgeTerm,
     WordPressBridgeTermCreate,
     WordPressBridgeTermList,
+    WordPressCacheInfo,
+    WordPressCachePurge,
+    WordPressCachePurged,
     WordPressLanguages,
     WordPressMediaUpload,
     WordPressMenu,
@@ -77,6 +81,13 @@ from app.integrations.wordpress.schemas import (
     WordPressStringList,
     WordPressStringResult,
     WordPressStringUpdate,
+    WordPressThemeFile,
+    WordPressThemeFileCreate,
+    WordPressThemeFileList,
+    WordPressThemeFileRestore,
+    WordPressThemeFileUpdate,
+    WordPressThemeHistory,
+    WordPressThemeInfo,
     WordPressTranslationCreate,
     WordPressTranslations,
 )
@@ -110,7 +121,7 @@ class WordPressBridgeService(WordPressSurfaceService):
         """One plugin call, connection released, the plugin's refusal mapped to ours.
 
         The plugin's statuses are its diagnosis: 404 with core's ``rest_no_route`` is the
-        plugin not being there at all; any other 404 is a record; 400/413/422 is a body it
+        plugin not being there at all; any other 404 is a record; 400/413/415/422 is a body it
         would not take, with ``details`` carried whole; 409 is a capability the site lacks
         (WPML, ACF) or a state that refuses (a translation that exists), named in ``details``.
         """
@@ -125,6 +136,19 @@ class WordPressBridgeService(WordPressSurfaceService):
                     fields={"detail": describe_failure(exc)},
                 ) from exc
             except WordPressAuthError as exc:
+                if exc.status == 403 and any(
+                    k in exc.details for k in ("setting", "constant", "capability")
+                ):
+                    # Not the credential: a switch on the site (read-only mode, theme editing),
+                    # a constant in its wp-config.php, or a capability this account lacks. The
+                    # plugin names which, and re-minting a password would fix none of them.
+                    raise AppError(
+                        "invalid_state",
+                        "errors.wordpress_bridge_switched_off",
+                        status_code=409,
+                        fields={"detail": describe_failure(exc)},
+                        details={**exc.details, "code": exc.code},
+                    ) from exc
                 raise AppError(
                     "upstream",
                     "errors.wordpress_site_refused",
@@ -149,7 +173,7 @@ class WordPressBridgeService(WordPressSurfaceService):
                         fields={"detail": describe_failure(exc)},
                         details={**exc.details, "code": exc.code},
                     ) from exc
-                if exc.status in (400, 413, 422):
+                if exc.status in (400, 413, 415, 422):
                     raise AppError(
                         "validation",
                         "errors.wordpress_bridge_rejected",
@@ -186,9 +210,15 @@ class WordPressBridgeService(WordPressSurfaceService):
         # version, whatever the last probe recorded.
         if isinstance(version, str):
             updates = bridge_updates(body.get("updates"))
-            if version != site.bridge_version or updates != site.bridge_updates:
+            theme = bridge_theme(body.get("theme"))
+            if (
+                version != site.bridge_version
+                or updates != site.bridge_updates
+                or theme != site.bridge_theme
+            ):
                 site.bridge_version = version
                 site.bridge_updates = updates
+                site.bridge_theme = theme
                 await self.ctx.session.flush()
         return WordPressBridgeInfo(
             site_id=site.id,
@@ -249,6 +279,8 @@ class WordPressBridgeService(WordPressSurfaceService):
         page: int,
         per_page: int,
         fields: str = "none",
+        taxonomy: str | None = None,
+        term: str | None = None,
     ) -> WordPressRecordList:
         _, client = await self._open(site_id)
         params: dict[str, Any] = {
@@ -266,6 +298,10 @@ class WordPressBridgeService(WordPressSurfaceService):
             params["lang"] = lang
         if parent is not None:
             params["parent"] = parent
+        # The plugin narrows by a term only when it is told which taxonomy the term is in.
+        if taxonomy and term:
+            params["taxonomy"] = taxonomy
+            params["term"] = term
         body = await self._bridge(client, "GET", "/content", params=params)
         return WordPressRecordList(
             **(body if isinstance(body, dict) else {"post_type": post_type})
@@ -735,3 +771,164 @@ class WordPressBridgeService(WordPressSurfaceService):
             },
         )
         return form
+
+    # --- the theme's files ------------------------------------------------------------------ #
+    async def theme(self, site_id: uuid.UUID, *, refresh: bool) -> WordPressThemeInfo:
+        _, client = await self._open(site_id)
+        body = await self._bridge(
+            client, "GET", "/theme", params={"refresh": "true"} if refresh else None
+        )
+        return WordPressThemeInfo(**(body if isinstance(body, dict) else {}))
+
+    async def theme_files(
+        self,
+        site_id: uuid.UUID,
+        *,
+        theme: str | None,
+        path: str | None,
+        recursive: bool,
+        extensions: str | None,
+        search: str | None,
+        limit: int,
+    ) -> WordPressThemeFileList:
+        _, client = await self._open(site_id)
+        params: dict[str, Any] = {"limit": limit, "recursive": "true" if recursive else "false"}
+        for key, value in (
+            ("theme", theme),
+            ("path", path),
+            ("extensions", extensions),
+            ("search", search),
+        ):
+            if value:
+                params[key] = value
+        body = await self._bridge(client, "GET", "/theme/files", params=params)
+        return WordPressThemeFileList(**(body if isinstance(body, dict) else {}))
+
+    async def theme_file(
+        self,
+        site_id: uuid.UUID,
+        *,
+        theme: str | None,
+        path: str,
+        from_line: int | None,
+        to_line: int | None,
+    ) -> WordPressThemeFile:
+        _, client = await self._open(site_id)
+        params: dict[str, Any] = {"path": path}
+        for key, value in (("theme", theme), ("from_line", from_line), ("to_line", to_line)):
+            if value is not None and value != "":
+                params[key] = value
+        body = await self._bridge(client, "GET", "/theme/file", params=params)
+        return WordPressThemeFile(**(body if isinstance(body, dict) else {}))
+
+    async def theme_history(
+        self,
+        site_id: uuid.UUID,
+        *,
+        theme: str | None,
+        path: str | None,
+        revision: int | None,
+        limit: int,
+    ) -> WordPressThemeHistory:
+        _, client = await self._open(site_id)
+        params: dict[str, Any] = {"limit": limit}
+        for key, value in (("theme", theme), ("path", path), ("revision", revision)):
+            if value is not None and value != "":
+                params[key] = value
+        body = await self._bridge(client, "GET", "/theme/file/history", params=params)
+        return WordPressThemeHistory(**(body if isinstance(body, dict) else {}))
+
+    async def _theme_written(
+        self, site: WordPressSite, action: str, result: WordPressThemeFile, **extra: Any
+    ) -> WordPressThemeFile:
+        """The trail line of a theme write. A write that changed nothing leaves none."""
+        if getattr(result, "unchanged", False):
+            return result
+        await self._trail(
+            site,
+            action,
+            {
+                "theme": result.theme,
+                "path": result.path,
+                "title": result.path,
+                "revision": result.revision,
+                "via": BRIDGE_PLUGIN,
+                **extra,
+            },
+        )
+        return result
+
+    async def theme_file_update(
+        self, site_id: uuid.UUID, data: WordPressThemeFileUpdate
+    ) -> WordPressThemeFile:
+        if (data.content is None) == (not data.edits):
+            raise AppError(
+                "validation",
+                "errors.wordpress_theme_edits_or_content",
+                status_code=422,
+                fields={"edits": "errors.wordpress_theme_edits_or_content"},
+            )
+        site, client = await self._open(site_id)
+        body = await self._bridge(client, "PUT", "/theme/file", json=_clean(data))
+        result = WordPressThemeFile(**(body if isinstance(body, dict) else {"path": data.path}))
+        return await self._theme_written(
+            site,
+            "theme_file_updated",
+            result,
+            edits=len(data.edits) if data.edits else None,
+        )
+
+    async def theme_file_create(
+        self, site_id: uuid.UUID, data: WordPressThemeFileCreate
+    ) -> WordPressThemeFile:
+        site, client = await self._open(site_id)
+        body = await self._bridge(client, "POST", "/theme/file", json=_clean(data))
+        result = WordPressThemeFile(**(body if isinstance(body, dict) else {"path": data.path}))
+        return await self._theme_written(site, "theme_file_created", result)
+
+    async def theme_file_delete(
+        self,
+        site_id: uuid.UUID,
+        *,
+        theme: str | None,
+        path: str,
+        expected_hash: str | None,
+    ) -> WordPressThemeFile:
+        site, client = await self._open(site_id)
+        params: dict[str, Any] = {"path": path}
+        for key, value in (("theme", theme), ("expected_hash", expected_hash)):
+            if value:
+                params[key] = value
+        body = await self._bridge(client, "DELETE", "/theme/file", params=params)
+        result = WordPressThemeFile(**(body if isinstance(body, dict) else {"path": path}))
+        return await self._theme_written(site, "theme_file_deleted", result)
+
+    async def theme_file_restore(
+        self, site_id: uuid.UUID, data: WordPressThemeFileRestore
+    ) -> WordPressThemeFile:
+        site, client = await self._open(site_id)
+        body = await self._bridge(client, "POST", "/theme/file/restore", json=_clean(data))
+        result = WordPressThemeFile(**(body if isinstance(body, dict) else {}))
+        return await self._theme_written(
+            site, "theme_file_restored", result, restored=data.revision
+        )
+
+    # --- the caches ------------------------------------------------------------------------- #
+    async def cache(self, site_id: uuid.UUID) -> WordPressCacheInfo:
+        _, client = await self._open(site_id)
+        body = await self._bridge(client, "GET", "/cache")
+        return WordPressCacheInfo(**(body if isinstance(body, dict) else {}))
+
+    async def cache_purge(
+        self, site_id: uuid.UUID, data: WordPressCachePurge
+    ) -> WordPressCachePurged:
+        site, client = await self._open(site_id)
+        body = await self._bridge(client, "POST", "/cache/purge", json=_clean(data))
+        result = WordPressCachePurged(**(body if isinstance(body, dict) else {}))
+        emptied = sorted({str(row.get("kind")) for row in result.purged if row.get("kind")})
+        await self._trail(
+            site,
+            "cache_purged",
+            {"kinds": emptied, "title": ", ".join(emptied) or "—", "urls": data.urls or []},
+        )
+        return result

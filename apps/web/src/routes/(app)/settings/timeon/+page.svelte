@@ -101,8 +101,12 @@
   const DIRECTIONS = ["off", "pull", "push", "two_way"] as const;
   const POLICIES = ["manual", "schakl_wins", "timeon_wins"] as const;
 
-  /** The two direction selects, named once so the markup is one block rather than two copies. */
-  const DIRECTION_FIELDS = ["hours_direction", "projects_direction"] as const;
+  /** The direction selects, named once so the markup is one block rather than three copies. */
+  const DIRECTION_FIELDS = [
+    "hours_direction",
+    "projects_direction",
+    "customers_direction",
+  ] as const;
 
   /**
    * The switches, in reading order: what the sync may never touch first, what it may create
@@ -117,6 +121,7 @@
     "protect_approved",
     "push_approvals",
     "create_missing_projects",
+    "create_missing_customers",
     "create_missing_users",
     "active",
   ] as const;
@@ -294,7 +299,7 @@
               <legend class="px-1 text-sm font-medium text-text">
                 {t("settings.timeon.directions")}
               </legend>
-              <div class="grid gap-3 sm:grid-cols-2">
+              <div class="grid gap-3 sm:grid-cols-3">
                 {#each DIRECTION_FIELDS as field (field)}
                   <div>
                     <label class={labelClass} for="{field}-{account.id}">

@@ -2,7 +2,7 @@
 title: Rollen en rechten
 description: "Bepaal per rol wie wat mag, met een aparte instelling voor wiens gegevens het geldt en wie welke klanten ziet."
 sidebar:
-  order: 22
+  order: 23
 ---
 
 import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
@@ -93,6 +93,24 @@ Onder *Instellingen → Team & gebruikers* klap je een teamlid open. Daar staat 
 vinkje per rol, daaronder **Effectieve rechten** (de opgetelde lijst, met per recht de gekozen
 reikwijdte) en één knop **Rollen opslaan**.
 
+## Als een collega vertrekt
+
+Een vertrekkende collega **deactiveer** je: *Instellingen → Team & gebruikers* → ⋯ →
+**Deactiveren**. Hij kan niet meer inloggen, ook een sessie die nog openstaat stopt meteen, en hij
+verdwijnt uit de keuzelijsten voor nieuw werk. Zijn naam blijft overal staan: uren, taken,
+contactmomenten, verlof en de wijzigingshistorie blijven op naam. Rollen, rechten, contract,
+rooster en uurtarief blijven bewaard, en **Activeren** zet het met één klik terug.
+
+**Intrekken** is iets anders: dat haalt het lidmaatschap weg, en daarmee de naam van alles waar hij
+op staat. Dat is bedoeld voor een account dat hier nooit had moeten staan; het bevestigingsvenster
+zegt dat er ook bij en wijst naar Deactiveren. Via ⋯ → **Bewerken** pas je de naam van een
+account aan.
+
+De lijst opent op de collega's die hier nog werken. Gedeactiveerde accounts staan daaronder in een
+ingeklapte sectie **Gedeactiveerd (n)**, die er alleen is als er iemand vertrokken is; elke rij
+zegt zelf nog waarom hij uit staat. Onder de collega's staat de sectie **Klantlogins**: iedereen bij
+je klanten die kan inloggen (zie [Klantportaal](/nl/docs/modules/portal/)).
+
 ## Zichtbaarheid per klant is een andere vraag
 
 Rechten bepalen *wat* iemand mag; klantgroepen bepalen *over welke klanten*. Onder *Instellingen →
@@ -119,13 +137,17 @@ de laatste persoon die hem heeft.
 
 Ook mag niemand zonder rol achterblijven: "Elke gebruiker moet minstens één rol houden."
 
+Daarbij tellen alleen beheerders die nog kunnen inloggen. De laatste beheerder deactiveren wordt
+dus net zo goed geweigerd, en je eigen account deactiveren kan niet: daar vraag je een collega
+met beheerrechten voor.
+
 ## Rechten
 
 | Recht | Wat het opent | Standaard |
 | --- | --- | --- |
 | `settings.roles.manage` | *Instellingen → Rollen*: rollen en rechten beheren | Beheerder |
 | `members.member.read` | *Instellingen → Team & gebruikers* bekijken | Beheerder |
-| `members.member.write` | Uitnodigen, wijzigen, verwijderen en rollen opslaan | Beheerder |
+| `members.member.write` | Uitnodigen, wijzigen, deactiveren, intrekken en rollen opslaan; ook het register Klantlogins | Beheerder |
 | `companies.group.manage` | *Instellingen → Klantgroepen* | Beheerder |
 
 De Eigenaar heeft ze alle vier via zijn "alles".

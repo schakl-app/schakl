@@ -1,6 +1,6 @@
 ---
 title: Subscriptions
-description: "Recurring client agreements: price with history, included hours, the billing cycle, standard subscriptions and a bulk price increase."
+description: "Recurring client agreements and one-off sales: price with history, included hours, the billing cycle, standard subscriptions and a bulk price increase."
 sidebar:
   order: 9
 ---
@@ -9,7 +9,8 @@ import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components'
 
 A subscription is a recurring agreement with a client: hosting, maintenance, an SEO retainer. It
 records what it costs, how often it invoices and how many hours it includes, and it answers the
-question of what is running every month.
+question of what is running every month. Something sold once, such as a website build, is an
+agreement too, with the interval **Eenmalig** (one-off).
 
 ![Retainers with their period, amount and next invoice date.](/img/docs/en-subscriptions.png)
 
@@ -18,8 +19,13 @@ question of what is running every month.
 **Abonnementen** (Subscriptions) in the main menu. Tabs above the section lead to the list itself,
 to **Standaardabonnementen** (Standard subscriptions) and to **Abonnementstypes** (Subscription
 types). You only see those two with the matching manage permissions; *Instellingen →
-Abonnementen* (Settings → Subscriptions) leads to the same screen. The client page and the project
-page each carry an **Abonnementen** panel.
+Abonnementen* (Settings → Subscriptions) leads to the same screen. The client page, the project
+page and the website page each carry an **Abonnementen** panel.
+
+The list is sectioned per standard subscription, with the client as the first column; clicking the
+client opens the subscription, and the client page sits in the ⋯ menu. A **Volgende factuur** (next
+invoice) date that has passed is drawn as an overdue deadline, and the **Factuurdatum verstreken**
+(invoice date passed) tile opens *Nog te factureren* narrowed to subscriptions.
 
 At the top of the list sit **Maandelijks terugkerende inkomsten** (MRR), **Jaarlijks terugkerende
 inkomsten** (ARR) and the number of **Actieve abonnementen**. Below them you filter by client, by
@@ -27,12 +33,18 @@ status and by your own types.
 
 ## Creating a subscription
 
+The quickest way is from the client page: the ＋ on the **Abonnementen** panel opens the same form
+in a dialog, with the client already filled in and only this client's projects offered. After
+saving you are still on the client page. From the list it goes like this:
+
 <Steps>
 1. Click **Nieuw abonnement** (New subscription), optionally after choosing a **Vanuit
    standaardabonnement** (From standard subscription), which prefills the form.
-2. Fill in **Naam** (Name), **Klant** (Client) and **Type**.
+2. Fill in **Naam** (Name), **Klant** (Client) and **Type**. If the agreement sells something
+   from your price list, pick it under **Product**: that fills in the name and the amount, and
+   both stay yours to change.
 3. Set **Status** (Concept / Actief / Gepauzeerd / Opgezegd, i.e. draft / active / paused /
-   cancelled), **Interval** (Maandelijks, Per kwartaal or Jaarlijks), **Bedrag** (Amount),
+   cancelled), **Interval** (Maandelijks, Per kwartaal, Jaarlijks or Eenmalig), **Bedrag** (Amount),
    **Inbegrepen uren** (Included hours) and the **Startdatum** (Start date).
 4. Under **Automatisch factureren** (Automatic invoicing), choose how far invoicing goes on its
    own, or leave it on *Instelling van de organisatie volgen* (follow the organisation setting).
@@ -41,7 +53,13 @@ status and by your own types.
 </Steps>
 
 A new subscription defaults to **Actief**. Its **Volgende factuur** (Next invoice) is then derived
-for you, one period after the start date, and only becomes visible and editable in the edit form.
+for you: the first period boundary from the start date that is still ahead, so an agreement that
+has been running for years does not start with a pile of past periods. Only the edit form shows
+that date and lets you change it; a date you enter yourself is always honoured.
+
+If it was already invoiced in your previous system, fill in **Gefactureerd tot** (invoiced until).
+Periods ending on or before that date are no longer offered anywhere and never created, not by
+the nightly run either.
 A subscription that arrives through an import deliberately lands as **Concept**, so a bulk import
 never quietly starts billing.
 
@@ -60,7 +78,8 @@ current and the new amount per subscription; nothing is written until **Doorvoer
 Cancelled subscriptions are skipped, including when you target one directly.
 
 <Aside type="caution">
-Bulk edit can change status, type and client, but deliberately not the price. A price always goes
+Bulk edit can change status, type, client, **Gefactureerd tot**, **Facturering** (billing
+direction) and **Notities op de factuur** (notes on the invoice), but deliberately not the price. A price always goes
 through **Prijsverhoging**, because that carries an effective date and respects the history.
 </Aside>
 
@@ -84,7 +103,9 @@ used this period and whether you are over it.
 
 Once a day schakl. checks which **active** subscriptions have reached their **Volgende factuur**
 date. For each one the period is offered up at the price that applied on that date, and the next
-invoice date moves on by one period. What happens next depends on **Automatisch factureren**:
+invoice date moves on by one period. If that date lies several periods back, all of them are
+caught up in the same run, not one a night. What the run is going to bill is already listed on
+*Nog te factureren* beforehand. What happens next depends on **Automatisch factureren**:
 
 | Level | What happens |
 | --- | --- |
@@ -96,6 +117,58 @@ invoice date moves on by one period. What happens next depends on **Automatisch 
 The cycle always advances, including on *Uit*: a period nobody invoiced stays outstanding and is
 offered in the invoice editor, so it is never lost. Draft, paused and cancelled agreements do not
 bill.
+
+## Sold once
+
+A one-off sale (a website build, a logo, a migration) is a subscription with the interval
+**Eenmalig**. It has no cycle: it is billed once, on its start date (or today, if that has
+passed), and it gets everything an agreement has: a standard subscription to start from, a type
+whose task templates roll out on activation, linked projects, notes with variables and your own
+fields. The moment an invoice bills it, whether the nightly run drafted it or you picked it in the
+invoice editor, it moves to **Afgerond** (completed) by itself. Delete, cancel or fully credit
+that invoice and it opens again. A one-off agreement never counts towards MRR or ARR.
+
+A standard subscription and an agreement can name the **Product** from your price list that they
+sell. That is a record of what is sold, not a link that keeps prices in step: re-pricing the
+product later changes nothing on the agreement. Under *Instellingen → Facturatie*, **Producten en
+diensten** has an **In gebruik** (in use) column counting the subscriptions and standard
+subscriptions that name each product.
+
+## In advance or in arrears
+
+Which period an invoice covers on its invoice date is called **Facturering** (billing):
+
+- **Vooraf** (in advance): the period after the invoice date. Usual for hosting and licences: on
+  16 May you invoice the year that begins then.
+- **Achteraf** (in arrears): the period before the invoice date. Usual for a retainer billed once
+  the month has been delivered. This is the default.
+
+You set it on the **subscription type**. A **standard subscription** may override the type, and a
+single **subscription** may choose differently again for itself ("Volg het standaardabonnement of
+type" makes it follow again), for an agreement made differently with this client. The subscription
+shows which way it bills, and whether that was set on the subscription itself.
+
+<Aside type="caution">
+Flipping it re-reads the periods, including the ones already invoiced: what was billed stays
+billed, but the dates it stands for move along, so nothing is offered twice. The screen reports
+how many subscriptions it touched.
+</Aside>
+
+A subscription's page carries the **Gefactureerde termijnen** (invoiced periods) panel: which
+periods are already on an invoice, and on which one.
+
+## Linking a subscription to a website
+
+A hosting agreement keeps a website online, and the website can say which one. Tick **Dekt
+websites** (covers websites) on a type (the bundled Hosting type already has it); subscriptions of
+that type can then be linked to websites of the same client:
+
+- in the subscription form, under **Websites**, which offers only the chosen client's websites;
+- or on the website page, in the **Abonnementen** panel: pick one of that client's running
+  agreements, or create a new one with ＋, with the client and website already filled in.
+
+The subscription lists the websites it covers under **Dekt** (covers). Untick the type later and
+existing links stay until you remove them yourself.
 
 ## Standard subscriptions and types
 
@@ -121,20 +194,29 @@ when the note is displayed: `{{company_name}}`, `{{subscription_name}}`, `{{type
 **Voorbeeld** (Preview) sits under the field. They work in a standard subscription too, where they
 are resolved on every subscription that uses it.
 
+Notes are internal by default. Tick **Notities op de factuur** (notes on the invoice) on a standard
+subscription and they print under the lines of every invoice its subscriptions raise, with the
+variables filled in at the moment the invoice is made: an amount reads `€ 25,00`, like the rest of
+the invoice, and a later price change never rewrites an invoice already sent. A single
+subscription can set it differently for itself (*Op elke factuur afdrukken*, print on every
+invoice, or *Alleen intern*, internal only). Headings, lists, tables and quotes from the editor are
+laid out properly on paper.
+
 ## Permissions
 
 Set per role under *Instellingen → Rollen* (Settings → Roles).
 
 | Permission | What it grants | Held by default |
 | --- | --- | --- |
-| `subscriptions.subscription.read` | View subscriptions | Administrator |
+| `subscriptions.subscription.read` | View subscriptions | Administrator; Client only its own |
 | `subscriptions.subscription.write` | Manage subscriptions | Administrator |
 | `subscriptions.subscription.delete` | Delete subscriptions | Administrator |
 | `subscriptions.type.manage` | Manage subscription types | Administrator |
 | `subscriptions.template.manage` | Manage standard subscriptions | Administrator |
 
 Reading is deliberately not a Member default: what a client pays is commercially sensitive. You can
-widen it per role. The Owner role holds everything.
+widen it per role. The Client role sees in the portal only its own company's running subscriptions,
+with no drafts and none of your internal notes. The Owner role holds everything.
 
 ## Good to know
 

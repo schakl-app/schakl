@@ -172,8 +172,8 @@ What the project phase does now, in the order it does it:
    (`project_gone_here`) and left alone — re-creating it would be the sync overruling somebody.
 2. **Creates what is missing, in the direction projects travel.** `create_missing_projects` is
    one switch for both directions. Towards Timeon: open, named projects only, under a client
-   Timeon knows (`project_no_customer` otherwise — clients are paired on their number and never
-   invented). The create is **never retried** on a 5xx or a timeout: it may well have happened,
+   Timeon knows (`project_no_customer` otherwise — making the client is the client phase's job,
+   §5b, which runs first). The create is **never retried** on a 5xx or a timeout: it may well have happened,
    and a second one is a second project. A create that is interrupted is met again safely,
    because the next run finds that name under that client and pairs it.
 3. **Keeps four fields in step, per field**: name, open/closed, billable by default, budget. The
@@ -187,7 +187,7 @@ What the project phase does now, in the order it does it:
    a setting, and it never touches hours.
 
 Only `full` and `projects` runs do 2 and 3. An hours run and *Alleen koppelen* pair references
-and stop, as their names promise.
+and stop, as their names promise. (Clients likewise: `full` and `customers`.)
 
 **What "invoicability" is, on each side.** schakl decides billability per entry (#284) and a
 project carries only a default; Timeon has the same default (`defaultBillable`) *and* a project
@@ -224,11 +224,105 @@ then let it create **one** project and compare that row in Timeon's own screen, 
 What `project/create` *answers* is the least certain part, which is why an answer carrying no id
 is followed by a look at the list rather than by a second create.
 
+### 5b. Clients travel too, and until September 2026 they were only paired
+
+Asked plainly — *does the Timeon integration add and sync clients?* — the answer was **no, in
+either direction, by design**. `_pair_customers` matched `customerNumber` ↔ `client_number`,
+stored the pairing, and wrote nothing. §1 is why: on migration day all 108 customers already
+existed here, so pairing was the whole job. It stopped being the whole job the day the cutover
+outlived the migration:
+
+- a client made in schakl never reached Timeon, so a project under it could not be created there
+  either (`project_no_customer`) and its hours went over on no client at all;
+- a customer made in Timeon was `customer_unmapped` on every run until somebody retyped it here;
+- a corrected name, address or e-mail address stayed corrected on one side;
+- and the pairing was **re-derived from the number every run**, so correcting a client number on
+  either side read as "unknown client".
+
+So clients are a synced record now, with the project phase's shape and a direction of their own:
+`customers_direction` (default `off`) and `create_missing_customers` (default off). **With the
+direction off the phase does exactly what it always did** — that is what every existing
+connection upgrades into, and a test pins it.
+
+What the client phase does, in the order it does it:
+
+1. **Pairs: by stored link, then by client number, then by name.** The number is how two clients
+   are *recognised*; the link is what is believed afterwards. The name is a last resort under
+   three conditions, because §1's warning still stands (*Maatschap Mini Camping Boudewijnskerke*
+   exists twice on both sides): the name must be unique on **both** sides, the two numbers must
+   not contradict each other, and the company must not already answer for another customer. A
+   number that several Timeon customers carry pairs nobody (`customer_duplicate_number`). A
+   pairing whose schakl half was deleted **or is in the trash** is reported
+   (`customer_gone_here`) and left alone — see the fourth lesson below.
+2. **Creates what is missing, in the direction clients travel.** Towards schakl through
+   `CompanyService.create`, so a pulled client gets the validation, the client number, the trail
+   line and the `company.created` event a form submit would. Towards Timeon: every client that
+   is not archived. Never retried, and an interrupted create is met again safely because the
+   next run finds that number (or that name) over there and pairs it. Two callers are refused
+   before the walk, once each: one who may not write companies (`customer_write_forbidden`) and
+   one who sees only part of the register (`customer_scope_restricted` — every client outside
+   their horizon would read as missing and be made a second time).
+3. **Keeps ten fields in step, per field**: name, client number, active or not, invoice e-mail
+   address, phone number, street and number, postal code, city, country, VAT number. The merge is
+   §5a's — `observed.base` on the link records what the two sides last agreed on, per field — with
+   one rule added.
+
+**A blank holds nobody's opinion.** Where nothing on record says who moved — which is *every*
+pairing made before this existed — a filled field facing an empty one fills it, in whichever
+direction is allowed, and is **never emptied by it**. Without that rule the first `pull` run
+would have read "Timeon has no e-mail address for this client" as an instruction and wiped the
+invoice address off a hundred clients. A field is emptied only by somebody emptying it after the
+two sides were in step, which the record can show. Two filled values that differ with no record
+are reported and left alone under `manual` (`customer_differs_*`), and the run report offers the
+two honest answers — per **kind**: `kind: "customers"` with `prefer` settles clients and touches
+no project, because whose budget is right says nothing about whose spelling of a name is.
+
+**What each field is, on each side.**
+
+| schakl | Timeon | note |
+|---|---|---|
+| `name` (the label, never `legal_name`) | `name` | a **person** over there (`name` null, `firstname`/`lastname`) is created here under the joined name and is the sentinel afterwards: writing a name would turn the person into a company |
+| `client_number` | `customerNumber` | synced like any field once paired; a number another client holds is one refusal in the report |
+| `status` ≠ `archived` | `isActive` | only the archived line is crossed — a lead Timeon calls active stays a lead |
+| `invoice_email` | `emailAddress` | Timeon's field may hold a list; a list is the sentinel |
+| `phone` (E.164) | `phoneNumber` (as typed) | compared as E.164; a number no plan recognises is the sentinel |
+| `address_line1` + `house_number` | `addressLine1` | joined going out, split coming in only where the last word is a house number |
+| `postal_code` | `addressLine2` | compared without spaces, written as spelled |
+| `city` | `addressLine3` | |
+| `country` (ISO) | `countryID` | through `GET /api/system/countries`; unreadable table → the country does not travel and everything else does |
+| `vat_number` | `vatNumber` | compared without spaces and dots; cannot be said at create, so it follows on the next run |
+
+**A key the list row does not carry is unknown, not empty.** Timeon's document describes no
+responses, so which fields a `customer/list` row holds is known only from what Timeon's own
+screens read off one. An absent key canonicalises to the sentinel (rule 4) and is never recorded
+as agreed — recording it would make the day the value becomes readable look like the day
+somebody changed it, and where the readable value is empty that is an instruction to blank the
+other side.
+
+**Where the write shapes came from** — Timeon's web app again, as in §5a: it creates through
+`POST /api/customer` (the document marks `/api/customer/create` deprecated) with the closed
+`CreateCustomer` body, saves through `POST /api/customer/save` sending the customer as just read
+with the edits merged in, labels `addressLine1/2/3` address / postcode / city, requires a country
+and opens on the organisation's own. **None of it has been exercised against the live
+organisation.** Before trusting it: a **Proefrun** with `customers_direction` set, read what it
+would create and what differs; then let it create **one** client in each direction and compare
+both rows by hand. What `POST /api/customer` *answers* is the least certain part, so an answer
+carrying no id is followed by a look at the list rather than by a second create.
+
+**Four things the tests found that reading would not have.** A trashed client's pairing was
+invisible: the scoped read leaves out rows that belong to something in the trash
+(docs/TRASH.md), so the customer read as unpaired and the run offered to make the client a
+second time — `_existing_links` now reads with `include_trashed`, for projects as well. The
+unique index on a link's schakl half would have answered two Timeon customers claiming one
+company with a 500; the `claimed` set refuses it first. `last_push_at` only ever moved for
+hours. And a service refusal reached the screen as its raw i18n key — `RunReport` translates a
+detail that is one.
+
 ### 6. What is configurable, and why each one is a setting
 
 | setting | default | why it is not decided in code |
 |---|---|---|
-| `hours_direction` / `projects_direction` | `off` | the honest answer usually differs per kind: an agency mid-migration pulls hours (people still log there) while pushing projects (they are set up here now) |
+| `hours_direction` / `projects_direction` / `customers_direction` | `off` | the honest answer usually differs per kind: an agency mid-migration pulls hours (people still log there) while pushing projects and clients (they are set up here now). Clients with the direction `off` are still *paired* — that is resolution, not sync |
 | `conflict_policy` | `manual` | `schakl_wins` / `timeon_wins` are a decision to overwrite somebody's edit; real, and chosen rather than inferred |
 | `window_days` | 45 | long enough to catch a correction made while preparing last month's invoice, short enough that a nightly run reads two months rather than three years |
 | `history_floor` | `NULL` | set it to the import date and §1's 2814 entries are permanently out of reach |
@@ -236,6 +330,7 @@ is followed by a look at the list rather than by a second create.
 | `protect_approved` | off | an approval correction arriving from Timeon is ordinary mid-migration |
 | `push_approvals` | off | approving is a different act from logging |
 | `create_missing_projects` | off | a project is a thing an agency names deliberately; a sync inventing 157 is a mess to undo. One switch for **both** directions (§5a): it creates wherever `projects_direction` lets projects travel |
+| `create_missing_customers` | off | a client is the hub every invoice, domain and agreement hangs off; a sync that invents a register is harder to undo than one that reports "12 clients exist only in Timeon". One switch for both directions (§5b) |
 | `create_missing_users` | off | an account is a person, a membership may cost a seat, and the alternative failure ("3 people's hours were skipped") is loud and harmless |
 | `auto_sync` | off | a scheduled job that started the moment a key was pasted would make connecting an irreversible act |
 | `auto_frequency` · `auto_interval_hours` · `auto_time` | `daily` at `04:20` | §6a |
@@ -329,7 +424,9 @@ production.
 
 ### 8. What is not synced
 
-Contacts, Timeon invoices as documents, tasks, categories, travel kilometres, rates, and
+Contact persons, Timeon invoices as documents, tasks, categories, travel kilometres, rates, a
+client's PO number, remarks, customer group and default distance (all *carried* across a client
+save, never authored), schakl's legal name, assignees and custom fields, and
 `secondsBillable` — Timeon can record 2 h worked against 1 h billed, and schakl has no separate
 billable-duration field, so such an entry carries its full worked duration. Distance, expenses and
 the category are **carried across a push** (rule 7) but never authored or read into schakl.
@@ -407,7 +504,7 @@ month of week clicks does not re-ask for it. `nav.timeon` survives as the page's
 
 ### 10. On cutover
 
-Set both directions to `off` (or delete the connection — the pairings and runs go, the *hours*
+Set every direction to `off` (or delete the connection — the pairings and runs go, the *hours*
 stay), delete the API key from Timeon's side, and archive `apps/api/scripts/timeon_import.py`.
 Part one of this page becomes history the day that happens; part two becomes it the day the
 integration is removed from `settings.enabled_modules`.

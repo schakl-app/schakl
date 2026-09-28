@@ -1885,6 +1885,28 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   create, so no manual press ever made a project in either direction — a default that quietly
   narrows what a button does is the same fault as the engine's, one layer up. And a create is
   **never retried**: a 502 may have happened, and the second attempt is a second project.
+- **A blank holds nobody's opinion, and a pairing is believed before it is re-derived** (`timeon`
+  clients, `docs/TIMEON.md` §5b). Asked whether Timeon adds and syncs clients, the answer was *no,
+  in either direction*: a customer was paired on its number and nothing was ever written — right
+  on migration day, when all 108 already existed here, and wrong for every month of the cutover
+  after it. A client made here never reached Timeon (so neither could a project under it), one
+  made there was a warning per run, and a corrected address stayed corrected on one side. Clients
+  are a synced record now, behind `customers_direction` and `create_missing_customers`, both
+  **off by default so an upgrade changes nothing**. Four rules generalise. **A merge with no
+  history fills and never empties**: the project phase's one-way rule ("pull means take Timeon's
+  value") applied to a register whose other side is sparser would have wiped the invoice address
+  off every client on its first run, so where nothing on record says who moved, a filled field
+  facing an empty one fills it and is never emptied by it; emptying takes somebody emptying it
+  after the two agreed. **A key a list row does not carry is unknown, not empty** — and an
+  unknown is never recorded as agreed, or the day it becomes readable looks like the day somebody
+  changed it. **The identifier that recognised a pair is not what keeps it**: matching on the
+  client number every run made a corrected number read as an unknown client; the stored link
+  wins, the number is second, and a name pairs only where it is unique on both sides. And **a
+  read that hides rows for a screen hides them from the engine too**: the scoped read leaves out
+  what belongs to a trashed client, so its pairing was invisible and the run offered to make the
+  client a second time — found by the test for "deleted here", not by reading. The answer to
+  "which side is right" is asked **per kind** (`kind: "customers"`), because whose budget is
+  right says nothing about whose spelling of a name is.
 - **A notification that names something inside a record has to open *that*, and the record has to
   be able to unfold it** (#312 follow-up, `docs/UX.md`). Task comments were shipped for the
   three-comment task: one flat column, oldest-first, no count, no fold, and a `task.commented`
@@ -3259,8 +3281,9 @@ validation, activity line, events and custom-field rules that fifty visits to th
   that names its `entity`, its model, its delete permission and its service call is complete.
   Deleting needs no column vocabulary, and requiring one would have excluded the two entities
   where a batch is most obviously wanted: a run of **draft invoices** and a run of mis-logged
-  **contact moments**. Neither has a field a selection could share, so neither mounts an update
-  route — and the web's `BulkUpdateEntity` / `BulkDeleteEntity` are separate types read off the
+  **contact moments** — and since then **meetings** and **reports**, whose registers collect test
+  recordings and drafts nobody will send. None has a field a selection could share, so none mounts
+  an update route — and the web's `BulkUpdateEntity` / `BulkDeleteEntity` are separate types read off the
   generated client, so asking for the wrong one is a compile error.
 - The web mirrors it in `$lib/core/bulk/`: `BulkToggle` (the ✎, **last** in every toolbar, which
   switches the checkboxes on) and `BulkBar` (the actions, in their own strip above the table) —

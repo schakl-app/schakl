@@ -27,6 +27,7 @@ import DemoMarketing from './showcase/DemoMarketing.astro';
 import DemoReport from './showcase/DemoReport.astro';
 import DemoDomain from './showcase/DemoDomain.astro';
 import DemoAssistant from './showcase/DemoAssistant.astro';
+import DemoMeetings from './showcase/DemoMeetings.astro';
 
 interface Props {
   locale: 'nl' | 'en';
@@ -53,6 +54,7 @@ const demos: Record<string, any> = {
   report: DemoReport,
   domain: DemoDomain,
   assistant: DemoAssistant,
+  meetings: DemoMeetings,
 };
 const Demo = feature.demo ? demos[feature.demo] : null;
 

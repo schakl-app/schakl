@@ -96,6 +96,7 @@ export const actions: Actions = {
         active: checked(form, "active"),
         hours_direction: String(form.get("hours_direction") ?? "off") as never,
         projects_direction: String(form.get("projects_direction") ?? "off") as never,
+        customers_direction: String(form.get("customers_direction") ?? "off") as never,
         conflict_policy: String(form.get("conflict_policy") ?? "manual") as never,
         window_days: Number(form.get("window_days") ?? 45) || 45,
         // Always sent, `null` included: an empty date field is how "no floor" is expressed, and
@@ -109,6 +110,7 @@ export const actions: Actions = {
         protect_approved: checked(form, "protect_approved"),
         push_approvals: checked(form, "push_approvals"),
         create_missing_projects: checked(form, "create_missing_projects"),
+        create_missing_customers: checked(form, "create_missing_customers"),
         create_missing_users: checked(form, "create_missing_users"),
         auto_sync: checked(form, "auto_sync"),
         // The schedule (#388). Sent whatever `auto_sync` says, so switching automatic syncing

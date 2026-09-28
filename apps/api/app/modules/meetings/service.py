@@ -36,6 +36,7 @@ from app.core.entitlements import OrgPlan, refusal_for, sku_writable
 from app.core.jobs import enqueue
 from app.core.members import staff_select
 from app.core.parent import ensure_parent_in_tenant
+from app.core.sorting import apply_sort
 from app.core.storage.models import StoredFile
 from app.core.storage.service import drop_file
 from app.core.storage.system import store_system_file
@@ -78,6 +79,19 @@ logger = logging.getLogger("schakl.meetings")
 
 #: The chunk rows' marker (``files.content_id``): body content of the meeting, never an
 #: attachment, folded and dropped by the worker.
+#: What ``GET /meetings?sort=`` may order by (``app/core/sorting.py``: an allow-list, never a
+#: column name off the URL). The owner sorts on the snapshot the row prints, so the order reads
+#: the way the column does — including for a colleague whose account is gone (#64).
+MEETING_SORTABLE = {
+    "title": func.lower(Meeting.title),
+    "kind": Meeting.kind,
+    "occurred_at": Meeting.occurred_at,
+    "duration": Meeting.duration_seconds,
+    "status": Meeting.status,
+    "owner": func.lower(Meeting.owner_name),
+    "created_at": Meeting.created_at,
+}
+
 CHUNK_PREFIX = "chunk:"
 #: How a meeting's interaction kind is spelled in the interactions module's seeded vocabulary.
 INTERACTION_KINDS: dict[str, str] = {
@@ -143,6 +157,7 @@ class MeetingService:
         project_id: uuid.UUID | None = None,
         status: str | None = None,
         q: str | None = None,
+        sort: str | None = None,
         count: bool = True,
     ) -> MeetingList:
         self.ctx.require("meetings.meeting.read")
@@ -166,7 +181,11 @@ class MeetingService:
         rows = (
             (
                 await self.ctx.session.execute(
-                    stmt.order_by(Meeting.occurred_at.desc()).limit(limit).offset(offset)
+                    apply_sort(
+                        stmt, sort, MEETING_SORTABLE, default=Meeting.occurred_at.desc()
+                    )
+                    .limit(limit)
+                    .offset(offset)
                 )
             )
             .scalars()

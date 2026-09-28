@@ -133,6 +133,19 @@ export interface DemoLabels {
   repSendAgain: string; // reporting.review.send_again
   repRewrite: string; // reporting.review.rewrite
   repEdited: string; // reporting.review.edited
+  // Meetings (DemoMeetings) — meetings.* keys, verbatim
+  navMeetings: string; // nav.meetings
+  mtRecordTitle: string; // meetings.record.title
+  mtSavedUntil: (clock: string) => string; // meetings.record.saved_until
+  mtStop: string; // meetings.record.stop
+  mtSummarising: string; // meetings.progress.summarising
+  mtMinutes: string; // meetings.review.minutes
+  mtSummary: string; // meetings.review.summary
+  mtDecisions: string; // meetings.review.decisions
+  mtActionItems: string; // meetings.review.action_items
+  mtSideAgency: string; // meetings.minutes.side_agency
+  mtSideClient: string; // meetings.minutes.side_client
+  mtExport: string; // meetings.export.button
   // White-label
   brandLabel: string;
 }
@@ -240,6 +253,18 @@ export const labels: Record<Locale, DemoLabels> = {
     repSendAgain: 'Opnieuw versturen',
     repRewrite: 'Opnieuw schrijven',
     repEdited: 'met de hand aangepast',
+    navMeetings: 'Vergaderingen',
+    mtRecordTitle: 'Vergadering opnemen',
+    mtSavedUntil: (clock) => `Opgeslagen tot ${clock}`,
+    mtStop: 'Stoppen en uitschrijven',
+    mtSummarising: 'Het verslag wordt geschreven…',
+    mtMinutes: 'Verslag',
+    mtSummary: 'Samenvatting',
+    mtDecisions: 'Besluiten',
+    mtActionItems: 'Actiepunten',
+    mtSideAgency: 'Voor ons',
+    mtSideClient: 'Voor de klant',
+    mtExport: 'Downloaden',
     brandLabel: 'Jouw merk',
   },
   en: {
@@ -344,6 +369,18 @@ export const labels: Record<Locale, DemoLabels> = {
     repSendAgain: 'Send again',
     repRewrite: 'Rewrite',
     repEdited: 'edited by hand',
+    navMeetings: 'Meetings',
+    mtRecordTitle: 'Record a meeting',
+    mtSavedUntil: (clock) => `Saved up to ${clock}`,
+    mtStop: 'Stop and transcribe',
+    mtSummarising: 'Writing the minutes…',
+    mtMinutes: 'Minutes',
+    mtSummary: 'Summary',
+    mtDecisions: 'Decisions',
+    mtActionItems: 'Action items',
+    mtSideAgency: 'For us to do',
+    mtSideClient: 'For the client to do',
+    mtExport: 'Download',
     brandLabel: 'Your brand',
   },
 };

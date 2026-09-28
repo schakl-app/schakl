@@ -2,7 +2,7 @@
 title: Custom fields
 description: "Define your own typed fields on clients, contacts, projects and more, without a line of code."
 sidebar:
-  order: 21
+  order: 22
 ---
 
 import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
@@ -31,7 +31,12 @@ the modules you have switched on.
    appears. One option per line, written as `value|Label`.
 5. Tick **Verplicht** (Required) if the field must always be filled in.
 6. **Positie** (Position) is a number that sets the order; a lower number sits higher up the form.
-7. Press **Aanmaken** (Create).
+7. Only on invoices, quotes and subscriptions: tick **Op het document tonen** (show on the
+   document) if the value should reach paper (see below).
+8. Only on subscriptions: under **Geldt voor** (applies to), pick the subscription types or
+   standard subscriptions the field is meant for. Tick nothing and it applies to every
+   subscription.
+9. Press **Aanmaken** (Create).
 </Steps>
 
 You never type the **Sleutel** (Key) yourself. It is derived from the label and shown in the
@@ -67,6 +72,20 @@ correct.
   Websites. They are off by default, so you switch on the ones you want. You cannot sort on a
   custom field, so those columns carry no sort control either.
 - As a column in export and import, using the key as the heading.
+- On paper, when the field is set to **Op het document tonen** (show on the document): an
+  invoice's or quote's own fields under the document details, a subscription's on every invoice
+  line the subscription raises, such as "Hosting Pro · Website: client.nl". Whether you pick the
+  line yourself in the invoice editor or the nightly run drafts it, the text is the same.
+
+## A field for one kind of subscription
+
+A "Website" field belongs on a hosting subscription and not on an SEO retainer. On subscriptions
+you can therefore narrow a field with **Geldt voor** (applies to): to one or more subscription
+types, one or more standard subscriptions, or both (then any of the ticked ones counts). The field
+then appears only on those subscriptions, is only required there if you mark it so, and only
+prints there. A value already stored on another subscription is kept: move a subscription to
+another type and back again and you have lost nothing. On an import such a field is judged per
+row, so never as a required column for the whole file.
 
 ## Editing, switching off and deleting
 

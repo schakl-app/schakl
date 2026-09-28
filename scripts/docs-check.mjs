@@ -44,6 +44,7 @@ const EXPECTED_MODULES = [
   'portal',
   'automation',
   'interactions',
+  'meetings',
   'notifications',
   'custom-fields',
   'roles',
@@ -64,6 +65,7 @@ const EXPECTED_INTEGRATIONS = [
   'google-workspace',
   'microsoft-365',
   'marketing-sources',
+  'timeon',
   'rest-api',
   'mcp',
 ];

@@ -29,12 +29,14 @@ dashboard tekent geen kaart die zou weigeren.
 | --- | --- |
 | Uren vandaag | Wat je vandaag geboekt hebt, en of er een timer loopt |
 | Team deze maand | Totaal, facturabel aandeel, omzet, en wat er nog goedgekeurd moet worden |
-| Mijn openstaande taken | De jouwe, eerstvolgende eerst |
-| Openstaande taken per project / klant | Waar het open werk zit, met aantallen over tijd |
+| Mijn openstaande taken | De jouwe, in vier secties: over tijd, vandaag, deze week en later |
+| Openstaande taken per project / klant | Waar het open werk zit: per rij hoeveel te laat, vandaag en deze week, gerangschikt op urgentie |
 | Verlof | Je eigen saldo, in uren en in dagen |
 | Vandaag afwezig | Wie er vandaag weg is |
 | Openstaande facturen | Wat er openstaat, en hoeveel daarvan vervallen is |
 | Openstaande offertes | Offertes die nog op antwoord wachten |
+| Budgetstatus | Elk urenbudget als over budget, bijna op of binnen budget, met hoeveel uur eroverheen |
+| Projectbudgetten | De budgetprojecten met de hoogste verbranding, met hun urenbalk |
 | Terugkerende omzet | Het abonnementenboek per jaar, en wat er als eerste verlengt |
 | Nog te factureren | Werk dat af is en nog op geen factuur staat |
 | E-mails te beoordelen | Mail die wacht tot jij hem op een klant accepteert of afwijst |
@@ -47,6 +49,26 @@ aangeboden aan iemand die het recht heeft om de uren van anderen te lezen. Juist
 maakt hetzelfde dashboard bruikbaar voor een ontwikkelaar en voor een eigenaar, zonder dat een van
 beiden iets hoeft in te stellen.
 </Aside>
+
+## Elk getal opent de lijst die het telt
+
+Een tegel telt over de hele set, niet over de rijen die hij toevallig toont, en elk getal opent
+precies de lijst waar het over gaat.
+
+- **Mijn openstaande taken** heeft vier secties: *Over tijd*, *Vandaag*, *Deze week* en *Later*.
+  Elke kop draagt zijn aantal en opent de takenlijst met hetzelfde filter, dus de kop en de lijst
+  zijn het altijd eens. *Vandaag* staat er ook bij nul, met een eigen zin, zodat "niets vandaag"
+  niet op een ontbrekende sectie lijkt. Elke rij noemt de datum en de afstand (*24 aug · over 3
+  dagen*, *6 dagen te laat*); *Later* begint ingeklapt. Taken op dezelfde dag staan op prioriteit.
+- **Openstaande taken per project / klant** zet per rij hoeveel taken te laat zijn, vandaag moeten
+  en deze week moeten, en rangschikt daarop; een nul tekent niets. Elk getal opent die taken.
+- **Budgetstatus** deelt alle urenbudgetten in drie banden: *Over budget*, *Bijna op* en *Binnen
+  budget*, met onder de eerste hoeveel uur er samen overheen is. Elke band opent de projectenlijst
+  met hetzelfde filter; een project over budget loopt in zijn balk zichtbaar voorbij de budgetlijn.
+
+De kleuren zijn die van de toestand (te laat, vandaag, binnenkort, in orde) en nooit je
+merkkleur, en elke toestand heeft ook een teken, zodat de tegel in grijs leesbaar blijft. Is een
+tegel ingekort, dan zegt hij dat en wijst hij naar de rest.
 
 ## Zelf indelen
 
@@ -67,10 +89,13 @@ geen knop die de indeling van een collega overschrijft.
 
 ## Het dashboard van de klant is een ander bord
 
-Een klant met een portaallogin komt op een eigen bord uit. Het gebruikt dezelfde machinerie en een
-andere galerij: een tegel die naar een scherm linkt dat een klant niet kan openen, wordt daar niet
-aangeboden, en de marketingtegel die een klant ziet is de samengestelde versie en niet de volledige
-set van het bureau.
+Een klant met een portaallogin komt op een eigen bord uit: één kolom, met eerst zijn taken, dan zijn
+rapportage, dan de cijfers. Het gebruikt dezelfde machinerie en een andere galerij: een tegel die
+naar een scherm linkt dat een klant niet kan openen, wordt daar niet aangeboden, en de huisindeling
+van je team geldt voor hem niet. Zijn tegels zijn *Jullie taken*, *Werkzaamheden*, *Jullie
+rapportage*, *Marketing* (de samengestelde versie, niet de volledige set van het bureau), *Mijn
+abonnementen*, *Mijn facturen* en *Mijn domeinnamen*. Heeft hij meerdere bedrijven, dan toont het
+bord één bedrijf tegelijk en wisselt elke tegel mee. Zie [Klantportaal](/nl/docs/modules/portal/).
 
 ## Rechten
 

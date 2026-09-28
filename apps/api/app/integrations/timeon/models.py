@@ -130,10 +130,12 @@ class ConflictPolicy(StrEnum):
 class TimeonLinkKind(StrEnum):
     """Which of schakl's records a pairing is about.
 
-    ``user`` and ``customer`` are pairings too, even though nothing is ever written to either
-    side for them: they are *resolution*, and storing them is what stops every run re-deriving
-    "which schakl user is Timeon user 2004392" from an e-mail address that somebody may since
-    have changed. A resolution that is only ever recomputed is a resolution that silently moves.
+    ``user`` is a pairing even though nothing is ever written to either side for it: it is
+    *resolution*, and storing it is what stops every run re-deriving "which schakl user is
+    Timeon user 2004392" from an e-mail address that somebody may since have changed. A
+    resolution that is only ever recomputed is a resolution that silently moves. ``customer``
+    was the same until ``customers_direction`` existed; with a direction set it is a synced
+    record, and its link carries the per-field record of what the two sides last agreed on.
     """
 
     HOUR = "hour"
@@ -187,6 +189,10 @@ class TimeonSyncKind(StrEnum):
     ADOPT = "adopt"
     USERS = "users"
     PROJECTS = "projects"
+    #: Clients only: pair, create what is missing, keep the shared fields in step. Its own kind
+    #: so "which side is right about these clients" can be answered without the same answer
+    #: being applied to every project budget in the same press.
+    CUSTOMERS = "customers"
     HOURS = "hours"
     FULL = "full"
 
@@ -243,6 +249,14 @@ class TimeonAccount(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Auditab
     projects_direction: Mapped[str] = mapped_column(
         String(10), nullable=False, default=SyncDirection.OFF.value, server_default="off"
     )
+    #: Clients. ``off`` is what this integration did for its first months and still does by
+    #: default: a Timeon customer is *paired* with the schakl client that carries its number and
+    #: nothing is written on either side. Any other value makes the client a synced record like
+    #: a project is — created where it is missing (behind :attr:`create_missing_customers`) and
+    #: kept in step per field (``docs/TIMEON.md`` §5b).
+    customers_direction: Mapped[str] = mapped_column(
+        String(10), nullable=False, default=SyncDirection.OFF.value, server_default="off"
+    )
     conflict_policy: Mapped[str] = mapped_column(
         String(16), nullable=False, default=ConflictPolicy.MANUAL.value, server_default="manual"
     )
@@ -290,6 +304,13 @@ class TimeonAccount(UUIDPrimaryKeyMixin, OrgScopedMixin, TimestampMixin, Auditab
     #: with no project and the run says so — which is the right default, because a project is a
     #: thing an agency names deliberately and a sync inventing 157 of them is a mess to undo.
     create_missing_projects: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    #: Create the client that exists on one side only, in the direction clients travel. Off by
+    #: default for the projects switch's reason, one level up: a client is the hub every invoice,
+    #: domain and agreement hangs off, and a sync that invents a register of them is harder to
+    #: undo than one that reports "12 clients exist only in Timeon".
+    create_missing_customers: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
     #: Create a login-less schakl account for a Timeon user who has none. Also off by default,

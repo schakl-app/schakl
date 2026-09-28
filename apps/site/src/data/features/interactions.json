@@ -10,8 +10,8 @@
     "en": "Interactions"
   },
   "description": {
-    "nl": "E-mails, afspraken, telefoontjes en notities op één tijdlijn per klant. Gematchte Gmail-berichten wachten netjes op je beoordeling.",
-    "en": "Emails, meetings, calls and notes on one timeline per client. Matched Gmail messages wait neatly for your review."
+    "nl": "E-mails, afspraken, telefoontjes en notities op één tijdlijn per klant. Gematchte mail uit Gmail of Outlook wacht netjes op je beoordeling.",
+    "en": "Emails, meetings, calls and notes on one timeline per client. Matched mail from Gmail or Outlook waits neatly for your review."
   },
   "page": {
     "eyebrow": {
@@ -23,8 +23,8 @@
       "en": "Everything that was said, on one timeline"
     },
     "lead": {
-      "nl": "E-mails, afspraken, telefoontjes en notities komen samen op de tijdlijn van de klant. Gematcht met Gmail, te beoordelen voordat het meetelt, en met één klik om te zetten in geboekte uren.",
-      "en": "Emails, meetings, calls and notes come together on the client's timeline. Matched with Gmail, reviewed before it counts, and turned into logged hours with one click."
+      "nl": "E-mails, afspraken, telefoontjes en notities komen samen op de tijdlijn van de klant. Gematcht met Gmail of Outlook, te beoordelen voordat het meetelt, en met één klik om te zetten in geboekte uren.",
+      "en": "Emails, meetings, calls and notes come together on the client's timeline. Matched with Gmail or Outlook, reviewed before it counts, and turned into logged hours with one click."
     },
     "sections": [
       {
@@ -33,30 +33,30 @@
           "en": "Every kind of contact, one place"
         },
         "body": {
-          "nl": "Een contactmoment is een e-mail, een afspraak, een telefoongesprek of een notitie, met richting (inkomend of uitgaand), datum, onderwerp en de contactpersoon erbij. Het hangt aan de klant en desgewenst aan een project, zodat de tijdlijn van een klant precies laat zien wat er is besproken en met wie. De soorten zijn per organisatie in te richten; een afspraak splitst bijvoorbeeld in online en op locatie.",
-          "en": "An interaction is an email, a meeting, a call or a note, with a direction (incoming or outgoing), a date, a subject and the contact person attached. It hangs on the client and optionally on a project, so a client's timeline shows exactly what was discussed and with whom. The kinds are configurable per organisation; a meeting, for instance, splits into online and on-site."
+          "nl": "Een contactmoment is een e-mail, een afspraak, een telefoongesprek of een notitie, met richting (inkomend of uitgaand), datum, onderwerp en de contactpersoon erbij. Het hangt aan de klant en desgewenst aan een project en aan zoveel taken als het over gaat, want één e-mail beantwoordt vaak drie tickets; de eerste taak is de hoofdtaak, zodat de tijdlijn van een klant precies laat zien wat er is besproken en met wie. De soorten zijn per organisatie in te richten; een afspraak splitst bijvoorbeeld in online en op locatie.",
+          "en": "An interaction is an email, a meeting, a call or a note, with a direction (incoming or outgoing), a date, a subject and the contact person attached. It hangs on the client and optionally on a project and on as many tasks as it is about, because one email often answers three tickets; the first task is the lead, so a client's timeline shows exactly what was discussed and with whom. The kinds are configurable per organisation; a meeting, for instance, splits into online and on-site."
         },
         "bullets": {
           "nl": [
             "E-mail, afspraak (online of op locatie), telefoongesprek en notitie",
             "Inkomend of uitgaand, met datum, tijd en onderwerp",
-            "Gekoppeld aan de klant, een project en een contactpersoon"
+            "Gekoppeld aan de klant, een project, een of meer taken en de contactpersonen"
           ],
           "en": [
             "Email, meeting (online or on-site), call and note",
             "Incoming or outgoing, with date, time and subject",
-            "Linked to the client, a project and a contact person"
+            "Linked to the client, a project, one or more tasks and the contact people"
           ]
         }
       },
       {
         "heading": {
-          "nl": "Gmail dat zichzelf bijhoudt",
-          "en": "Gmail that keeps itself up to date"
+          "nl": "Mail die zichzelf bijhoudt",
+          "en": "Mail that keeps itself up to date"
         },
         "body": {
-          "nl": "Koppel je Google-account en berichten die bij een klant horen komen vanzelf op de tijdlijn te staan, met de status 'te beoordelen'. Je keurt goed wat blijft en wijst af wat niet meetelt; bij afwijzen kun je meteen het hele gesprek negeren, zodat het niet opnieuw langskomt. Het volledige bericht wordt op verzoek opgehaald, en met één klik open je het in Gmail.",
-          "en": "Connect your Google account and messages that belong to a client land on the timeline on their own, marked 'needs review'. You approve what stays and reject what should not count; on reject you can ignore the whole conversation at once, so it never comes back. The full message is fetched on demand, and one click opens it in Gmail."
+          "nl": "Koppel je Google- of Microsoft 365-account en berichten die bij een klant horen komen vanzelf binnen, met de status 'te beoordelen'. Interacties opent op die wachtrij, met het aantal op de tab. Een gesprek staat daar als één regel in plaats van twaalf, en één beoordeling kan het hele gesprek meenemen: dezelfde klant, dezelfde taken, voor elk wachtend bericht. Je keurt goed wat blijft en wijst af wat niet meetelt; bij afwijzen kun je meteen het hele gesprek negeren, zodat het niet opnieuw langskomt. Het volledige bericht wordt bij goedkeuren opgehaald, en met één klik open je het in Gmail of Outlook.",
+          "en": "Connect your Google or Microsoft 365 account and messages that belong to a client come in on their own, marked 'needs review'. Interacties opens on that queue, with the count on the tab. A conversation sits there as one row instead of twelve, and one review can take the whole conversation: the same client, the same tasks, for every waiting message. You approve what stays and reject what should not count; on reject you can ignore the whole conversation at once, so it never comes back. The full message is fetched on approval, and one click opens it in Gmail or Outlook."
         }
       },
       {
@@ -75,8 +75,8 @@
           "en": "Yours until you share it"
         },
         "body": {
-          "nl": "Wat nog op beoordeling wacht is van jou alleen: te-beoordelen regels zijn privé voor de eigenaar tot ze zijn goedgekeurd, zodat een half gematchte inbox niet meteen het hele team bereikt. Op het klantdossier verschijnt het paneel Contactmomenten met de tijdlijn, en op je dashboard een widget met wat er nog op je wacht. Contactmomenten is een uitbreidingsmodule: de kern van schakl. is open source (AGPL) en modules als deze draaien op een licentiesleutel die de beheerder invoert onder Instellingen → Licentie; verloopt die, dan wordt de module alleen-lezen en blijft de hele tijdlijn leesbaar. De Gmail-, Agenda- en Drive-kant is een tweede uitbreidingsmodule (Google Workspace) met een eigen licentie, dus je kunt contactmomenten met de hand bijhouden zonder Google, of allebei aanzetten.",
-          "en": "What is still awaiting review is yours alone: needs-review rows are private to their owner until approved, so a half-matched inbox does not reach the whole team at once. The client record shows the Interactions panel with the timeline, and your dashboard shows a widget with what is still waiting on you. Contactmomenten is an extension module: the core of schakl. is open source (AGPL) and modules like this one run on a licence key the administrator installs under Instellingen → Licentie; when it lapses the module goes read-only and the whole timeline stays readable. The Gmail, Calendar and Drive side is a second extension module — Google Workspace — with a licence of its own, so you can keep interactions by hand without Google, or switch both on."
+          "nl": "Wat nog op beoordeling wacht is niet van het team: te-beoordelen regels zijn privé voor de mailbox tot ze zijn goedgekeurd, zodat een half gematchte inbox niet meteen iedereen bereikt. Stonden er meer collega's op een e-mail, dan mag ieder van hen hem beoordelen, en wie het eerst beslist, beslist voor allemaal. Op het klantdossier verschijnt het paneel Contactmomenten met de tijdlijn, en op je dashboard een widget met wat er nog op je wacht. Contactmomenten is een uitbreidingsmodule: de kern van schakl. is open source (AGPL) en modules als deze draaien op een licentiesleutel die de beheerder invoert onder Instellingen → Licentie; verloopt die, dan wordt de module alleen-lezen en blijft de hele tijdlijn leesbaar. De mailboxkant zit in de koppelingen Google Workspace en Microsoft 365, elk met een eigen licentie, dus je kunt contactmomenten met de hand bijhouden zonder mailbox, of er een of beide bij aanzetten.",
+          "en": "What is still awaiting review is not the team's: needs-review rows are private to their mailbox until approved, so a half-matched inbox does not reach everyone at once. If more colleagues were on an email, any of them may review it, and whoever decides first decides for all. The client record shows the Interactions panel with the timeline, and your dashboard shows a widget with what is still waiting on you. Contactmomenten is an extension module: the core of schakl. is open source (AGPL) and modules like this one run on a licence key the administrator installs under Instellingen → Licentie; when it lapses the module goes read-only and the whole timeline stays readable. The mailbox side lives in the Google Workspace and Microsoft 365 integrations, each with a licence of its own, so you can keep interactions by hand without a mailbox, or add one or both."
         }
       }
     ]

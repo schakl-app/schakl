@@ -1,8 +1,8 @@
 ---
 title: Meldingen
-description: "De bel, de inbox en waar meldingen naartoe gaan: per gebeurtenis in-app, per e-mail of naar je eigen Slack, Teams of webhook."
+description: "De bel, de inbox en waar meldingen naartoe gaan: per gebeurtenis in-app, per e-mail, als browsermelding op je telefoon of laptop, of naar je eigen Slack, Teams of webhook."
 sidebar:
-  order: 20
+  order: 21
 ---
 
 import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
@@ -17,8 +17,8 @@ dag.
 
 - De **bel** in de bovenbalk, op elk scherm, met het aantal ongelezen meldingen.
 - **Meldingen**, de volledige lijst, via "Alles bekijken" in de bel.
-- *Instellingen → Meldingen* (onder "Mijn instellingen"): jouw eigen instellingen en jouw eigen
-  kanalen. Iedereen heeft dit scherm.
+- *Instellingen → Meldingen* (onder "Mijn instellingen"): jouw eigen instellingen, jouw eigen
+  kanalen en **Browsermeldingen** per apparaat. Iedereen heeft dit scherm.
 - *Instellingen → Standaardmeldingen* (groep "Integraties"): wat iedereen overneemt,
   plus de gedeelde kanalen van de organisatie. Alleen voor beheerders.
 
@@ -30,18 +30,26 @@ De bel toont je meest recente ongelezen meldingen, met **Alles gelezen**, **Meld
 type (Taak, Project, Klant, Verlof, Urenregistratie, Contactmoment). Per rij kun je **Markeer als
 gelezen** en weer terug, en bovenaan staat **Alles als gelezen markeren**.
 
+Een melding openen brengt je naar het record waar hij over gaat, en markeert hem als gelezen (een
+melding die je in een achtergrondtabblad opent, niet). Gaat hij over een reactie op een taak, dan
+opent de taak op precies die reactie, met ingeklapte reacties opengeklapt en het antwoordvak eronder
+klaar. Een urenherinnering opent de week die nog leeg was.
+
 ## Waarvoor je een melding krijgt
 
-Er zijn eenentwintig gebeurtenissen, gegroepeerd zoals in het instellingenscherm:
+De gebeurtenissen zijn gegroepeerd zoals in het instellingenscherm. Welke je ziet, hangt af van de
+modules die je organisatie draait: zonder verlofmodule zijn er geen verlofrijen.
 
 | Groep | Bijvoorbeeld |
 | --- | --- |
-| Taken (8) | Iemand @noemt me in een reactie |
+| Taken (11) | Iemand @noemt me in een reactie, iemand antwoordt op mijn reactie, een e-mail die ik naar het taakadres stuurde is een taak geworden |
 | Projecten (3) | Een project verbruikt zijn budget |
 | Klanten (3) | Een klant verandert van status |
 | Verlof (3) | Iemand vraagt verlof aan |
 | Uren (2) | Mijn urenregistratie is nog leeg |
 | Contactmomenten (2) | Een e-mail wacht op mijn beoordeling |
+| Vergaderingen (2) | Het verslag van mijn opname staat klaar, of de opname is niet aangekomen |
+| SnelStart (1) | De facturen van vannacht zijn niet in de boekhouding aangekomen |
 
 Daarnaast kan een automatiseringsregel een melding sturen. Die staat niet in de tabel hieronder: een
 regel zet je uit in de regel zelf.
@@ -52,13 +60,15 @@ Onder *Instellingen → Meldingen* staat bij **Per gebeurtenis** één rij per g
 
 - **In-app**: een vinkje **Aan**, een **Bezorging** en een **Vertraging (min)**.
 - **E-mail**: een **Bezorging** en een **Vertraging (min)**.
+- **Browser**: browsermeldingen op de apparaten die je hebt aangezet (zie hieronder).
 - Eén kolom per kanaal dat je zelf hebt gekoppeld.
 - **Waarde van**: waar deze rij zijn waarde vandaan haalt, als **Standaard**, **Organisatie** of
   **Eigen instelling**. Met **Terug naar overgenomen** haal je jouw eigen afwijking weer weg.
 
 Bezorging is steeds **Uit**, **Direct**, **Elk uur**, **Dagelijks overzicht** of **Wekelijks
 overzicht**. Boven elke kanaalkolom zet "Alles instellen…" die hele kolom in één keer; **Alle e-mail
-instellen op** doet dat voor de e-mailkolom.
+instellen op** en **Alle browsermeldingen instellen op** doen dat voor de e-mail- en de
+browserkolom.
 
 <Aside type="caution">
 Alles buiten de app is een deelverzameling van in-app. Zet je het vinkje **Aan** van een rij uit, dan
@@ -68,19 +78,38 @@ dezelfde regel op de **organisatie**-rij: komt de gebeurtenis bij niemand in de 
 bereikt hij het kanaal ook niet.
 </Aside>
 
-Standaard staat in-app alles aan. Een korte lijst komt meteen binnen (toewijzingen, @vermeldingen,
-te late taken, ingeplande taken en alle drie de verlofgebeurtenissen); de rest komt in het dagelijkse
-overzicht van 08:00 uur, op de klok van je organisatie (*Instellingen → Huisstijl → Tijdzone*).
-E-mail staat overal uit tot iemand hem aanzet.
+Standaard staat in-app alles aan. Een korte lijst komt meteen binnen (toewijzingen,
+@vermeldingen, een antwoord op je eigen reactie, te late taken, ingeplande taken, de bevestiging van
+het taakadres, alle drie de verlofgebeurtenissen, een e-mail die op beoordeling wacht en een
+klaarstaand vergaderverslag); de rest komt in het dagelijkse overzicht van 08:00 uur, op de klok van
+je organisatie (*Instellingen → Huisstijl → Tijdzone*). Browsermeldingen volgen dezelfde lijst: wat
+meteen binnenkomt, gaat ook naar je apparaat, en het dagoverzicht niet. E-mail staat uit tot iemand
+hem aanzet, met één uitzondering: een vergaderverslag dat klaarstaat (of een opname die niet
+aankwam) mailt standaard meteen, omdat wie opnam vaak al niet meer achter zijn bureau zit.
 
 Onder **Algemeen** staan **Bijna verlopen (dagen)** (standaard 3), **Stille uren vanaf** / **tot**,
-en het **E-mailschema**: de **Tijd** en de **Dag** waarop jouw dagelijkse en wekelijkse
-e-mailoverzichten vertrekken.
+het **E-mailschema** en het **Schema browsermeldingen**: de **Tijd** en de **Dag** waarop jouw
+dagelijkse en wekelijkse overzichten vertrekken.
 
-<Aside type="caution">
-Stille uren worden wel bewaard, maar nog niet toegepast. Het scherm zegt dat er zelf bij. Reken er
-dus niet op dat er 's nachts niets binnenkomt.
-</Aside>
+Stille uren gelden voor e-mail, chatkanalen en browsermeldingen: wat binnen die uren valt, wacht
+tot ze voorbij zijn, op de klok van je organisatie en ook als de uren over middernacht lopen. De bel
+blijft ongemoeid; die onderbreekt je toch niet.
+
+## Browsermeldingen
+
+Een browsermelding bereikt je telefoon of een dichtgeklapte laptop, ook als schakl. niet open
+staat. Je zet ze per apparaat aan onder *Instellingen → Meldingen* → **Browsermeldingen** →
+**Aanzetten op dit apparaat**; de browser vraagt dan zelf om toestemming. Dat is meteen de keuze:
+vanaf dan komen de dringende gebeurtenissen (de lijst hierboven die meteen binnenkomt) op dat
+apparaat binnen, en in de kolom **Browser** pas je dat per gebeurtenis aan.
+
+- **Test versturen** stuurt een testmelding naar al je apparaten.
+- Onder **Je apparaten** zie je waar het aan staat, met **Laatst gezien**, en haal je een apparaat
+  weg met **Verwijderen**.
+- Op iPhone en iPad werkt het alleen in de geïnstalleerde app: voeg schakl. eerst toe aan je
+  beginscherm.
+- Een overzicht is ook hier één bericht, niet één per apparaat per gebeurtenis. Een apparaat dat
+  je weggooide, wordt vanzelf opgeruimd.
 
 ## Een eigen kanaal koppelen
 
@@ -141,10 +170,18 @@ opende.
   niet.
 - De soort **E-mail** loopt via het e-mailtransport van je organisatie (*Instellingen → E-mail*) en
   doet dus niets zolang dat niet is ingesteld.
-- Wordt het onderwerp opgelost (een verlofaanvraag beslist, een e-mail beoordeeld), dan verdwijnt de
-  melding erover bij iedereen die hem nog niet had geopend.
-- Meldingen horen bij de kern en hebben geen licentiesleutel nodig. Er is geen sms, geen pushmelding
-  en geen snooze; sms bestaat alleen als tweede factor bij het inloggen.
+- Wordt het onderwerp opgelost (een verlofaanvraag beslist, een e-mail beoordeeld, een taak
+  afgerond die bijna verliep of te laat was), dan verdwijnt de melding erover bij iedereen die hem
+  nog niet had geopend.
+- Een overzicht bevat alleen wat nog speelt: wat je in de app al las of wat intussen is opgelost,
+  gaat niet alsnog per e-mail of browsermelding de deur uit. Is alles al gelezen, dan komt er
+  niets.
+- Een contactpersoon van een klant krijgt alleen iets over een taak die hij mag zien: wanneer hij
+  in een reactie wordt genoemd, of wanneer er gereageerd wordt op een taak die aan hem is
+  toegewezen. Een klantlogin krijgt dat standaard meteen per e-mail, want de bel is niet waar een
+  klant woont.
+- Meldingen horen bij de kern en hebben geen licentiesleutel nodig. Er is geen sms en geen snooze;
+  sms bestaat alleen als tweede factor bij het inloggen.
 
 ## Verder lezen
 
