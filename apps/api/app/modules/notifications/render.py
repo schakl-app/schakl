@@ -109,6 +109,11 @@ def event_path(event) -> str | None:  # noqa: ANN001
         return "/time"
     if event.entity_type == "meeting":
         return f"/meetings/{entity_id}"
+    if event.entity_type == "meta_post":
+        return f"/marketing/social/{entity_id}"
+    if event.entity_type == "meta_credential":
+        # A token has no page of its own; the screen that lists them is where it is fixed.
+        return "/settings/meta"
     if event.entity_type == "task_intake":
         # The parked mail's own row on the sender's inbox page (href.ts twin).
         return f"/tasks/inbox?open={entity_id}"

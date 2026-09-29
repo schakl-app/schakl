@@ -59,6 +59,11 @@ _NOT_IN_THE_DOCUMENT = frozenset(
         "openapi_document",
         "swagger_ui",
         "redoc",
+        # The address Meta fetches Instagram media from (app/integrations/meta/media.py). No
+        # session can exist there by definition: the path itself is a short-lived capability
+        # for one file, and unknown, expired and withdrawn all answer 404 — asserted by
+        # tests/test_meta_posts.py, which also asserts a second tenant's host cannot use it.
+        "serve_meta_media",
     }
 )
 

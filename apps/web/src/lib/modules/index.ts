@@ -36,6 +36,8 @@ import "$lib/integrations/google";
 import "$lib/integrations/microsoft";
 import "$lib/integrations/google_ads";
 import "$lib/integrations/google_tag_manager";
+import "$lib/integrations/meta";
+import "$lib/integrations/meta_ads";
 import "$lib/integrations/cloudflare";
 import "$lib/integrations/uptime";
 import "$lib/integrations/wordpress";

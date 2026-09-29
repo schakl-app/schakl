@@ -37,6 +37,16 @@
   } = $props();
 
   let broken = $state(false);
+  let image = $state<HTMLImageElement | null>(null);
+
+  // A picture that failed **before hydration** fired its `error` event at nobody: the markup
+  // was the server's and the handler below was not attached yet. So the first look asks the
+  // element what became of it — loaded and empty is broken — instead of waiting for an event
+  // that has already happened. A remote avatar whose signed URL has expired is the ordinary
+  // case, not the rare one.
+  $effect(() => {
+    if (image && image.complete && image.naturalWidth === 0) broken = true;
+  });
 
   const sizeClass = $derived(
     {
@@ -49,6 +59,7 @@
 
 {#if avatarUrl && !broken}
   <img
+    bind:this={image}
     src={avatarUrl}
     alt={name || email || ""}
     title={title ?? (name || email || undefined)}

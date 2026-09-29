@@ -185,13 +185,17 @@ def test_every_route_kept_out_of_the_schema_is_named_here() -> None:
     """``include_in_schema=False`` removes a route from the count above **and** from the marker
     sweep, so it is the one flag that can make a route invisible to this whole file.
 
-    Four routes use it, and the reason is the same for all of them: this is not product API, so
+    Five routes use it, and the reason is the same for all of them: this is not product API, so
     it must not become an MCP tool or a method on the generated client (CLAUDE.md §12).
 
     * the edge's branded error page (``app/core/errorpage.py``), which renders public branding
       with no session, in the situation where the SSR web app is unreachable;
     * the three interactive-reference routes (``app/core/apidocs.py``) — a document *about* the
-      API is not an operation on it, and publishing them would make the spec describe itself.
+      API is not an operation on it, and publishing them would make the spec describe itself;
+    * the address Meta fetches Instagram media from (``app/integrations/meta/router.py``): a
+      capability for one file of a delivery in flight, called by Meta's servers and by nothing
+      else. It declares its exemption and its reason like any open route; it is hidden because
+      a tool that serves a JPEG to whoever holds a token is not something an agent calls.
 
     Being hidden costs them this file's marker sweep, so they pay for it elsewhere: all three
     declare a reader gate that ``tests/test_api_docs.py`` asserts by status (401 to no
@@ -201,7 +205,13 @@ def test_every_route_kept_out_of_the_schema_is_named_here() -> None:
     to make loud.
     """
     hidden = {route.name for route in _leaves() if not route.include_in_schema}
-    assert hidden == {"edge_error_page", "openapi_document", "swagger_ui", "redoc"}
+    assert hidden == {
+        "edge_error_page",
+        "openapi_document",
+        "swagger_ui",
+        "redoc",
+        "serve_meta_media",
+    }
 
 
 def test_every_route_declares_a_permission_or_an_exemption() -> None:

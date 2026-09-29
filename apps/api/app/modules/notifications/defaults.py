@@ -29,6 +29,8 @@ from app.modules.notifications.events import (
     LEAVE_REQUESTED,
     MEETING_LOST,
     MEETING_READY,
+    META_POST_FAILED,
+    META_TOKEN_EXPIRING,
     PROJECT_ASSIGNED,
     SNELSTART_SYNC_FAILED,
     TASK_ASSIGNED,
@@ -85,6 +87,12 @@ _IMMEDIATE_EVENTS: frozenset[str] = frozenset(
         # not arrive. Digesting it until tomorrow morning is telling somebody at nine that last
         # night's meeting is gone, when at the time they were still in the building.
         MEETING_LOST,
+        # A post that was supposed to be live for a client and is not. Tomorrow's digest is a
+        # campaign that started a day late and nobody knowing why.
+        META_POST_FAILED,
+        # Weeks of warning, and still: the fix is a person generating a token in Business
+        # Settings, and the sooner they read the sentence the more of those weeks are left.
+        META_TOKEN_EXPIRING,
     }
 )
 
@@ -93,7 +101,16 @@ _IMMEDIATE_EVENTS: frozenset[str] = frozenset(
 #: person who is waiting for it and is most likely no longer at their desk: a colleague who
 #: recorded a meeting from a phone and walked out of the room. Still a default, so an org or a
 #: person switches it off in the matrix like any other row.
-EMAIL_DEFAULT_ON_EVENTS: frozenset[str] = frozenset({MEETING_READY, MEETING_LOST})
+EMAIL_DEFAULT_ON_EVENTS: frozenset[str] = frozenset(
+    {
+        MEETING_READY,
+        MEETING_LOST,
+        # The colleague who scheduled a post for Saturday morning is not at their desk on
+        # Saturday morning, which is exactly when it fails.
+        META_POST_FAILED,
+        META_TOKEN_EXPIRING,
+    }
+)
 
 
 @dataclass(frozen=True)

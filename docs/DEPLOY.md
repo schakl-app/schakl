@@ -322,19 +322,22 @@ ls`) — it's the one your `cloudflared` stack created. `cloudflared` routes `/a
 > `infra/cloudflared/*.json` is a long-lived tunnel credential and is gitignored. Never
 > commit it.
 
-### Two paths an outside service has to reach without a session
+### Three paths an outside service has to reach without a session
 
 If an Access policy sits in front of the hostname, it challenges **every** request — including
-the ones that come from somebody else's servers rather than from a browser. Two of those exist,
-and both fail *silently*: the caller sees a login page, retries on its own schedule, and gives
+the ones that come from somebody else's servers rather than from a browser. Three of those exist,
+and all fail *silently*: the caller sees a login page, retries on its own schedule, and gives
 up. Add a bypass for each, and only for each.
 
 | path | called by | what breaks without it |
 |---|---|---|
 | `/api/v1/invoicing/payments/webhook/*` | the tenant's payment provider (epic #269) | payments are collected at the provider and **never booked** on the invoice. The hourly reconcile turns this into a delay rather than a loss, but an instance running permanently on the safety net is spending an outbound call per unsettled payment per hour — `docs/PAYMENTS.md` §10 |
 | `/api/v1/google/calendar/webhook` | Google's push service | calendar changes arrive only on the poll fallback — `docs/GOOGLE.md` |
+| `/api/v1/meta-business/media/*` | Meta's media fetcher (`GET`) | every Instagram post with a picture fails: Instagram's API takes an image only as a public address, fetches it from its own servers, and is handed a login page — `docs/META.md` §5 |
 
-Both are safe to expose. Neither reads a session: each authenticates on a token schakl itself
+All are safe to expose. The media path serves one file of one delivery in flight, under a
+random name minted for that delivery and withdrawn when it ends, with `no-referrer` and
+`noindex`. The other two read no session either: each authenticates on a token schakl itself
 minted (`{org}.{account}.{secret}`), compares its secret in constant time, and answers a bare
 status with no body — and the payment one additionally takes nothing from the request except an
 id, re-fetching the actual status from the provider with the tenant's own credential.

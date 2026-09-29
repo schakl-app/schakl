@@ -10130,6 +10130,1013 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/meta-ads/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Meta Ads Accounts
+         * @description Every linked Meta ad account this caller may see — **start here**.
+         *
+         *     Every other tool takes one of these ``id`` values. An account is linked to a client in
+         *     Instellingen → Meta; one attached to no client is the agency's own.
+         */
+        get: operations["list_meta_ads_accounts_api_v1_meta_ads_accounts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta-ads/accounts/{account_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Meta Ads Account
+         * @description One linked ad account, as it is stored here. Costs Meta nothing.
+         */
+        get: operations["get_meta_ads_account_api_v1_meta_ads_accounts__account_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta-ads/accounts/{account_id}/ads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Meta Ads Ads
+         * @description The account's ads, with what Meta's review made of each (``effective_status``,
+         *     ``issues``) — the place a disapproved ad is found.
+         */
+        get: operations["list_meta_ads_ads_api_v1_meta_ads_accounts__account_id__ads_get"];
+        put?: never;
+        /**
+         * Create Meta Ads Ad
+         * @description Create an ad from an ad set and a creative. **Created paused**; once switched on it
+         *     passes Meta's review before it runs.
+         */
+        post: operations["create_meta_ads_ad_api_v1_meta_ads_accounts__account_id__ads_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta-ads/accounts/{account_id}/ads/{ad_meta_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Meta Ads Ad */
+        patch: operations["update_meta_ads_ad_api_v1_meta_ads_accounts__account_id__ads__ad_meta_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/meta-ads/accounts/{account_id}/adsets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Meta Ads Adsets
+         * @description The account's ad sets: who each one targets, what it may spend, and whose name the
+         *     EU's transparency rules put on it.
+         */
+        get: operations["list_meta_ads_adsets_api_v1_meta_ads_accounts__account_id__adsets_get"];
+        put?: never;
+        /**
+         * Create Meta Ads Adset
+         * @description Create an ad set: who sees the ads, and what they may cost. **Created paused.**
+         *
+         *     For an audience in the EU the two names the Digital Services Act requires are filled in
+         *     from the account's policy, its defaults at Meta or the client's legal name — and the
+         *     create is refused, naming the field, when nothing says who they are.
+         */
+        post: operations["create_meta_ads_adset_api_v1_meta_ads_accounts__account_id__adsets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta-ads/accounts/{account_id}/adsets/{adset_meta_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Meta Ads Adset */
+        patch: operations["update_meta_ads_adset_api_v1_meta_ads_accounts__account_id__adsets__adset_meta_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/meta-ads/accounts/{account_id}/adsets/{adset_meta_id}/budget": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Meta Ads Adset Budget
+         * @description Set an ad set's daily or lifetime budget, in **cents**. Meta allows four changes an
+         *     hour; the fifth is refused here, with the number.
+         */
+        put: operations["set_meta_ads_adset_budget_api_v1_meta_ads_accounts__account_id__adsets__adset_meta_id__budget_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta-ads/accounts/{account_id}/boost": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Boost Meta Post
+         * @description Put a budget behind a post that is already live: a campaign, an ad set, a creative
+         *     and an ad, made in that order and **all paused**. Needs the budget permission too.
+         *
+         *     Not atomic — Meta has no transaction. If a later step is refused, the answer says which
+         *     (``failed_step``) and names what was already made, all of it paused.
+         */
+        post: operations["boost_meta_post_api_v1_meta_ads_accounts__account_id__boost_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta-ads/accounts/{account_id}/campaigns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Meta Ads Campaigns
+         * @description The account's campaigns, with their budgets in cents.
+         */
+        get: operations["list_meta_ads_campaigns_api_v1_meta_ads_accounts__account_id__campaigns_get"];
+        put?: never;
+        /**
+         * Create Meta Ads Campaign
+         * @description Create a campaign. **It is created paused and spends nothing** until somebody holding
+         *     the activate permission switches it on.
+         *
+         *     A campaign that carries a budget also needs the budget permission. ``validate_only``
+         *     asks Meta whether it would accept this and creates nothing.
+         */
+        post: operations["create_meta_ads_campaign_api_v1_meta_ads_accounts__account_id__campaigns_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta-ads/accounts/{account_id}/campaigns/{campaign_meta_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Meta Ads Campaign
+         * @description Rename, reschedule, pause or archive a campaign. Its budget and switching it on are
+         *     separate tools with separate permissions.
+         */
+        patch: operations["update_meta_ads_campaign_api_v1_meta_ads_accounts__account_id__campaigns__campaign_meta_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/meta-ads/accounts/{account_id}/campaigns/{campaign_meta_id}/budget": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Meta Ads Campaign Budget
+         * @description Set a campaign's daily or lifetime budget, in **cents**.
+         *
+         *     Judged against the account's guardrails first: a refusal names the limit
+         *     (``details.limit``) and what was asked (``details.value``). Lowering a budget is never
+         *     refused.
+         */
+        put: operations["set_meta_ads_campaign_budget_api_v1_meta_ads_accounts__account_id__campaigns__campaign_meta_id__budget_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta-ads/accounts/{account_id}/creatives": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Meta Ads Creatives */
+        get: operations["list_meta_ads_creatives_api_v1_meta_ads_accounts__account_id__creatives_get"];
+        put?: never;
+        /**
+         * Create Meta Ads Creative
+         * @description Create what an ad shows: a link with words and a picture, or a post that is already
+         *     live (``meta_post_id``). The Page it runs as must be the same client's as the ad account.
+         *
+         *     A creative's words cannot be changed afterwards — that is Meta's rule — so changing
+         *     copy means a new creative and pointing the ad at it.
+         */
+        post: operations["create_meta_ads_creative_api_v1_meta_ads_accounts__account_id__creatives_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta-ads/accounts/{account_id}/decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Meta Ads Decisions
+         * @description What was changed in this account from here, by whom, and why — newest first.
+         *
+         *     Read this **before proposing a change**: it is the only place that says a budget was
+         *     raised last Tuesday because the client asked, or that a campaign was looked at and
+         *     deliberately left running.
+         */
+        get: operations["list_meta_ads_decisions_api_v1_meta_ads_accounts__account_id__decisions_get"];
+        put?: never;
+        /**
+         * Record Meta Ads Decision
+         * @description Record that something was looked at and **left as it is**, and why. Changes nothing
+         *     at Meta — which is exactly why it has to be written down here.
+         */
+        post: operations["record_meta_ads_decision_api_v1_meta_ads_accounts__account_id__decisions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta-ads/accounts/{account_id}/images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Meta Ads Image
+         * @description Upload an image to the ad account, base64 in JSON, and get the ``hash`` a creative
+         *     names it by.
+         */
+        post: operations["upload_meta_ads_image_api_v1_meta_ads_accounts__account_id__images_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta-ads/accounts/{account_id}/insights": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Meta Ads Insights
+         * @description Spend, reach, clicks and results — per campaign, ad set or ad, over a span.
+         *
+         *     ``totals`` is Meta's own figure for the whole span, never a sum of the rows: ``ctr``,
+         *     ``cpc`` and ``reach`` cannot be added up. The last two days are provisional, which
+         *     ``warnings`` says.
+         */
+        get: operations["meta_ads_insights_api_v1_meta_ads_accounts__account_id__insights_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta-ads/accounts/{account_id}/live": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Meta Ads Account Live
+         * @description What Meta says about the account now: its status, what it has spent, its cap — and
+         *     how much of the hourly API allowance is used.
+         */
+        get: operations["get_meta_ads_account_live_api_v1_meta_ads_accounts__account_id__live_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta-ads/accounts/{account_id}/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Meta Ads Policy
+         * @description The guardrails that apply to this account, and which of them are its own.
+         */
+        get: operations["get_meta_ads_policy_api_v1_meta_ads_accounts__account_id__policy_get"];
+        /** Save Meta Ads Policy */
+        put: operations["save_meta_ads_policy_api_v1_meta_ads_accounts__account_id__policy_put"];
+        post?: never;
+        /**
+         * Clear Meta Ads Policy
+         * @description Drop this account's own guardrails. The house policy applies again.
+         */
+        delete: operations["clear_meta_ads_policy_api_v1_meta_ads_accounts__account_id__policy_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta-ads/accounts/{account_id}/{kind}/{meta_id}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Activate Meta Ads Object
+         * @description Switch a campaign, ad set or ad **on**. From here it can spend the client's money.
+         *
+         *     ``kind`` is ``campaigns``, ``adsets`` or ``ads``. An ad runs only while its ad set and
+         *     its campaign are on too, so building everything paused and switching the campaign on
+         *     last is the order that spends nothing by accident.
+         */
+        post: operations["activate_meta_ads_object_api_v1_meta_ads_accounts__account_id___kind___meta_id__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta-ads/accounts/{account_id}/{kind}/{meta_id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause Meta Ads Object
+         * @description Pause a campaign, ad set or ad. It stops spending; nothing is deleted.
+         */
+        post: operations["pause_meta_ads_object_api_v1_meta_ads_accounts__account_id___kind___meta_id__pause_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta-ads/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Meta Ads House Policy
+         * @description The agency's own guardrails: what applies to every ad account that says nothing else.
+         */
+        get: operations["get_meta_ads_house_policy_api_v1_meta_ads_policy_get"];
+        /** Save Meta Ads House Policy */
+        put: operations["save_meta_ads_house_policy_api_v1_meta_ads_policy_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta-ads/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Meta Ads Settings
+         * @description Whether anything may be changed in an ad account at all.
+         */
+        get: operations["get_meta_ads_settings_api_v1_meta_ads_settings_get"];
+        /** Save Meta Ads Settings */
+        put: operations["save_meta_ads_settings_api_v1_meta_ads_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta-business/assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Meta Assets
+         * @description The Pages, Instagram accounts and ad accounts this org works on — **start here**.
+         *
+         *     Every other tool takes one of these ``id`` values. ``can_publish`` says whether a post
+         *     can go to a channel as things stand, and ``blocked_by`` says why not.
+         */
+        get: operations["list_meta_assets_api_v1_meta_business_assets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta-business/assets/{asset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Meta Asset */
+        get: operations["get_meta_asset_api_v1_meta_business_assets__asset_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Meta Asset
+         * @description Say whose asset this is, and whether it is worked on here. Naming a client switches
+         *     the asset on; ``company_id: null`` makes it the agency's own.
+         */
+        patch: operations["update_meta_asset_api_v1_meta_business_assets__asset_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/meta-business/assets/{asset_id}/insights": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Meta Asset Insights
+         * @description Views, reach and engagement for a Page or Instagram account over a span of days.
+         *
+         *     Defaults to the last 28 whole days. A metric Meta did not answer for is listed under
+         *     ``unavailable`` rather than reported as zero.
+         */
+        get: operations["meta_asset_insights_api_v1_meta_business_assets__asset_id__insights_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta-business/assets/{asset_id}/published": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Meta Published Posts
+         * @description What is live on this channel right now, newest first — whoever posted it.
+         *
+         *     Read from Meta on every call. It includes what the client posted themselves, which the
+         *     planned posts here never will.
+         */
+        get: operations["list_meta_published_posts_api_v1_meta_business_assets__asset_id__published_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta-business/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Meta Credentials
+         * @description The system-user tokens this org holds, with each one's clock: when it expires, when it
+         *     was last refreshed, and what the last refresh said.
+         */
+        get: operations["list_meta_credentials_api_v1_meta_business_credentials_get"];
+        put?: never;
+        /**
+         * Add Meta Credential
+         * @description Store a system-user token and ask Meta at once what it is.
+         *
+         *     Never fails for a token that answered badly: the outcome is on the row (``status``,
+         *     ``last_error``, ``missing_scopes``), where the screen draws it beside the token that has
+         *     the problem.
+         */
+        post: operations["add_meta_credential_api_v1_meta_business_credentials_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta-business/credentials/{credential_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Meta Credential
+         * @description Forget the token here. **Nothing is revoked at Meta** — that is done in Business
+         *     Settings, where the token was made. The assets stay, dormant, with their clients.
+         */
+        delete: operations["remove_meta_credential_api_v1_meta_business_credentials__credential_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Meta Credential */
+        patch: operations["update_meta_credential_api_v1_meta_business_credentials__credential_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/meta-business/credentials/{credential_id}/discover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Discover Meta Assets
+         * @description Read every Page, Instagram account and ad account this token reaches. Links nothing:
+         *     a new asset arrives switched off, and a person says whose it is.
+         */
+        post: operations["discover_meta_assets_api_v1_meta_business_credentials__credential_id__discover_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta-business/credentials/{credential_id}/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh Meta Credential
+         * @description Exchange an expiring token for another sixty days, now.
+         *
+         *     The nightly job does this by itself once a token has twenty days left. It needs the app
+         *     secret and a token that is still alive: one already past its expiry cannot be refreshed
+         *     and has to be generated again in Business Settings.
+         */
+        post: operations["refresh_meta_credential_api_v1_meta_business_credentials__credential_id__refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta-business/credentials/{credential_id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify Meta Credential
+         * @description Ask Meta what this token is — its scopes, its expiry, whose it is — and record it.
+         */
+        post: operations["verify_meta_credential_api_v1_meta_business_credentials__credential_id__verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta-business/posts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Social Posts
+         * @description Planned and published posts, with each channel's own outcome.
+         *
+         *     The dates filter on when a post went out, or is due to. A page is a page: ``total`` is
+         *     the number of posts the filters match, not the number returned.
+         */
+        get: operations["list_social_posts_api_v1_meta_business_posts_get"];
+        put?: never;
+        /**
+         * Create Social Post
+         * @description Write a draft. **Nothing is published and nothing is scheduled.**
+         *
+         *     ``asset_ids`` are the channels (from ``list_meta_assets``) and must all be one client's.
+         *     Images are attached afterwards: upload each to ``/files`` with
+         *     ``entity_type=meta_post`` and this post's id, then name the file ids in ``media`` on an
+         *     update. The answer carries ``issues`` — what would stop this post being scheduled.
+         */
+        post: operations["create_social_post_api_v1_meta_business_posts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta-business/posts/counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Social Post Counts
+         * @description How many posts stand in each status — what needs approval, what failed.
+         */
+        get: operations["social_post_counts_api_v1_meta_business_posts_counts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta-business/posts/{post_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Social Post */
+        get: operations["get_social_post_api_v1_meta_business_posts__post_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Social Post
+         * @description Delete a post that never went out. One that reached a channel is a record of what was
+         *     said in a client's name, and stays.
+         */
+        delete: operations["delete_social_post_api_v1_meta_business_posts__post_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Social Post
+         * @description Change a post that has not gone out.
+         *
+         *     A draft needs the drafting permission. A post that is already **scheduled** needs the
+         *     publishing one, because the change is what will be published — and is refused if it
+         *     would make the post unpublishable.
+         */
+        patch: operations["update_social_post_api_v1_meta_business_posts__post_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/meta-business/posts/{post_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Social Post
+         * @description Withdraw a post for good, keeping it as a record of what was planned. Cancelling one
+         *     that is already scheduled needs the publishing permission.
+         */
+        post: operations["cancel_social_post_api_v1_meta_business_posts__post_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta-business/posts/{post_id}/duplicate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Duplicate Social Post
+         * @description A new draft with the same words and channels. The images are not copied.
+         */
+        post: operations["duplicate_social_post_api_v1_meta_business_posts__post_id__duplicate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta-business/posts/{post_id}/images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Social Post Image
+         * @description Add a picture to a post: base64 in, the post with its new picture and its checks out.
+         *
+         *     JPEG, PNG or WebP. Instagram takes ratios from 4:5 to 1.91:1, and the answer's ``issues``
+         *     say so when this picture is outside them. To reorder or remove pictures, send the
+         *     ``media`` list you want with the update.
+         */
+        post: operations["add_social_post_image_api_v1_meta_business_posts__post_id__images_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta-business/posts/{post_id}/offer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Offer Social Post
+         * @description Hand a draft to whoever may schedule it. Still published nowhere.
+         */
+        post: operations["offer_social_post_api_v1_meta_business_posts__post_id__offer_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta-business/posts/{post_id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish Social Post Now
+         * @description Publish a post to its channels **now**.
+         *
+         *     Answers at once with the post ``scheduled`` for this moment; the worker publishes it
+         *     within the minute. Read the post again for each channel's outcome.
+         */
+        post: operations["publish_social_post_now_api_v1_meta_business_posts__post_id__publish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta-business/posts/{post_id}/recall": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Recall Social Post
+         * @description Take a post back from review to keep writing it.
+         */
+        post: operations["recall_social_post_api_v1_meta_business_posts__post_id__recall_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta-business/posts/{post_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Social Post
+         * @description Try the channels that failed once more. The ones that went out are left alone.
+         */
+        post: operations["retry_social_post_api_v1_meta_business_posts__post_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta-business/posts/{post_id}/schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Schedule Social Post
+         * @description Approve a post and give it a time. **It will be published at that time.**
+         *
+         *     Refused with every reason named (``details.issues``) while the post has a problem. A
+         *     naive ``scheduled_at`` is read on the org's own clock.
+         */
+        post: operations["schedule_social_post_api_v1_meta_business_posts__post_id__schedule_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta-business/posts/{post_id}/unschedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unschedule Social Post
+         * @description Take a scheduled post back to a draft. Nothing has gone out and nothing will.
+         */
+        post: operations["unschedule_social_post_api_v1_meta_business_posts__post_id__unschedule_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta-business/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Meta Settings
+         * @description The org's Meta app, the write switch, and who schedules a Facebook post.
+         */
+        get: operations["get_meta_settings_api_v1_meta_business_settings_get"];
+        /**
+         * Save Meta Settings
+         * @description Save the app and the posture. The app secret is write-only: send it to set it, send
+         *     ``null`` to clear it, leave it out to keep it.
+         */
+        put: operations["save_meta_settings_api_v1_meta_business_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/meta-business/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Meta Status
+         * @description Whether Meta is connected, how many channels are linked, and who schedules — the
+         *     answer to "why is this planner empty", for anyone who may read the channels.
+         */
+        get: operations["get_meta_status_api_v1_meta_business_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/meta/domain-probe": {
         parameters: {
             query?: never;
@@ -28639,6 +29646,1031 @@ export interface components {
             /** Role Ids */
             role_ids: string[];
         };
+        /**
+         * MetaAdsAccountLive
+         * @description What Meta says about the account right now.
+         */
+        MetaAdsAccountLive: {
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /** Account Status */
+            account_status: number | null;
+            /** Amount Spent Cents */
+            amount_spent_cents: number | null;
+            /** Api Tier */
+            api_tier: string | null;
+            /** Balance Cents */
+            balance_cents: number | null;
+            /** Currency */
+            currency: string | null;
+            /** Disable Reason */
+            disable_reason: number | null;
+            /** Meta Id */
+            meta_id: string;
+            /** Name */
+            name: string;
+            /** Spend Cap Cents */
+            spend_cap_cents: number | null;
+            /** Usage Percent */
+            usage_percent: number | null;
+        };
+        /** MetaAdsAccountRead */
+        MetaAdsAccountRead: {
+            /** Account Status */
+            account_status: number | null;
+            /** Ads Manager Url */
+            ads_manager_url: string;
+            /** Can Read */
+            can_read: boolean;
+            /** Can Write */
+            can_write: boolean;
+            /** Company Id */
+            company_id: string | null;
+            /** Company Name */
+            company_name?: string | null;
+            /** Currency */
+            currency: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Error */
+            last_error: string | null;
+            /** Meta Id */
+            meta_id: string;
+            /** Name */
+            name: string;
+            /** Status */
+            status: string;
+            /** Timezone */
+            timezone: string | null;
+        };
+        /**
+         * MetaAdsAdCreate
+         * @description A new ad. **Always created paused.**
+         */
+        MetaAdsAdCreate: {
+            /** Adset Meta Id */
+            adset_meta_id: string;
+            /** Creative Meta Id */
+            creative_meta_id: string;
+            /** Name */
+            name: string;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /**
+             * Validate Only
+             * @default false
+             */
+            validate_only: boolean;
+        };
+        /** MetaAdsAdRead */
+        MetaAdsAdRead: {
+            /** Adset Meta Id */
+            adset_meta_id: string | null;
+            /** Campaign Meta Id */
+            campaign_meta_id: string | null;
+            /** Created Time */
+            created_time: string | null;
+            /** Creative Meta Id */
+            creative_meta_id: string | null;
+            /** Effective Status */
+            effective_status: string | null;
+            /** Issues */
+            issues: {
+                [key: string]: unknown;
+            }[];
+            /** Meta Id */
+            meta_id: string;
+            /** Name */
+            name: string;
+            /** Status */
+            status: string | null;
+        };
+        /**
+         * MetaAdsAdSetCreate
+         * @description A new ad set. **Always created paused.**
+         */
+        MetaAdsAdSetCreate: {
+            /** Bid Amount Cents */
+            bid_amount_cents?: number | null;
+            /** Bid Strategy */
+            bid_strategy?: string | null;
+            /**
+             * Billing Event
+             * @default IMPRESSIONS
+             */
+            billing_event: string;
+            /** Campaign Meta Id */
+            campaign_meta_id: string;
+            /** Daily Budget Cents */
+            daily_budget_cents?: number | null;
+            /** Destination Type */
+            destination_type?: string | null;
+            /** Dsa Beneficiary */
+            dsa_beneficiary?: string | null;
+            /** Dsa Payor */
+            dsa_payor?: string | null;
+            /** End Time */
+            end_time?: string | null;
+            /** Lifetime Budget Cents */
+            lifetime_budget_cents?: number | null;
+            /** Name */
+            name: string;
+            /** Optimization Goal */
+            optimization_goal: string;
+            /** Promoted Object */
+            promoted_object?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Start Time */
+            start_time?: string | null;
+            targeting: components["schemas"]["MetaAdsTargeting"];
+            /**
+             * Validate Only
+             * @default false
+             */
+            validate_only: boolean;
+        };
+        /** MetaAdsAdSetRead */
+        MetaAdsAdSetRead: {
+            /** Bid Amount Cents */
+            bid_amount_cents: number | null;
+            /** Bid Strategy */
+            bid_strategy: string | null;
+            /** Billing Event */
+            billing_event: string | null;
+            /** Budget Remaining Cents */
+            budget_remaining_cents: number | null;
+            /** Campaign Meta Id */
+            campaign_meta_id: string | null;
+            /** Daily Budget Cents */
+            daily_budget_cents: number | null;
+            /** Dsa Beneficiary */
+            dsa_beneficiary: string | null;
+            /** Dsa Payor */
+            dsa_payor: string | null;
+            /** Effective Status */
+            effective_status: string | null;
+            /** End Time */
+            end_time: string | null;
+            /** Lifetime Budget Cents */
+            lifetime_budget_cents: number | null;
+            /** Meta Id */
+            meta_id: string;
+            /** Name */
+            name: string;
+            /** Optimization Goal */
+            optimization_goal: string | null;
+            /** Start Time */
+            start_time: string | null;
+            /** Status */
+            status: string | null;
+            /** Targeting */
+            targeting: {
+                [key: string]: unknown;
+            };
+        };
+        /** MetaAdsAdSetUpdate */
+        MetaAdsAdSetUpdate: {
+            /** Bid Amount Cents */
+            bid_amount_cents?: number | null;
+            /** Dsa Beneficiary */
+            dsa_beneficiary?: string | null;
+            /** Dsa Payor */
+            dsa_payor?: string | null;
+            /** End Time */
+            end_time?: string | null;
+            /** Name */
+            name?: string | null;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Start Time */
+            start_time?: string | null;
+            /** Status */
+            status?: ("PAUSED" | "ARCHIVED") | null;
+            targeting?: components["schemas"]["MetaAdsTargeting"] | null;
+            /**
+             * Validate Only
+             * @default false
+             */
+            validate_only: boolean;
+        };
+        /** MetaAdsAdUpdate */
+        MetaAdsAdUpdate: {
+            /** Creative Meta Id */
+            creative_meta_id?: string | null;
+            /** Name */
+            name?: string | null;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Status */
+            status?: ("PAUSED" | "ARCHIVED") | null;
+            /**
+             * Validate Only
+             * @default false
+             */
+            validate_only: boolean;
+        };
+        /**
+         * MetaAdsBoost
+         * @description Put money behind a post that is already live: a campaign, an ad set, a creative and an
+         *     ad, made together and **all paused**.
+         */
+        MetaAdsBoost: {
+            /** Daily Budget Cents */
+            daily_budget_cents: number;
+            /** Dsa Beneficiary */
+            dsa_beneficiary?: string | null;
+            /** Dsa Payor */
+            dsa_payor?: string | null;
+            /** End Time */
+            end_time?: string | null;
+            /** Meta Post Id */
+            meta_post_id: string;
+            /** Name */
+            name?: string | null;
+            /**
+             * Objective
+             * @default OUTCOME_ENGAGEMENT
+             * @enum {string}
+             */
+            objective: "OUTCOME_AWARENESS" | "OUTCOME_TRAFFIC" | "OUTCOME_ENGAGEMENT" | "OUTCOME_LEADS" | "OUTCOME_SALES" | "OUTCOME_APP_PROMOTION";
+            /**
+             * Optimization Goal
+             * @default POST_ENGAGEMENT
+             */
+            optimization_goal: string;
+            /**
+             * Page Id
+             * Format: uuid
+             */
+            page_id: string;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Start Time */
+            start_time?: string | null;
+            targeting: components["schemas"]["MetaAdsTargeting"];
+            /**
+             * Validate Only
+             * @default false
+             */
+            validate_only: boolean;
+        };
+        /** MetaAdsBoostResult */
+        MetaAdsBoostResult: {
+            /** Ad Meta Id */
+            ad_meta_id: string | null;
+            /** Adset Meta Id */
+            adset_meta_id: string | null;
+            /** Applied */
+            applied: boolean;
+            /** Campaign Meta Id */
+            campaign_meta_id: string | null;
+            /** Creative Meta Id */
+            creative_meta_id: string | null;
+            /** Failed Step */
+            failed_step?: string | null;
+            /** Validate Only */
+            validate_only: boolean;
+        };
+        /**
+         * MetaAdsBudgetWrite
+         * @description One of the two. The change is judged against the account's policy before it is sent.
+         */
+        MetaAdsBudgetWrite: {
+            /** Daily Budget Cents */
+            daily_budget_cents?: number | null;
+            /** Lifetime Budget Cents */
+            lifetime_budget_cents?: number | null;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /**
+             * Validate Only
+             * @default false
+             */
+            validate_only: boolean;
+        };
+        /**
+         * MetaAdsCampaignCreate
+         * @description A new campaign. **Always created paused.**
+         */
+        MetaAdsCampaignCreate: {
+            /** Bid Strategy */
+            bid_strategy?: string | null;
+            /** Daily Budget Cents */
+            daily_budget_cents?: number | null;
+            /** Lifetime Budget Cents */
+            lifetime_budget_cents?: number | null;
+            /** Name */
+            name: string;
+            /**
+             * Objective
+             * @enum {string}
+             */
+            objective: "OUTCOME_AWARENESS" | "OUTCOME_TRAFFIC" | "OUTCOME_ENGAGEMENT" | "OUTCOME_LEADS" | "OUTCOME_SALES" | "OUTCOME_APP_PROMOTION";
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Special Ad Categories */
+            special_ad_categories?: ("EMPLOYMENT" | "HOUSING" | "CREDIT" | "FINANCIAL_PRODUCTS_SERVICES" | "ISSUES_ELECTIONS_POLITICS" | "ONLINE_GAMBLING_AND_GAMING")[];
+            /** Special Ad Category Countries */
+            special_ad_category_countries?: string[];
+            /** Start Time */
+            start_time?: string | null;
+            /** Stop Time */
+            stop_time?: string | null;
+            /**
+             * Validate Only
+             * @default false
+             */
+            validate_only: boolean;
+        };
+        /** MetaAdsCampaignRead */
+        MetaAdsCampaignRead: {
+            /** Bid Strategy */
+            bid_strategy: string | null;
+            /** Budget Remaining Cents */
+            budget_remaining_cents: number | null;
+            /** Created Time */
+            created_time: string | null;
+            /** Daily Budget Cents */
+            daily_budget_cents: number | null;
+            /** Effective Status */
+            effective_status: string | null;
+            /** Lifetime Budget Cents */
+            lifetime_budget_cents: number | null;
+            /** Meta Id */
+            meta_id: string;
+            /** Name */
+            name: string;
+            /** Objective */
+            objective: string | null;
+            /** Special Ad Categories */
+            special_ad_categories: string[];
+            /** Start Time */
+            start_time: string | null;
+            /** Status */
+            status: string | null;
+            /** Stop Time */
+            stop_time: string | null;
+            /** Updated Time */
+            updated_time: string | null;
+        };
+        /** MetaAdsCampaignUpdate */
+        MetaAdsCampaignUpdate: {
+            /** Name */
+            name?: string | null;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Start Time */
+            start_time?: string | null;
+            /** Status */
+            status?: ("PAUSED" | "ARCHIVED") | null;
+            /** Stop Time */
+            stop_time?: string | null;
+            /**
+             * Validate Only
+             * @default false
+             */
+            validate_only: boolean;
+        };
+        /**
+         * MetaAdsCreativeCreate
+         * @description What the ad shows: a link with words and a picture, or a post that already exists.
+         */
+        MetaAdsCreativeCreate: {
+            /** Call To Action */
+            call_to_action?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Headline */
+            headline?: string | null;
+            /** Image Hash */
+            image_hash?: string | null;
+            /** Image Url */
+            image_url?: string | null;
+            /** Instagram Id */
+            instagram_id?: string | null;
+            /** Link */
+            link?: string | null;
+            /** Message */
+            message?: string | null;
+            /** Meta Post Id */
+            meta_post_id?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Page Id
+             * Format: uuid
+             */
+            page_id: string;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+        };
+        /** MetaAdsCreativeRead */
+        MetaAdsCreativeRead: {
+            /** Meta Id */
+            meta_id: string;
+            /** Name */
+            name: string;
+            /** Object Story Id */
+            object_story_id: string | null;
+            /** Status */
+            status: string | null;
+            /** Thumbnail Url */
+            thumbnail_url: string | null;
+        };
+        /**
+         * MetaAdsDecisionCreate
+         * @description Record a judgement that changed nothing: "looked at this, left it as it is".
+         */
+        MetaAdsDecisionCreate: {
+            /** Reason */
+            reason: string;
+            /** Subject Meta Id */
+            subject_meta_id: string;
+            /**
+             * Subject Type
+             * @enum {string}
+             */
+            subject_type: "campaign" | "ad_set" | "ad";
+        };
+        /** MetaAdsDecisionPage */
+        MetaAdsDecisionPage: {
+            /** Items */
+            items: components["schemas"]["MetaAdsDecisionRead"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** MetaAdsDecisionRead */
+        MetaAdsDecisionRead: {
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /** Applied */
+            applied: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Decided By Name */
+            decided_by_name: string;
+            /** Decision */
+            decision: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Impersonator Name */
+            impersonator_name: string | null;
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+            /** Reason */
+            reason: string;
+            /** Subject Meta Id */
+            subject_meta_id: string;
+            /** Subject Name */
+            subject_name: string;
+            /** Subject Type */
+            subject_type: string;
+        };
+        /** MetaAdsImageRead */
+        MetaAdsImageRead: {
+            /** Hash */
+            hash: string;
+            /** Url */
+            url: string | null;
+        };
+        /**
+         * MetaAdsImageUpload
+         * @description An image for an ad, as JSON — the multipart route's twin, so a tool can reach it.
+         */
+        MetaAdsImageUpload: {
+            /** Content Base64 */
+            content_base64: string;
+            /** Filename */
+            filename: string;
+        };
+        /** MetaAdsInsightRow */
+        MetaAdsInsightRow: {
+            /** Actions */
+            actions: {
+                [key: string]: number;
+            };
+            /** Clicks */
+            clicks: number;
+            /** Cpc */
+            cpc: number | null;
+            /** Cpm */
+            cpm: number | null;
+            /** Ctr */
+            ctr: number | null;
+            /** Date From */
+            date_from: string | null;
+            /** Date To */
+            date_to: string | null;
+            /** Impressions */
+            impressions: number;
+            /** Meta Id */
+            meta_id: string | null;
+            /** Name */
+            name: string | null;
+            /** Reach */
+            reach: number | null;
+            /** Spend */
+            spend: number;
+        };
+        /** MetaAdsInsightsRead */
+        MetaAdsInsightsRead: {
+            /**
+             * Account Id
+             * Format: uuid
+             */
+            account_id: string;
+            /** Currency */
+            currency: string | null;
+            /**
+             * Date From
+             * Format: date
+             */
+            date_from: string;
+            /**
+             * Date To
+             * Format: date
+             */
+            date_to: string;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "account" | "campaign" | "adset" | "ad";
+            /** Rows */
+            rows: components["schemas"]["MetaAdsInsightRow"][];
+            totals: components["schemas"]["MetaAdsInsightRow"] | null;
+            /** Warnings */
+            warnings: string[];
+        };
+        /** MetaAdsPolicyRead */
+        MetaAdsPolicyRead: {
+            /** Account Id */
+            account_id: string | null;
+            effective: components["schemas"]["MetaAdsPolicyValues"];
+            /**
+             * House Steering
+             * @default
+             */
+            house_steering: string;
+            own: components["schemas"]["MetaAdsPolicyValues"];
+        };
+        /** MetaAdsPolicyValues */
+        MetaAdsPolicyValues: {
+            /** Banned Phrases */
+            banned_phrases?: string[];
+            /** Dsa Beneficiary */
+            dsa_beneficiary?: string | null;
+            /** Dsa Payor */
+            dsa_payor?: string | null;
+            /** Max Budget Increase Pct */
+            max_budget_increase_pct?: number | null;
+            /** Max Daily Budget Cents */
+            max_daily_budget_cents?: number | null;
+            /** Max Lifetime Budget Cents */
+            max_lifetime_budget_cents?: number | null;
+            /**
+             * Steering
+             * @default
+             */
+            steering: string;
+        };
+        /**
+         * MetaAdsPolicyWrite
+         * @description §18: a field left out is left alone; ``null`` on a limit makes it inherit again.
+         */
+        MetaAdsPolicyWrite: {
+            /** Banned Phrases */
+            banned_phrases?: string[] | null;
+            /** Dsa Beneficiary */
+            dsa_beneficiary?: string | null;
+            /** Dsa Payor */
+            dsa_payor?: string | null;
+            /** Max Budget Increase Pct */
+            max_budget_increase_pct?: number | null;
+            /** Max Daily Budget Cents */
+            max_daily_budget_cents?: number | null;
+            /** Max Lifetime Budget Cents */
+            max_lifetime_budget_cents?: number | null;
+            /** Steering */
+            steering?: string | null;
+        };
+        /**
+         * MetaAdsResult
+         * @description What a write came to.
+         */
+        MetaAdsResult: {
+            /** Applied */
+            applied: boolean;
+            /** Decision Id */
+            decision_id?: string | null;
+            /** Kind */
+            kind: string;
+            /** Meta Id */
+            meta_id: string | null;
+            /** Status */
+            status?: string | null;
+            /** Validate Only */
+            validate_only: boolean;
+        };
+        /** MetaAdsSettingsRead */
+        MetaAdsSettingsRead: {
+            /** Writes Enabled */
+            writes_enabled: boolean;
+        };
+        /** MetaAdsSettingsWrite */
+        MetaAdsSettingsWrite: {
+            /** Writes Enabled */
+            writes_enabled?: boolean | null;
+        };
+        /** MetaAdsStatusWrite */
+        MetaAdsStatusWrite: {
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /**
+             * Validate Only
+             * @default false
+             */
+            validate_only: boolean;
+        };
+        /**
+         * MetaAdsTargeting
+         * @description Who sees the ad. The common fields are modelled; ``extra`` takes the rest as Meta
+         *     spells it (interests, custom audiences, placements), and Meta's own validator judges it.
+         */
+        MetaAdsTargeting: {
+            /**
+             * Advantage Audience
+             * @default false
+             */
+            advantage_audience: boolean;
+            /**
+             * Age Max
+             * @default 65
+             */
+            age_max: number;
+            /**
+             * Age Min
+             * @default 18
+             */
+            age_min: number;
+            /** Countries */
+            countries: string[];
+            /** Extra */
+            extra?: {
+                [key: string]: unknown;
+            };
+            /** Genders */
+            genders?: number[];
+        };
+        /** MetaAssetPage */
+        MetaAssetPage: {
+            /** Items */
+            items: components["schemas"]["MetaAssetRead"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** MetaAssetRead */
+        MetaAssetRead: {
+            /** Account Status */
+            account_status: number | null;
+            /** Active */
+            active: boolean;
+            /** Blocked By */
+            blocked_by?: string | null;
+            /** Can Publish */
+            can_publish: boolean;
+            /** Company Id */
+            company_id: string | null;
+            /** Company Name */
+            company_name?: string | null;
+            /** Credential Id */
+            credential_id: string | null;
+            /** Credential Label */
+            credential_label?: string | null;
+            /** Currency */
+            currency: string | null;
+            /** Dsa Beneficiary */
+            dsa_beneficiary: string | null;
+            /** Dsa Payor */
+            dsa_payor: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "page" | "instagram" | "ad_account";
+            /** Last Error */
+            last_error: string | null;
+            /** Last Verified At */
+            last_verified_at: string | null;
+            /** Linked Page Id */
+            linked_page_id?: string | null;
+            /** Linked Page Name */
+            linked_page_name?: string | null;
+            /** Meta Id */
+            meta_id: string;
+            /** Meta Url */
+            meta_url: string | null;
+            /** Name */
+            name: string;
+            /** Observed At */
+            observed_at: string | null;
+            /** Picture Url */
+            picture_url: string | null;
+            /** Relation */
+            relation: string;
+            /** Status */
+            status: string;
+            /** Tasks */
+            tasks: string[];
+            /** Timezone */
+            timezone: string | null;
+            /** Username */
+            username: string | null;
+        };
+        /**
+         * MetaAssetUpdate
+         * @description Only what schakl decides. ``company_id: null`` detaches — the agency's own asset.
+         */
+        MetaAssetUpdate: {
+            /** Active */
+            active?: boolean | null;
+            /** Company Id */
+            company_id?: string | null;
+        };
+        /** MetaCredentialCreate */
+        MetaCredentialCreate: {
+            /**
+             * Business Id
+             * @default
+             */
+            business_id: string;
+            /** Label */
+            label: string;
+            /** Token */
+            token: string;
+        };
+        /** MetaCredentialRead */
+        MetaCredentialRead: {
+            /** Active */
+            active: boolean;
+            /** App Matches */
+            app_matches: boolean | null;
+            /**
+             * Asset Count
+             * @default 0
+             */
+            asset_count: number;
+            /** Business Id */
+            business_id: string;
+            /** Business Name */
+            business_name: string;
+            /** Capabilities */
+            capabilities: {
+                [key: string]: boolean;
+            };
+            /** Data Access Expires At */
+            data_access_expires_at: string | null;
+            /** Days Left */
+            days_left: number | null;
+            /** Expires At */
+            expires_at: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Issued At */
+            issued_at: string | null;
+            /** Label */
+            label: string;
+            /** Last Discovered At */
+            last_discovered_at: string | null;
+            /** Last Error */
+            last_error: string | null;
+            /** Last Verified At */
+            last_verified_at: string | null;
+            /**
+             * Linked Asset Count
+             * @default 0
+             */
+            linked_asset_count: number;
+            /** Missing Scopes */
+            missing_scopes: string[];
+            /** Refresh Attempted At */
+            refresh_attempted_at: string | null;
+            /** Refresh Due At */
+            refresh_due_at: string | null;
+            /** Refresh Error */
+            refresh_error: string | null;
+            /** Refreshed At */
+            refreshed_at: string | null;
+            /** Scopes */
+            scopes: string[];
+            /** Status */
+            status: string;
+            /** Subject Id */
+            subject_id: string | null;
+            /** Subject Name */
+            subject_name: string;
+            /** Token Kind */
+            token_kind: string | null;
+        };
+        /** MetaCredentialUpdate */
+        MetaCredentialUpdate: {
+            /** Active */
+            active?: boolean | null;
+            /** Business Id */
+            business_id?: string | null;
+            /** Label */
+            label?: string | null;
+            /** Token */
+            token?: string | null;
+        };
+        /** MetaDiscoveryRead */
+        MetaDiscoveryRead: {
+            /** Created */
+            created: number;
+            /** Found */
+            found: number;
+            /** Warnings */
+            warnings: string[];
+        };
+        /** MetaInsightsRead */
+        MetaInsightsRead: {
+            /**
+             * Asset Id
+             * Format: uuid
+             */
+            asset_id: string;
+            /**
+             * Date From
+             * Format: date
+             */
+            date_from: string;
+            /**
+             * Date To
+             * Format: date
+             */
+            date_to: string;
+            /** Metrics */
+            metrics: {
+                [key: string]: number;
+            };
+            /** Unavailable */
+            unavailable: string[];
+        };
+        /** MetaPublishedPost */
+        MetaPublishedPost: {
+            /** Channel */
+            channel: string;
+            /** Comments */
+            comments: number | null;
+            /** External Id */
+            external_id: string;
+            /** Image Url */
+            image_url: string | null;
+            /** Kind */
+            kind: string;
+            /** Likes */
+            likes: number | null;
+            /** Permalink */
+            permalink: string | null;
+            /** Published At */
+            published_at: string | null;
+            /** Shares */
+            shares: number | null;
+            /** Text */
+            text: string;
+        };
+        /** MetaSettingsRead */
+        MetaSettingsRead: {
+            /** Api Version */
+            api_version: string;
+            /** App Id */
+            app_id: string | null;
+            /** App Secret Configured */
+            app_secret_configured: boolean;
+            /**
+             * Facebook Scheduler
+             * @enum {string}
+             */
+            facebook_scheduler: "schakl" | "meta";
+            /** Media Url Prefix */
+            media_url_prefix: string;
+            /** Recommended Scopes */
+            recommended_scopes: string[];
+            /** Writes Enabled */
+            writes_enabled: boolean;
+        };
+        /**
+         * MetaSettingsWrite
+         * @description §18 throughout: a field left out is left alone. ``app_secret: null`` clears it.
+         */
+        MetaSettingsWrite: {
+            /** App Id */
+            app_id?: string | null;
+            /** App Secret */
+            app_secret?: string | null;
+            /** Facebook Scheduler */
+            facebook_scheduler?: ("schakl" | "meta") | null;
+            /** Writes Enabled */
+            writes_enabled?: boolean | null;
+        };
+        /**
+         * MetaStatusRead
+         * @description What a working screen needs to know about the connection, and nothing it may not.
+         *
+         *     Readable by anyone who may read the channels — the settings themselves are an admin's —
+         *     because a planner that cannot tell "nothing is connected" from "nothing is linked" can
+         *     only draw an empty list, and the composer has to be able to say who holds the clock.
+         */
+        MetaStatusRead: {
+            /** Ad Accounts Linked */
+            ad_accounts_linked: number;
+            /**
+             * Ad Accounts Unlinked
+             * @default 0
+             */
+            ad_accounts_unlinked: number;
+            /** Channels Linked */
+            channels_linked: number;
+            /** Channels Unlinked */
+            channels_unlinked: number;
+            /** Connected */
+            connected: boolean;
+            /**
+             * Facebook Scheduler
+             * @enum {string}
+             */
+            facebook_scheduler: "schakl" | "meta";
+            /** Needs Attention */
+            needs_attention: boolean;
+            /** Writes Enabled */
+            writes_enabled: boolean;
+        };
         /** MicrosoftCalendarFeedItem */
         MicrosoftCalendarFeedItem: {
             /** All Day */
@@ -34386,6 +36418,284 @@ export interface components {
             seller?: {
                 [key: string]: unknown;
             };
+        };
+        /** SocialPostCounts */
+        SocialPostCounts: {
+            /** By Status */
+            by_status: {
+                [key: string]: number;
+            };
+            /** Total */
+            total: number;
+            /** Working */
+            working: number;
+        };
+        /**
+         * SocialPostCreate
+         * @description A new draft. ``asset_ids`` are the channels, and they decide whose post it is.
+         */
+        SocialPostCreate: {
+            /** Asset Ids */
+            asset_ids: string[];
+            /**
+             * Body
+             * @default
+             */
+            body: string;
+            /**
+             * Format
+             * @default post
+             * @enum {string}
+             */
+            format: "post" | "reel";
+            /** Link */
+            link?: string | null;
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+            /** Overrides */
+            overrides?: {
+                [key: string]: string;
+            };
+            /** Scheduled At */
+            scheduled_at?: string | null;
+        };
+        /**
+         * SocialPostImage
+         * @description An image for a post, carried inside the JSON body.
+         *
+         *     The browser uploads a picture as multipart and then names it in ``media``. A tool call is
+         *     a JSON document and cannot do the first half, so an agent that may write a post could
+         *     write every part of it except the picture — which on Instagram is the part without which
+         *     nothing can be published at all. This is that half, as JSON (docs/STORAGE.md's twin).
+         */
+        SocialPostImage: {
+            /**
+             * Alt
+             * @default
+             */
+            alt: string;
+            /** Content Type */
+            content_type: string;
+            /** Data */
+            data: string;
+            /** Filename */
+            filename: string;
+        };
+        /** SocialPostIssue */
+        SocialPostIssue: {
+            /** Asset Id */
+            asset_id: string | null;
+            /** Channel */
+            channel: string | null;
+            /** Code */
+            code: string;
+            /** Details */
+            details: {
+                [key: string]: unknown;
+            };
+            /** Field */
+            field: string;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "error" | "warning";
+        };
+        /**
+         * SocialPostMedia
+         * @description One image or video. A stored file **or** an address, never both.
+         */
+        SocialPostMedia: {
+            /**
+             * Alt
+             * @default
+             */
+            alt: string;
+            /** File Id */
+            file_id?: string | null;
+            /**
+             * Kind
+             * @default image
+             * @enum {string}
+             */
+            kind: "image" | "video";
+            /** Url */
+            url?: string | null;
+        };
+        /** SocialPostMediaRead */
+        SocialPostMediaRead: {
+            /**
+             * Alt
+             * @default
+             */
+            alt: string;
+            /** Content Type */
+            content_type?: string | null;
+            /** File Id */
+            file_id?: string | null;
+            /** Filename */
+            filename?: string | null;
+            /** Height */
+            height?: number | null;
+            /**
+             * Kind
+             * @default image
+             * @enum {string}
+             */
+            kind: "image" | "video";
+            /** Size Bytes */
+            size_bytes?: number | null;
+            /** Url */
+            url?: string | null;
+            /** Width */
+            width?: number | null;
+        };
+        /** SocialPostPage */
+        SocialPostPage: {
+            /** Items */
+            items: components["schemas"]["SocialPostRead"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** SocialPostRead */
+        SocialPostRead: {
+            /** Approved At */
+            approved_at: string | null;
+            /** Approved By Name */
+            approved_by_name: string;
+            /** Approved By User Id */
+            approved_by_user_id: string | null;
+            /** Body */
+            body: string;
+            /** Company Id */
+            company_id: string | null;
+            /** Company Name */
+            company_name?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By Name */
+            created_by_name: string;
+            /** Created By User Id */
+            created_by_user_id: string | null;
+            /**
+             * Format
+             * @enum {string}
+             */
+            format: "post" | "reel";
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Issues */
+            issues: components["schemas"]["SocialPostIssue"][];
+            /** Link */
+            link: string | null;
+            /** Media */
+            media: components["schemas"]["SocialPostMediaRead"][];
+            /** Notes */
+            notes: string;
+            /** Published At */
+            published_at: string | null;
+            /** Ready */
+            ready: boolean;
+            /** Scheduled At */
+            scheduled_at: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "review" | "scheduled" | "publishing" | "published" | "partial" | "failed" | "cancelled";
+            /** Targets */
+            targets: components["schemas"]["SocialPostTargetRead"][];
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** SocialPostSchedule */
+        SocialPostSchedule: {
+            /** Scheduled At */
+            scheduled_at?: string | null;
+        };
+        /** SocialPostTargetRead */
+        SocialPostTargetRead: {
+            /**
+             * Asset Id
+             * Format: uuid
+             */
+            asset_id: string;
+            /** Asset Name */
+            asset_name: string;
+            /** Asset Picture Url */
+            asset_picture_url: string | null;
+            /** Asset Username */
+            asset_username: string | null;
+            /** Attempts */
+            attempts: number;
+            /** Body Override */
+            body_override: string | null;
+            /** Channel */
+            channel: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Last Error */
+            last_error: string | null;
+            /** Last Error Code */
+            last_error_code: string | null;
+            /** Meta Post Id */
+            meta_post_id: string | null;
+            /** Permalink */
+            permalink: string | null;
+            /** Published At */
+            published_at: string | null;
+            /**
+             * Scheduler
+             * @enum {string}
+             */
+            scheduler: "schakl" | "meta";
+            /** Status */
+            status: string;
+        };
+        /**
+         * SocialPostUpdate
+         * @description §18: absent means leave alone. ``link: null`` removes the link, ``media: []`` the media.
+         */
+        SocialPostUpdate: {
+            /** Asset Ids */
+            asset_ids?: string[] | null;
+            /** Body */
+            body?: string | null;
+            /** Format */
+            format?: ("post" | "reel") | null;
+            /** Link */
+            link?: string | null;
+            /** Media */
+            media?: components["schemas"]["SocialPostMedia"][] | null;
+            /** Notes */
+            notes?: string | null;
+            /** Overrides */
+            overrides?: {
+                [key: string]: string;
+            } | null;
+            /** Scheduled At */
+            scheduled_at?: string | null;
         };
         /**
          * SourceAiVisibility
@@ -61075,6 +63385,1955 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_meta_ads_accounts_api_v1_meta_ads_accounts_get: {
+        parameters: {
+            query?: {
+                company_id?: string | null;
+                active_only?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaAdsAccountRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_meta_ads_account_api_v1_meta_ads_accounts__account_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaAdsAccountRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_meta_ads_ads_api_v1_meta_ads_accounts__account_id__ads_get: {
+        parameters: {
+            query?: {
+                campaign_meta_id?: string | null;
+                adset_meta_id?: string | null;
+                status?: string | null;
+            };
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaAdsAdRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_meta_ads_ad_api_v1_meta_ads_accounts__account_id__ads_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetaAdsAdCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaAdsResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_meta_ads_ad_api_v1_meta_ads_accounts__account_id__ads__ad_meta_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+                ad_meta_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetaAdsAdUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaAdsResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_meta_ads_adsets_api_v1_meta_ads_accounts__account_id__adsets_get: {
+        parameters: {
+            query?: {
+                campaign_meta_id?: string | null;
+                status?: string | null;
+            };
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaAdsAdSetRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_meta_ads_adset_api_v1_meta_ads_accounts__account_id__adsets_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetaAdsAdSetCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaAdsResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_meta_ads_adset_api_v1_meta_ads_accounts__account_id__adsets__adset_meta_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+                adset_meta_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetaAdsAdSetUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaAdsResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_meta_ads_adset_budget_api_v1_meta_ads_accounts__account_id__adsets__adset_meta_id__budget_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+                adset_meta_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetaAdsBudgetWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaAdsResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    boost_meta_post_api_v1_meta_ads_accounts__account_id__boost_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetaAdsBoost"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaAdsBoostResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_meta_ads_campaigns_api_v1_meta_ads_accounts__account_id__campaigns_get: {
+        parameters: {
+            query?: {
+                /** @description A comma-separated set of Meta's effective statuses, e.g. ACTIVE,PAUSED. */
+                status?: string | null;
+            };
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaAdsCampaignRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_meta_ads_campaign_api_v1_meta_ads_accounts__account_id__campaigns_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetaAdsCampaignCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaAdsResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_meta_ads_campaign_api_v1_meta_ads_accounts__account_id__campaigns__campaign_meta_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+                campaign_meta_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetaAdsCampaignUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaAdsResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_meta_ads_campaign_budget_api_v1_meta_ads_accounts__account_id__campaigns__campaign_meta_id__budget_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+                campaign_meta_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetaAdsBudgetWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaAdsResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_meta_ads_creatives_api_v1_meta_ads_accounts__account_id__creatives_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaAdsCreativeRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_meta_ads_creative_api_v1_meta_ads_accounts__account_id__creatives_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetaAdsCreativeCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaAdsResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_meta_ads_decisions_api_v1_meta_ads_accounts__account_id__decisions_get: {
+        parameters: {
+            query?: {
+                subject_meta_id?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaAdsDecisionPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_meta_ads_decision_api_v1_meta_ads_accounts__account_id__decisions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetaAdsDecisionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaAdsDecisionRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_meta_ads_image_api_v1_meta_ads_accounts__account_id__images_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetaAdsImageUpload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaAdsImageRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    meta_ads_insights_api_v1_meta_ads_accounts__account_id__insights_get: {
+        parameters: {
+            query?: {
+                level?: "account" | "campaign" | "adset" | "ad";
+                /** @description A period token: 30d, month, last_month, 2026-07, 2026-Q3, or 2026-08-01..2026-08-14. Ignored when both dates are given. */
+                period?: string | null;
+                date_from?: string | null;
+                date_to?: string | null;
+                /** @description One row per day instead of one per span. */
+                daily?: boolean;
+                campaign_meta_id?: string | null;
+            };
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaAdsInsightsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_meta_ads_account_live_api_v1_meta_ads_accounts__account_id__live_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaAdsAccountLive"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_meta_ads_policy_api_v1_meta_ads_accounts__account_id__policy_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaAdsPolicyRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_meta_ads_policy_api_v1_meta_ads_accounts__account_id__policy_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetaAdsPolicyWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaAdsPolicyRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_meta_ads_policy_api_v1_meta_ads_accounts__account_id__policy_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activate_meta_ads_object_api_v1_meta_ads_accounts__account_id___kind___meta_id__activate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+                kind: string;
+                meta_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetaAdsStatusWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaAdsResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pause_meta_ads_object_api_v1_meta_ads_accounts__account_id___kind___meta_id__pause_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                account_id: string;
+                kind: string;
+                meta_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetaAdsStatusWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaAdsResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_meta_ads_house_policy_api_v1_meta_ads_policy_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaAdsPolicyRead"];
+                };
+            };
+        };
+    };
+    save_meta_ads_house_policy_api_v1_meta_ads_policy_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetaAdsPolicyWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaAdsPolicyRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_meta_ads_settings_api_v1_meta_ads_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaAdsSettingsRead"];
+                };
+            };
+        };
+    };
+    save_meta_ads_settings_api_v1_meta_ads_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetaAdsSettingsWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaAdsSettingsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_meta_assets_api_v1_meta_business_assets_get: {
+        parameters: {
+            query?: {
+                kind?: ("page" | "instagram" | "ad_account") | null;
+                company_id?: string | null;
+                /** @description Only the assets that are linked and worked on. False lists every asset a token has found, which is what the linking screen needs. */
+                active_only?: boolean;
+                /** @description Only what a token has found and nobody has linked yet. */
+                unlinked_only?: boolean;
+                /** @description A name, an @handle, or Meta's own id. */
+                q?: string | null;
+                limit?: number;
+                offset?: number;
+                count?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaAssetPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_meta_asset_api_v1_meta_business_assets__asset_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaAssetRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_meta_asset_api_v1_meta_business_assets__asset_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetaAssetUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaAssetRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    meta_asset_insights_api_v1_meta_business_assets__asset_id__insights_get: {
+        parameters: {
+            query?: {
+                date_from?: string | null;
+                date_to?: string | null;
+            };
+            header?: never;
+            path: {
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaInsightsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_meta_published_posts_api_v1_meta_business_assets__asset_id__published_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaPublishedPost"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_meta_credentials_api_v1_meta_business_credentials_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaCredentialRead"][];
+                };
+            };
+        };
+    };
+    add_meta_credential_api_v1_meta_business_credentials_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetaCredentialCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaCredentialRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_meta_credential_api_v1_meta_business_credentials__credential_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                credential_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_meta_credential_api_v1_meta_business_credentials__credential_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                credential_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetaCredentialUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaCredentialRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    discover_meta_assets_api_v1_meta_business_credentials__credential_id__discover_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                credential_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaDiscoveryRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_meta_credential_api_v1_meta_business_credentials__credential_id__refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                credential_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaCredentialRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_meta_credential_api_v1_meta_business_credentials__credential_id__verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                credential_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaCredentialRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_social_posts_api_v1_meta_business_posts_get: {
+        parameters: {
+            query?: {
+                /** @description A comma-separated set of statuses, or 'working' for everything still going on. Absent means every status. */
+                status?: string | null;
+                company_id?: string | null;
+                asset_id?: string | null;
+                channel?: string | null;
+                q?: string | null;
+                date_from?: string | null;
+                date_to?: string | null;
+                /** @description when | created | status, with a leading - for descending. Absent is soonest first. */
+                sort?: string | null;
+                limit?: number;
+                offset?: number;
+                count?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialPostPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_social_post_api_v1_meta_business_posts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SocialPostCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialPostRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    social_post_counts_api_v1_meta_business_posts_counts_get: {
+        parameters: {
+            query?: {
+                company_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialPostCounts"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_social_post_api_v1_meta_business_posts__post_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                post_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialPostRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_social_post_api_v1_meta_business_posts__post_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                post_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_social_post_api_v1_meta_business_posts__post_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                post_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SocialPostUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialPostRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_social_post_api_v1_meta_business_posts__post_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                post_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialPostRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    duplicate_social_post_api_v1_meta_business_posts__post_id__duplicate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                post_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialPostRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_social_post_image_api_v1_meta_business_posts__post_id__images_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                post_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SocialPostImage"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialPostRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    offer_social_post_api_v1_meta_business_posts__post_id__offer_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                post_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialPostRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    publish_social_post_now_api_v1_meta_business_posts__post_id__publish_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                post_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialPostRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recall_social_post_api_v1_meta_business_posts__post_id__recall_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                post_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialPostRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_social_post_api_v1_meta_business_posts__post_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                post_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialPostRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    schedule_social_post_api_v1_meta_business_posts__post_id__schedule_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                post_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SocialPostSchedule"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialPostRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unschedule_social_post_api_v1_meta_business_posts__post_id__unschedule_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                post_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialPostRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_meta_settings_api_v1_meta_business_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaSettingsRead"];
+                };
+            };
+        };
+    };
+    save_meta_settings_api_v1_meta_business_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MetaSettingsWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaSettingsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_meta_status_api_v1_meta_business_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetaStatusRead"];
                 };
             };
         };

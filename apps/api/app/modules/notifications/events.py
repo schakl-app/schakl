@@ -24,6 +24,11 @@ ENTITY_SNELSTART_ACCOUNT = "snelstart_account"
 ENTITY_TASK_INTAKE = "task_intake"
 #: A recorded meeting (the meetings module): the row whose minutes the worker drafted.
 ENTITY_MEETING = "meeting"
+#: A planned social post (the ``meta`` integration): the row whose delivery failed.
+ENTITY_META_POST = "meta_post"
+#: A Meta system-user token. Like a SnelStart administration it is a record nobody watches,
+#: so the event that names it hints its recipients.
+ENTITY_META_CREDENTIAL = "meta_credential"
 
 ENTITY_TYPES: tuple[str, ...] = (
     ENTITY_TASK,
@@ -35,6 +40,8 @@ ENTITY_TYPES: tuple[str, ...] = (
     ENTITY_SNELSTART_ACCOUNT,
     ENTITY_TASK_INTAKE,
     ENTITY_MEETING,
+    ENTITY_META_POST,
+    ENTITY_META_CREDENTIAL,
 )
 
 # --- event types ------------------------------------------------------------------------- #
@@ -115,6 +122,15 @@ MEETING_READY = "meeting.ready"
 # it carries no actor, so its sentence is a whole one.
 MEETING_LOST = "meeting.lost"
 
+# meta: a planned post that did not reach one of its channels. Emitted by the publishing worker
+# with no actor, to the colleague who approved the post and the one who wrote it; the constant
+# in ``integrations/meta/publisher.py`` (``EVENT_POST_FAILED``) must match.
+META_POST_FAILED = "meta.post_failed"
+# meta: a system-user token that is running out and could not be refreshed. Ingested directly
+# by the nightly job, to the holders of ``meta.settings.manage``: a token that expires
+# silently is every client's publishing stopping on a date nobody wrote down.
+META_TOKEN_EXPIRING = "meta.token_expiring"
+
 EVENT_TYPES: tuple[str, ...] = (
     TASK_ASSIGNED,
     TASK_UNASSIGNED,
@@ -144,6 +160,8 @@ EVENT_TYPES: tuple[str, ...] = (
     SNELSTART_SYNC_FAILED,
     MEETING_READY,
     MEETING_LOST,
+    META_POST_FAILED,
+    META_TOKEN_EXPIRING,
 )
 
 #: Which entity type each event attaches to (for the activity feed grouping + link target).
@@ -176,6 +194,8 @@ ENTITY_FOR_EVENT: dict[str, str] = {
     SNELSTART_SYNC_FAILED: ENTITY_SNELSTART_ACCOUNT,
     MEETING_READY: ENTITY_MEETING,
     MEETING_LOST: ENTITY_MEETING,
+    META_POST_FAILED: ENTITY_META_POST,
+    META_TOKEN_EXPIRING: ENTITY_META_CREDENTIAL,
 }
 
 # --- channels ---------------------------------------------------------------------------- #

@@ -574,6 +574,20 @@ export const SETTINGS_SCREENS: readonly SettingsScreen[] = [
     module: "google_tag_manager",
   },
   {
+    // Meta has no "connect" button a colleague presses: what it holds is the tenant's own app
+    // and the tokens of its system users, which is org-wide configuration (principle 6). The
+    // ads half shares the screen — one credential reaches both — and its one switch is drawn
+    // only for a holder of `meta_ads.policy.manage`.
+    key: "meta",
+    href: "/settings/meta",
+    titleKey: "settings.meta.title",
+    subtitleKey: "settings.meta.subtitle",
+    group: "integrations",
+    keywordsKey: "settings.search.meta",
+    permissions: ["meta.settings.manage"],
+    module: "meta",
+  },
+  {
     // Uptime Kuma lives here rather than on a website, for principle 6's reason: it holds the
     // credential, and the credential is org-wide configuration. `uptime.monitor.read` does not
     // open it — seeing that a client's site is down and holding the administrator account of

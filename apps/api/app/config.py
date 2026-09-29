@@ -143,7 +143,7 @@ class Settings(BaseSettings):
             "interactions", "google", "microsoft", "marketing", "google_ads",
             "google_analytics", "google_search_console", "google_tag_manager", "hr",
             "cloudflare", "oxxa", "portal", "reporting", "mollie", "uptime", "wordpress",
-            "snelstart", "timeon", "meetings",
+            "snelstart", "timeon", "meetings", "meta", "meta_ads",
         ]
     )
     default_locale: str = "nl"
@@ -255,6 +255,18 @@ class Settings(BaseSettings):
     # spell either host.
     microsoft_login_base_url: str = "https://login.microsoftonline.com"
     microsoft_graph_base_url: str = "https://graph.microsoft.com/v1.0"
+
+    # --- Meta: Facebook Pages, Instagram, ads (docs/META.md) ---
+    # There is deliberately **no** instance-wide app id or secret here. The route that needs no
+    # App Review is "the agency's own app in the agency's own Business portfolio", so the app is
+    # the tenant's and is stored per org; an instance-wide one on a multi-org install would be
+    # exactly the Tech Provider case this integration exists to avoid.
+    #
+    # The host and the version are settings for Microsoft's reason: a test stack points the
+    # host at a stand-in, and the version is pinned in one place. A Marketing API version lives
+    # about a year, so this is the line a release bumps.
+    meta_graph_url: str = "https://graph.facebook.com"
+    meta_api_version: str = "v26.0"
 
     # --- i18n ---
     # Shared message catalogs (single source of truth with the web app).

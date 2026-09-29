@@ -11,7 +11,7 @@
  * label — a raw UUID is worse than saying nothing — so the trail reads "changed Verantwoordelijke"
  * rather than leaking an id. The full before/after values still live in the stored row.
  */
-import { fmtDayMonth, fmtMoney, fmtNumericDate } from "$lib/core/format";
+import { fmtDateTime, fmtDayMonth, fmtMoney, fmtNumericDate } from "$lib/core/format";
 import { t } from "$lib/core/i18n";
 
 export interface ActivityLike {
@@ -30,6 +30,7 @@ const STATUS_NAMESPACE: Record<string, string> = {
   task: "tasks.status",
   project: "projects.status",
   company: "companies.status",
+  meta_post: "meta.status",
 };
 
 /** FK-to-a-record fields: show the label, never the raw id behind it. */
@@ -47,6 +48,16 @@ const LABEL_ONLY_FIELDS = new Set([
 /** Date-only fields, printed as a European day. */
 const DATE_FIELDS = new Set(["start_date", "end_date", "due_date"]);
 
+/** Instants, printed as a day and a time on the org's own clock — never as an ISO string. */
+const INSTANT_FIELDS = new Set(["scheduled_at"]);
+
+/**
+ * Prose. A post's words changing is worth a line; the words themselves — before and after —
+ * are two paragraphs in the middle of a sentence. The label says it changed, and both versions
+ * are still in the stored row.
+ */
+const PROSE_FIELDS = new Set(["body"]);
+
 function fieldLabel(field: string): string {
   return t(`activity.field.${field}`);
 }
@@ -58,6 +69,7 @@ function renderValue(entityType: string, field: string, value: unknown): string 
     return namespace ? t(`${namespace}.${value}`) : value;
   }
   if (DATE_FIELDS.has(field) && typeof value === "string") return fmtDayMonth(value);
+  if (INSTANT_FIELDS.has(field) && typeof value === "string") return fmtDateTime(value);
   if (typeof value === "boolean") return value ? t("common.yes") : t("common.no");
   return String(value);
 }
@@ -80,7 +92,7 @@ function isoDate(value: unknown): string {
 
 function changeText(entityType: string, field: string, change: Change): string {
   const label = fieldLabel(field);
-  if (LABEL_ONLY_FIELDS.has(field)) return label;
+  if (LABEL_ONLY_FIELDS.has(field) || PROSE_FIELDS.has(field)) return label;
   return t("activity.change", {
     field: label,
     from: renderValue(entityType, field, change.from),
@@ -186,6 +198,10 @@ function presentPayload(payload: Record<string, unknown> | undefined): Record<st
       out[key] = money(value);
     } else if (key.endsWith("_date") && typeof value === "string") {
       out[key] = isoDate(value);
+    } else if (key.endsWith("_at") && typeof value === "string" && value.includes("T")) {
+      // An instant in a payload prints like every other instant: a day and a time on the
+      // org's own clock, never the ISO string the row was stored with.
+      out[key] = fmtDateTime(value);
     } else {
       out[key] = value;
     }
