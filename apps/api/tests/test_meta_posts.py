@@ -40,6 +40,16 @@ def fake() -> FakeMeta:
 
 
 @pytest.fixture(autouse=True)
+def _storage(monkeypatch, tmp_path) -> None:
+    """A post's pictures are stored files. The default root is ``/data/storage`` — the
+    container's volume, which a CI runner may not create — so every test here writes to its
+    own temp directory, as the files tests do."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "storage_path", str(tmp_path))
+
+
+@pytest.fixture(autouse=True)
 def _no_queue(monkeypatch) -> None:
     """ "Publish now" wakes the worker through the queue; the tests *are* the worker."""
     from app.integrations.meta import posts
