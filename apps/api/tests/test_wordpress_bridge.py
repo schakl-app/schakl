@@ -13,6 +13,9 @@ What these pin, beyond "the route answers":
 * **Every write leaves a trail line on the site row** (§16).
 * **The theme's files have keys of their own**, admin only, and neither the passthrough nor an
   ability is a way around them.
+* **Redirects are a list answered per row**, on keys of their own: a bad row is the row's and
+  never the call's, a dry run and an unchanged list leave no trail, and an older plugin is
+  named as outdated rather than as missing.
 * **A site is a parameter, never a tool**: the bridge routes are in the ``wordpress`` MCP
   section whether the agency holds one site or forty.
 """
@@ -681,7 +684,7 @@ async def test_the_bridge_tools_ride_the_wordpress_section(client_for, wp) -> No
     bridge = {
         name for name, path in tool_paths.items() if "/wordpress/sites/{site_id}/bridge" in path
     }
-    assert len(bridge) == 43, sorted(bridge)
+    assert len(bridge) == 48, sorted(bridge)
     assert bridge <= wordpress.tools
     assert {
         "bridge_info",
@@ -692,6 +695,11 @@ async def test_the_bridge_tools_ride_the_wordpress_section(client_for, wp) -> No
         "bridge_forms",
         "bridge_update_form",
         "bridge_translate_form",
+        "bridge_redirects",
+        "bridge_redirect",
+        "bridge_add_redirects",
+        "bridge_update_redirect",
+        "bridge_delete_redirect",
     } <= wordpress.tools
 
 
@@ -1164,3 +1172,285 @@ async def test_the_passthrough_and_abilities_are_no_way_around_the_theme_keys(
             headers=owner_h,
         )
         assert res.status_code == 200, res.text
+
+
+# ---------------------------------------------------------------- redirects (Rank Math)
+
+
+async def _trail(c, headers, site: dict) -> list[dict]:
+    return (
+        await c.get(
+            f"/api/v1/activity?entity_type=wordpress_site&entity_id={site['id']}",
+            headers=headers,
+        )
+    ).json()
+
+
+async def test_redirects_are_read_by_a_member_and_written_on_a_key_of_their_own(
+    client_for, wp
+) -> None:
+    t = await make_tenant("wp-bridge-redirects")
+    owner_h = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, site = await _site(c, owner_h)
+        member_h = await _member(t, "wp-bridge-redirects", role="member")
+
+        # "Does /oud already redirect?" is a member's question.
+        rows = (await c.get(_url(site, "/redirects?search=oud"), headers=member_h)).json()
+        assert rows["provider"] == "rank_math" and rows["total"] == 1
+        assert rows["items"][0]["sources"][0]["url"] == "https://klant.nl/oud"
+        assert rows["items"][0]["destination"] == "https://klant.nl/nieuw"
+        assert rows["counts"] == {"active": 1, "inactive": 0, "trashed": 0}
+        assert wp.bridge_queries[-1] == (
+            "GET",
+            "/redirects",
+            {
+                "page": "1",
+                "per_page": "50",
+                "search": "oud",
+                "status": "all",
+                "orderby": "id",
+                "order": "desc",
+            },
+        )
+        one = (await c.get(_url(site, "/redirects/7"), headers=member_h)).json()
+        assert one["id"] == 7 and one["hits"] == 12
+        res = await c.get(_url(site, "/redirects/999"), headers=member_h)
+        assert res.status_code == 404
+        assert res.json()["error"]["message"] == "errors.wordpress_not_on_site"
+
+        # Writing is live at once and can take a page offline: not a member's by default,
+        # and refused before the site is asked — a dry run included.
+        for call in (
+            c.post(
+                _url(site, "/redirects"),
+                json={"redirects": [{"source": "/a", "destination": "/b"}], "dry_run": True},
+                headers=member_h,
+            ),
+            c.patch(_url(site, "/redirects/7"), json={"destination": "/x"}, headers=member_h),
+            c.delete(_url(site, "/redirects/7"), headers=member_h),
+        ):
+            res = await call
+            assert res.status_code == 403, res.text
+        assert wp.writes == []
+        assert not [call for call in wp.bridge_calls if call[0] != "GET"]
+
+
+async def test_a_list_of_redirects_is_answered_per_row(client_for, wp) -> None:
+    """One call, one answer per row: the bad rows are named and the good ones written
+    (§18 — a bad row is the row's). Sending the list again adds nothing, and only what
+    changed on the site leaves a trail line."""
+    t = await make_tenant("wp-bridge-redirects-batch")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, site = await _site(c, headers)
+        batch = [
+            {"source": "/oud-a/", "destination": "/nieuw-a/"},
+            {"source": "https://klant.nl/oud-b", "destination": "https://klant.nl/nieuw-b"},
+            {"source": "https://elders.example/oud", "destination": "/nieuw"},
+            {"source": "/zonder-doel"},
+            {"source": "/weg", "type": 410},
+            {"source": "/oud-a", "destination": "/anders"},
+            {"source": "/raar", "destination": "/nieuw", "type": 999},
+            {"source": "/oud", "destination": "/elders"},
+        ]
+
+        # A dry run answers the same and writes nothing — on the site, and in the trail.
+        res = await c.post(
+            _url(site, "/redirects"), json={"redirects": batch, "dry_run": True}, headers=headers
+        )
+        assert res.status_code == 200, res.text
+        dry = res.json()
+        assert dry["dry_run"] is True and dry["created"] == 3 and dry["invalid"] == 3
+        assert len(wp.redirects) == 1 and wp.writes == []
+        assert not [r for r in await _trail(c, headers, site) if r["action"] == "redirects_added"]
+
+        res = await c.post(_url(site, "/redirects"), json={"redirects": batch}, headers=headers)
+        assert res.status_code == 200, res.text
+        body = res.json()
+        assert (body["created"], body["invalid"], body["skipped"]) == (3, 3, 2)
+        outcomes = [row["outcome"] for row in body["results"]]
+        assert outcomes == [
+            "created",
+            "created",
+            "invalid",
+            "invalid",
+            "created",
+            "duplicate",
+            "invalid",
+            "exists",
+        ]
+        # The site's own words about each row, untouched: the field, the code, the choices.
+        assert body["results"][2]["problems"][0]["code"] == "source_not_on_site"
+        assert body["results"][3]["problems"][0]["path"] == "destination"
+        assert body["results"][6]["problems"][0]["details"]["choices"] == [301, 302, 307, 410, 451]
+        assert body["results"][5]["of"] == 0
+        # A source that already redirects elsewhere is shown with where it goes, and kept.
+        assert body["results"][7]["existing"]["destination"] == "https://klant.nl/nieuw"
+        assert body["results"][4]["redirect"]["destination"] is None
+        assert len(wp.redirects) == 4
+        # The body the plugin got is the caller's, minus what was not sent.
+        sent = wp.bridge_calls[-1][2]
+        assert sent["on_existing"] == "skip" and sent["dry_run"] is False
+        assert sent["redirects"][0] == {"source": "/oud-a/", "destination": "/nieuw-a/"}
+
+        added = [r for r in await _trail(c, headers, site) if r["action"] == "redirects_added"]
+        assert len(added) == 1
+        payload = added[0]["payload"]
+        assert payload["created"] == 3 and payload["updated"] == 0
+        assert payload["title"] == "/oud-a/ → https://klant.nl/nieuw-a/ (+2)"
+        assert [r["source"] for r in payload["redirects"]] == [
+            "/oud-a/",
+            "https://klant.nl/oud-b",
+            "/weg",
+        ]
+
+        # The same list again: nothing new on the site, and no second trail line.
+        res = await c.post(_url(site, "/redirects"), json={"redirects": batch}, headers=headers)
+        again = res.json()
+        assert again["created"] == 0 and again["unchanged"] == 3 and len(wp.redirects) == 4
+        added = [r for r in await _trail(c, headers, site) if r["action"] == "redirects_added"]
+        assert len(added) == 1
+
+        # `on_existing: update` re-points the one that was left alone, and says what it was.
+        res = await c.post(
+            _url(site, "/redirects"),
+            json={
+                "redirects": [{"source": "/oud", "destination": "/elders"}],
+                "on_existing": "update",
+            },
+            headers=headers,
+        )
+        moved = res.json()
+        assert moved["updated"] == 1
+        assert moved["results"][0]["was"]["destination"] == "https://klant.nl/nieuw"
+        assert wp.redirects[0]["destination"] == "https://klant.nl/elders"
+        added = [r for r in await _trail(c, headers, site) if r["action"] == "redirects_added"]
+        assert len(added) == 2
+
+        # The list itself is the call's: empty, or over the ceiling, is a 422 before the site.
+        calls = len(wp.bridge_calls)
+        res = await c.post(_url(site, "/redirects"), json={"redirects": []}, headers=headers)
+        assert res.status_code == 422
+        res = await c.post(
+            _url(site, "/redirects"),
+            json={"redirects": [{"source": f"/x-{i}", "destination": "/y"} for i in range(501)]},
+            headers=headers,
+        )
+        assert res.status_code == 422
+        assert len(wp.bridge_calls) == calls
+
+
+async def test_a_redirect_is_changed_and_removed_with_a_trail(client_for, wp) -> None:
+    t = await make_tenant("wp-bridge-redirects-edit")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, site = await _site(c, headers)
+
+        res = await c.patch(_url(site, "/redirects/7"), json={}, headers=headers)
+        assert res.status_code == 422
+        assert res.json()["error"]["message"] == "errors.nothing_to_update"
+
+        # Where it goes changes; what it catches is not sent, and so not touched.
+        res = await c.patch(
+            _url(site, "/redirects/7"), json={"destination": "/beter", "type": 302}, headers=headers
+        )
+        assert res.status_code == 200, res.text
+        body = res.json()
+        assert body["destination"] == "https://klant.nl/beter" and body["type"] == 302
+        assert body["was"]["destination"] == "https://klant.nl/nieuw"
+        assert wp.bridge_calls[-1] == (
+            "PATCH",
+            "/redirects/7",
+            {"destination": "/beter", "type": 302},
+        )
+
+        # The plugin's refusal keeps its path.
+        res = await c.patch(
+            _url(site, "/redirects/7"), json={"destination": ""}, headers=headers
+        )
+        assert res.status_code == 422
+        err = res.json()["error"]
+        assert err["message"] == "errors.wordpress_bridge_rejected"
+        assert err["details"]["problems"][0]["path"] == "destination"
+        # An unknown type never leaves this side.
+        calls = len(wp.bridge_calls)
+        res = await c.patch(_url(site, "/redirects/7"), json={"type": 303}, headers=headers)
+        assert res.status_code == 422 and len(wp.bridge_calls) == calls
+
+        res = await c.delete(_url(site, "/redirects/7"), headers=headers)
+        assert res.status_code == 200, res.text
+        assert res.json()["trashed"] is True and res.json()["deleted"] is False
+        assert wp.redirects[0]["status"] == "trashed"
+        rows = (await c.get(_url(site, "/redirects"), headers=headers)).json()
+        assert rows["total"] == 0 and rows["counts"]["trashed"] == 1
+        # Out of the trash again, then gone for good.
+        res = await c.patch(_url(site, "/redirects/7"), json={"status": "active"}, headers=headers)
+        assert res.json()["status"] == "active"
+        res = await c.delete(_url(site, "/redirects/7?force=true"), headers=headers)
+        assert res.json()["deleted"] is True and wp.redirects == []
+        assert wp.bridge_calls[-1] == ("DELETE", "/redirects/7", {"force": True})
+
+        trail = await _trail(c, headers, site)
+        updated = [r["payload"] for r in trail if r["action"] == "redirect_updated"]
+        assert sorted(tuple(p["fields"]) for p in updated) == [
+            ("destination", "type"),
+            ("status",),
+        ]
+        assert all(p["title"] == "oud" for p in updated)
+        deleted = [r["payload"] for r in trail if r["action"] == "redirect_deleted"]
+        assert sorted(p["permanent"] for p in deleted) == [False, True]
+
+
+async def test_a_site_that_cannot_serve_redirects_says_which_thing_is_missing(
+    client_for, wp
+) -> None:
+    """Three refusals that would otherwise read alike, each with a different fix: Rank Math's
+    module is off (switch it on), the plugin is older than the operation (update it), the
+    plugin is not there (install it)."""
+    t = await make_tenant("wp-bridge-redirects-missing")
+    headers = await auth_cookie(t.user)
+    async with client_for(t.host) as c:
+        _, site = await _site(c, headers)
+        create = {"redirects": [{"source": "/a", "destination": "/b"}]}
+
+        wp.redirects_missing = "rank_math_redirections_module"
+        res = await c.post(_url(site, "/redirects"), json=create, headers=headers)
+        assert res.status_code == 409
+        err = res.json()["error"]
+        assert err["message"] == "errors.wordpress_bridge_unavailable"
+        assert err["details"]["missing"] == "rank_math_redirections_module"
+        assert err["details"]["provider"] == "rank_math"
+        wp.redirects_missing = None
+
+        # An older plugin answers the route it does not know exactly as a site without the
+        # plugin would. The call decides which it is — `/info` answering is the plugin being
+        # there — and the refusal names the version it has beside the one it needs.
+        wp.bridge_redirects = False
+        wp.bridge_version = "1.5.0"
+        wp.bridge_updates = {
+            "token": "setting",
+            "installed": "1.5.0",
+            "latest": "1.7.0",
+            "available": True,
+            "error": None,
+            "auto_update": False,
+        }
+        for call in (
+            c.get(_url(site, "/redirects"), headers=headers),
+            c.post(_url(site, "/redirects"), json=create, headers=headers),
+        ):
+            res = await call
+            assert res.status_code == 409, res.text
+            err = res.json()["error"]
+            assert err["message"] == "errors.wordpress_bridge_outdated"
+            assert err["details"]["installed"] == "1.5.0"
+            assert err["details"]["needs"] == "1.7.0"
+            assert err["details"]["plugin"] == "schakl-wordpress-mcp-bridge"
+            assert err["details"]["auto_update"] is False
+
+        wp.has_bridge = False
+        res = await c.get(_url(site, "/redirects"), headers=headers)
+        assert res.status_code == 409
+        assert res.json()["error"]["message"] == "errors.wordpress_bridge_missing"
+        assert len(wp.redirects) == 1

@@ -81,6 +81,11 @@ const HREF_FOR_ENTITY = {
   snelstart_account: () => "/settings/snelstart",
   // The minutes the worker just drafted, on the meeting's own page — which is the review desk.
   meeting: (item) => `/meetings/${item.entity_id}`,
+  // The post that did not go out, on its own page: the reason sits beside each channel there,
+  // and so does the button that tries again.
+  meta_post: (item) => `/marketing/social/${item.entity_id}`,
+  // A token is not a record anybody opens. Where it is replaced is the settings screen.
+  meta_credential: () => "/settings/meta",
 } satisfies Record<string, HrefResolver>;
 
 export function notificationHref(item: NotificationLike): string | null {

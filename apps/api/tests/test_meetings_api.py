@@ -660,8 +660,10 @@ async def test_participants_are_people_and_a_contacts_promise_becomes_their_task
         body = interaction["body_text"]
         assert body.index("## Aanwezig") < body.index("Jan de Vries, Piet (drukker)")
         assert body.index("### Voor ons") < body.index("- Homepageteksten aanleveren")
+        # The client's list is headed with the client's own name, not "Voor de klant".
+        assert "### Voor de klant" not in body
         assert (
-            body.index("### Voor de klant")
+            body.index("### Voor Nova")
             < body.index("**Jan de Vries**")
             < body.index("- Nieuw logo sturen")
         )

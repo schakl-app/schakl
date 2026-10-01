@@ -103,8 +103,23 @@ export const TAILS_BY_ROOT: Record<string, Record<string, string>> = {
   marketing: {
     "google-ads": "nav.google_ads",
     "tag-manager": "nav.gtm",
+    "meta-ads": "nav.meta_ads",
+    social: "nav.social",
+    channels: "meta.channels.title",
     decisions: "google_ads.view.decisions",
     policy: "settings.google_ads.policy.title",
+  },
+};
+
+/**
+ * Tails that mean something else under one particular parent. `decisions` and `policy` exist
+ * under Google Ads *and* under Meta Ads, and a trail reading "Google Ads-vangrails" above a
+ * Meta account is a screen naming the wrong vendor.
+ */
+const TAILS_BY_PARENT: Record<string, Record<string, string>> = {
+  "marketing/meta-ads": {
+    decisions: "meta_ads.view.decisions",
+    policy: "meta_ads.view.policy",
   },
 };
 
@@ -118,6 +133,8 @@ export function literalLabelKey(segments: string[], index: number): string | nul
   const segment = segments[index];
   if (index === 0) return ROOTS[segment] ?? null;
   if (segments[0] === "settings" && index === 1) return SETTINGS[segment] ?? null;
+  const parent = TAILS_BY_PARENT[`${segments[0]}/${segments[1]}`];
+  if (index > 1 && parent?.[segment]) return parent[segment];
   return TAILS_BY_ROOT[segments[0]]?.[segment] ?? TAILS[segment] ?? null;
 }
 

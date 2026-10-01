@@ -186,7 +186,7 @@ route: maak standaard alleen-lezen sleutels aan, en geef schrijfrecht aan een sl
 bewust gebruikt.
 </Aside>
 
-## schakl WordPress MCP Bridge: paginaopbouw, verborgen berichttypes, uploads, formulieren, menu's en WPML
+## schakl WordPress MCP Bridge: paginaopbouw, verborgen berichttypes, uploads, formulieren, menu's, redirects en WPML
 
 Veel bureausites bouwen een pagina op uit een ACF-**repeater** van getypte blokken, met per
 bloktype een handvol zichtbare velden uit dertig. Via de REST-integratie van ACF is dat niet te
@@ -207,7 +207,7 @@ pad (`blokken[2].titel`) in plaats van te stoppen bij het eerste, bewerkt één 
 te raken, neemt een afbeelding mee als URL of base64, en regelt **WPML**: talen, een gekoppelde
 vertaling waarin elke verwijzing naar zijn vertaling is omgezet, en String Translation.
 
-schakl. bereikt de plugin via **33 bridge-routes** onder dezelfde inlog, en dus via dezelfde 33
+schakl. bereikt de plugin via **48 bridge-routes** onder dezelfde inlog, en dus via dezelfde 48
 gereedschappen in `/mcp/wordpress` hoeveel sites er ook zijn:
 
 | Wat | Recht |
@@ -221,6 +221,11 @@ gereedschappen in `/mcp/wordpress` hoeveel sites er ook zijn:
 | Contact Form 7-formulieren lezen, met de velden uit het sjabloon en de eigen configuratiefouten van CF7 | `wordpress.forms.read` |
 | Een formulier aanmaken of bewerken, of de vertaling ervan maken | `wordpress.forms.write` |
 | Een formulier verwijderen | `wordpress.forms.delete` |
+| De bestanden van het thema lezen, met de bewaarde versies | `wordpress.theme.read` |
+| Themabestanden wijzigen, aanmaken, verwijderen en terugzetten, waar de site dat heeft aangezet | `wordpress.theme.write` |
+| Zien welke caches de site gebruikt; ze legen | `wordpress.site.read`; `wordpress.content.publish` |
+| De redirects lezen die Rank Math uitvoert, en erin zoeken | `wordpress.redirect.read` |
+| Eén redirect of een hele lijst toevoegen, er een omleiden, uitzetten of verwijderen | `wordpress.redirect.write` |
 
 Een record, een term of een optiepagina is ook **als tekst** te lezen in plaats van als veldboom:
 de titel, de inhoud zonder opmaak en de ACF-velden op volgorde, met keuzes bij hun label. De
@@ -231,6 +236,26 @@ in één aanroep, voor een fractie van de omvang.
 andere pagina of term wijzen, onder een ander bovenliggend item komen en een plek tussen zijn
 broertjes krijgen, en van een eigen link is de URL te wijzigen. Een heel menu verwijderen is
 definitief en valt onder het verwijderrecht, net als een record verwijderen.
+
+**Redirects** zijn die van Rank Math, en de plugin (1.7.0 of nieuwer) schrijft ze via de eigen
+klassen van Rank Math, dus een redirect die hier gemaakt is, staat in het beheerscherm van Rank
+Math, is daar te bewerken en telt daar zijn hits. Rank Math zelf biedt van buitenaf geen ingang:
+zijn abilities lezen alleen, en zijn REST-route slaat alleen de redirect op van het bericht dat
+bewerkt wordt. De hele lijst van een migratie gaat in **één aanroep** van hooguit 500 rijen, elk
+`{"source": "/oude-pagina", "destination": "/nieuwe-pagina"}`, en komt **per rij beantwoord**
+terug: *created*; *unchanged* als precies die redirect er al staat, dus een lijst twee keer
+sturen voegt niets dubbel toe; *exists* als de bron al ergens anders heen verwijst, wat met rust
+gelaten en getoond wordt tenzij de aanroep zegt hem om te leiden; *duplicate*; of *invalid* met
+het veld erbij. Eén slechte rij houdt de andere niet tegen, en een **proefrun** (`dry_run`)
+controleert een lijst en schrijft niets. Een bron mag een pad zijn, een volledige URL of een URL
+zonder `www`: het is dezelfde bron, en op een site in een submap gaat de map eraf. Wijzigen waar
+een redirect heen gaat, verandert nooit wat hij opvangt. Verwijderen zet hem in de prullenbak van
+Rank Math, waar hij niet meer afgaat en uit terug te halen is. Een redirect is live zodra hij
+opslaat en wordt beantwoord voordat WordPress de pagina zoekt, dus een redirect met een bestaande
+pagina als bron haalt die pagina offline: vandaar een eigen schrijfrecht, alleen voor beheerders.
+Is Rank Math niet actief, nooit ingericht, of staat de module Redirections uit, dan zegt de
+aanroep welke van de drie; is de plugin ouder dan 1.7.0, dan zegt hij dat, met de versie die hij
+aantrof.
 
 **Contact Form 7** is op twee manieren bereikbaar. De gewone formulierroutes hierboven gaan via de
 eigen REST-namespace van CF7 en blijven werken op een site zonder de plugin. De bridge voegt toe
@@ -274,6 +299,8 @@ geschreven naar de documentatie van WPML: reken op een proefrun.
 | `wordpress.content.delete` | Records naar de prullenbak of verwijderen, menu's verwijderen | Beheerder |
 | `wordpress.forms.read` / `wordpress.forms.write` | Contact Form 7 lezen / bewerken | Medewerker / Beheerder |
 | `wordpress.forms.delete` | Contact Form 7-formulieren verwijderen via de bridge | Beheerder |
+| `wordpress.theme.read` / `wordpress.theme.write` | Themabestanden lezen / wijzigen via de bridge | Beheerder / Beheerder |
+| `wordpress.redirect.read` / `wordpress.redirect.write` | Redirects van Rank Math lezen / toevoegen, wijzigen en verwijderen via de bridge | Medewerker / Beheerder |
 | `wordpress.ability.read` / `wordpress.ability.run` | Alleen-lezen abilities / elke ability | Medewerker / Beheerder |
 | `wordpress.rest.read` / `wordpress.rest.write` | De doorgang naar de REST-API: lezen / schrijven | Medewerker / Beheerder |
 

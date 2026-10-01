@@ -120,11 +120,21 @@ Three things follow from the roster being *people*:
   strictly — only a contact the block named; a contact and a colleague on one item resolves to
   the contact, because a client's promise is never a colleague's task.
 - **The minutes are written by side and then by person**: *Voor ons* under each colleague,
-  *Voor de klant* under each contact, *Overig* for the rest — the review screen groups the same
-  way, so either side reads its own list. The client's contacts on the roster are the contact
-  moment's roster (`contact_ids`, kept in step on every roster save), and a task made of an item
-  owned by a contact is **assigned to that contact** (`assignee_contact_id`, the "waiting on the
-  client" shape).
+  the client's own name over each contact (*Voor Nova*; *Voor de klant* only for a meeting filed
+  on nobody — `service.side_heading`, one function for the review screen, the document and the
+  contact moment), *Overig* for the rest, so either side reads its own list. The
+  client's contacts on the roster are the contact moment's roster (`contact_ids`, kept in step on
+  every roster save), and a task made of an item owned by a contact is **assigned to that
+  contact** (`assignee_contact_id`, the "waiting on the client" shape).
+- **"Who took this on" is not "who was there".** A promise is often made *for* somebody at the
+  client who was not at the table, so the owner picker on the review screen and the task sheet
+  offer the client's whole contact list (`meetings/contacts.ts`, one fetch per client shared by
+  every picker on the page), not the roster's contacts alone. The detail carries `owner_names`
+  (`u:<id>` / `c:<id>` → name, through the reference seam) so an owner who is on neither list —
+  a colleague who has left, a contact the client no longer lists — is still drawn by name rather
+  than as an empty picker. Before this, an item the AI box gave to an off-roster contact printed
+  *Niemand genoemd* on the document: `Contact` had no `name` column, so `labels_for` answered
+  every contact id with silence. It declares `__directory_label__` now.
 - **Naming the speakers after the draft is the common case**, so `POST /meetings/{id}/redraft`
   writes the minutes again over the transcript already on the row (`meetings_process` with
   `stage="minutes"`): no new transcription, no audio cost, the people known this time. The

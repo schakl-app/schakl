@@ -91,6 +91,8 @@ named, and every named directory exists) and does not care which heading a path 
 - `apps/api/app/integrations/google_analytics/`
 - `apps/api/app/integrations/google_search_console/`
 - `apps/api/app/integrations/google_tag_manager/`
+- `apps/api/app/integrations/meta/`
+- `apps/api/app/integrations/meta_ads/`
 - `apps/api/app/integrations/microsoft/`
 - `apps/api/app/integrations/mollie/`
 - `apps/api/app/integrations/oxxa/`
@@ -102,6 +104,8 @@ named, and every named directory exists) and does not care which heading a path 
 - `apps/web/src/lib/integrations/google/`
 - `apps/web/src/lib/integrations/google_ads/`
 - `apps/web/src/lib/integrations/google_tag_manager/`
+- `apps/web/src/lib/integrations/meta/`
+- `apps/web/src/lib/integrations/meta_ads/`
 - `apps/web/src/lib/integrations/microsoft/`
 - `apps/web/src/lib/integrations/mollie/`
 - `apps/web/src/lib/integrations/oxxa/`
@@ -110,10 +114,13 @@ named, and every named directory exists) and does not care which heading a path 
 - `apps/web/src/lib/integrations/uptime/`
 - `apps/web/src/lib/integrations/wordpress/`
 - `apps/web/src/routes/(app)/settings/cloudflare/`
+- `apps/web/src/routes/(app)/marketing/meta-ads/`
+- `apps/web/src/routes/(app)/marketing/social/`
 - `apps/web/src/routes/(app)/marketing/tag-manager/`
 - `apps/web/src/routes/(app)/settings/google-ads/`
 - `apps/web/src/routes/(app)/settings/google/`
 - `apps/web/src/routes/(app)/settings/gtm/`
+- `apps/web/src/routes/(app)/settings/meta/`
 - `apps/web/src/routes/(app)/settings/microsoft/`
 - `apps/web/src/routes/(app)/settings/mollie/`
 - `apps/web/src/routes/(app)/settings/oxxa/`

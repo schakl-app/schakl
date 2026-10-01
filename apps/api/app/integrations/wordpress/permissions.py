@@ -89,6 +89,24 @@ WORDPRESS_PERMISSIONS: list[PermissionSpec] = [
     # abilities ask for it too where they would reach the same routes (`surface.py`), so
     # `rest.write` and `ability.run` are not a way around it.
     PermissionSpec("wordpress.theme.write", position=77),
+    # --- redirects (the bridge plugin, Rank Math) ------------------------------------------ #
+    # Which old addresses of a client's site go where. A member reads them: "does /oud already
+    # redirect?" is the question before proposing one.
+    PermissionSpec(
+        "wordpress.redirect.read",
+        default_roles=(ROLE_ADMIN, ROLE_MEMBER),
+        position=78,
+    ),
+    # Adding, re-pointing, switching off and removing redirects — live the moment they save,
+    # and answered before WordPress looks for the page, so a redirect whose source is a live
+    # page takes that page offline. Admin only by default, like `publish`, and a key of its
+    # own rather than a refinement of it: the Google Ads split (`negative.write` beside
+    # `budget.write`) one integration over. An agent that tidies a site's 404s after a
+    # migration should be mintable without the right to edit a published page, and a key
+    # that edits pages should not thereby decide where the site's old addresses lead.
+    # Removing rides the same key — a redirect is three fields and is put back by adding it
+    # again, which a deleted page or form is not.
+    PermissionSpec("wordpress.redirect.write", position=79),
     # --- Abilities ------------------------------------------------------------------------ #
     # Listing what the site registers, and running the abilities that declare themselves
     # `readonly`. The annotation is the plugin author's claim; an ability that makes no claim

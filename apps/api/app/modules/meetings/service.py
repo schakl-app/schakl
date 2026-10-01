@@ -261,6 +261,9 @@ class MeetingService:
             participants=participants,
             speakers=speaker_names(participants),
             minutes=minutes,
+            owner_names=(
+                await self._owner_names(minutes, participants) if minutes is not None else {}
+            ),
             interaction_id=row.interaction_id,
             task_ids=[uuid.UUID(str(t)) for t in (row.task_ids or [])],
             time_entries=await self._time_entries(row, participants),
@@ -736,7 +739,14 @@ class MeetingService:
         locale = await org_locale(self.ctx)
         participants = participants_of(row)
         names = await self._owner_names(draft, participants)
-        body = render_minutes(draft, locale=locale, participants=participants, names=names)
+        client = (
+            (await labels_for(self.ctx, "company", [row.company_id])).get(row.company_id)
+            if row.company_id is not None
+            else None
+        )
+        body = render_minutes(
+            draft, locale=locale, participants=participants, names=names, client=client
+        )
         kind = INTERACTION_KINDS.get(row.kind, "physical_meeting")
         # The client's people in the room are the contact moment's roster (#300): a contact's
         # page then lists this meeting under their name, which is the whole point of naming them.
@@ -1195,6 +1205,7 @@ def render_minutes(
     locale: str,
     participants: list[MeetingParticipant],
     names: dict[str, str],
+    client: str | None = None,
 ) -> str:
     """The minutes as the markdown the contact moment carries — headings in the org's language,
     the reviewer's words verbatim, every claim with its timestamp beside it.
@@ -1202,7 +1213,9 @@ def render_minutes(
     The action items are written **by side and then by person**: what the agency took on,
     under each colleague; what the client took on, under each contact; and the rest. A reader
     on either side finds their own list without reading the other's, which is what a list of
-    action items is for.
+    action items is for. The client's list is headed with the client's name (``client``)
+    where the meeting is filed on one: "Voor de klant" over a list the client reads says less
+    than their own name does.
     """
     from app.i18n import translate
 
@@ -1226,8 +1239,7 @@ def render_minutes(
     if draft.action_items:
         lines += [f"## {translate('meetings.minutes.heading_actions', locale)}", ""]
         for side, items in group_action_items(draft.action_items):
-            side_heading = translate(f"meetings.minutes.side_{side}", locale)
-            lines += [f"### {side_heading}", ""]
+            lines += [f"### {side_heading(side, locale, client=client)}", ""]
             for owner_key, owned in items:
                 owner = names.get(owner_key or "", "") if owner_key else ""
                 if not owner and owned and owned[0].owner_label:
@@ -1244,6 +1256,19 @@ def render_minutes(
         lines += [f"- {q.strip()}" for q in draft.open_questions]
         lines.append("")
     return "\n".join(lines).strip()
+
+
+def side_heading(side: str, locale: str, *, client: str | None = None) -> str:
+    """The heading over one side's action items: ``Voor ons`` · ``Voor Nova`` · ``Overig``.
+
+    One function for the contact moment and the document, so the two cannot name the client's
+    list differently; the generic ``Voor de klant`` only where the meeting is filed on nobody.
+    """
+    from app.i18n import translate
+
+    if side == "client" and client and client.strip():
+        return translate("meetings.minutes.side_client_named", locale, client=client.strip())
+    return translate(f"meetings.minutes.side_{side}", locale)
 
 
 def group_action_items(
@@ -1302,6 +1327,7 @@ __all__ = [
     "drop_audio",
     "group_action_items",
     "participants_of",
+    "side_heading",
     "render_minutes",
     "speaker_names",
 ]

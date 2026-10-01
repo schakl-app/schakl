@@ -54,7 +54,11 @@ PORTAL_GATED_ENTITY_TYPES = frozenset({"task", "project", "company"})
 #: the horizon question only): a host that registered a read key on its trail
 #: (``AuditableMixin.__activity_read_permission__``) has it asked here too, because the key that
 #: gates reading a record's history is the key that gates reading the record.
-RECORD_GATED_ENTITY_TYPES = frozenset({"invoice", "meeting"})
+#:
+#: A planned social post is the third (docs/META.md): its images are the agency's working
+#: material until the post is live, so they read for whoever may read the post and for no
+#: client login — the model's portal clause answers "none".
+RECORD_GATED_ENTITY_TYPES = frozenset({"invoice", "meeting", "meta_post"})
 
 logger = logging.getLogger("schakl.storage")
 

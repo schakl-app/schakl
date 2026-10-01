@@ -1651,6 +1651,12 @@ contrast bug in dark mode rather than only an inconsistency.
   Instellingen → Verlof → Feestdagen seeds the whole list and lets the tenant **deactivate** the
   ones they work. Deactivate, never delete: a deleted holiday comes back on the next import, a
   deactivated one does not, and it renders and counts nowhere in the meantime.
+- **Text that is published to somebody else's platform is a plain box, and that is the one
+  exception to the rule below.** A social post goes out as the characters typed: markdown in
+  the composer would reach a client's followers as asterisks, and a rich editor would promise
+  bold that Facebook and Instagram do not have. So `PostComposer` draws a `<textarea>`, with
+  the counters of the channels it goes to under it and a preview per channel beside it
+  (`docs/META.md` §13).
 - **Long-form user text is markdown** (issue #66), authored through the shared `RichTextEditor`
   and rendered through the shared `Markdown` component — never a bare `<textarea>`, and never
   `{@html}` outside that one component. Store the markdown *source* in the existing `Text` column;

@@ -595,8 +595,8 @@ ACF 6.8 container with a REST-hidden post type and the vangessel `pre_get_posts`
 
 ### What schakl adds, and the rules it keeps
 
-`bridge.py` is the surface: **43 routes under `/sites/{id}/bridge/…`**, one per plugin
-operation, which is 43 tools in `/mcp/wordpress` whether the agency holds one site or four
+`bridge.py` is the surface: **48 routes under `/sites/{id}/bridge/…`**, one per plugin
+operation, which is 48 tools in `/mcp/wordpress` whether the agency holds one site or four
 hundred (§7's rule, and `test_the_bridge_tools_ride_the_wordpress_section` counts them).
 
 | Route | Permission | What |
@@ -615,6 +615,7 @@ hundred (§7's rule, and `test_the_bridge_tools_ride_the_wordpress_section` coun
 | `GET /bridge/theme` · `GET /bridge/theme/files` · `GET /bridge/theme/file` · `GET /bridge/theme/file/history` | **`theme.read`** | the theme's files (plugin 1.5.0): the tree, `search` for the files that hold a string with the lines, one file with its `hash`, the versions kept |
 | `PUT` / `POST` / `DELETE /bridge/theme/file` · `POST /bridge/theme/file/restore` | **`theme.write`** | change a file by `edits` or whole with `expected_hash`, create one, delete one, put a kept version back — PHP included where the site can check itself |
 | `GET /bridge/cache` · `POST /bridge/cache/purge` | `site.read` / **`publish`** | the caches found; empty the page cache, generated CSS/JS, opcode cache, and the object cache when named |
+| `GET` / `POST /bridge/redirects` · `GET` / `PATCH` / `DELETE /bridge/redirects/{redirect_id}` | **`redirect.read`** / **`redirect.write`** | Rank Math's redirects (plugin 1.7.0): list and search; add one or a list of 500, answered per row, with `dry_run`; re-point, switch off, trash or delete — §9a |
 
 Four rules, three of them §7's restated because they were easy to lose one namespace over:
 
@@ -700,6 +701,75 @@ plugin sees its own name (the test asserts `copy_source` never travels). And the
 the plugin's namespace with the plugin's own envelope and a sliver of its validation, so a
 change to the mapping is caught here — while the validation rules themselves are tested in the
 plugin, which is where they live.
+
+### 9a. Redirects — Rank Math's, written the way its own screen writes them
+
+The ask was *add redirects for Rank Math through the CRM's MCP*, and the first thing reading
+Rank Math's source (1.0.279) found is that **it offers no way in**. It registers abilities, and
+the redirection one is `rank-math/get-redirections`: a read. Its REST surface has one route that
+touches the table, `POST rankmath/v1/updateRedirection`, and that is the *metabox* save — the
+redirect of the post being edited, one exact source, an `objectID` it requires and files in a
+cache keyed on that post. It can be driven off-label (the permission check never looks at the
+object), and a first design did exactly that; it was dropped for three reasons that are each a
+rule from elsewhere in this file. It can only write an exact source, so re-saving an inherited
+redirect with two sources or a regex would **replace what it catches** while changing where it
+goes (`docs/CLOUDFLARE.md`'s `edited_rule`, one vendor over). It is one HTTP round trip per
+redirect, and the list that prompted the ask had eighty-two rows. And it is a UI's private
+route, used for something its author did not mean.
+
+So the plugin grew five operations (`redirects.*`, plugin 1.7.0) that write through Rank Math's
+own `Redirection` and `DB` classes — the path its admin form takes, with its sanitising and its
+record cache — and read the table directly. schakl adds five routes and two permissions.
+
+- **A list is one call, answered per row** (§18: a bad shared value is the caller's, a bad row
+  is the row's). `POST /bridge/redirects` takes up to 500 rows and every row answers one of
+  `created`, `updated`, `unchanged`, `exists`, `duplicate`, `invalid`. The row fields are
+  deliberately **loosely typed** on this side (`type: int`, not a `Literal`): a `Literal` would
+  turn one row's `999` into a 422 for the other eighty-one, which is the failure the per-row
+  report exists to prevent. The list itself — empty, over 500 — is the call's, and is refused
+  before the site is asked.
+- **Idempotency is the plugin's, by looking, not by a key.** A row whose source already has
+  exactly this redirect is `unchanged`; one whose source redirects elsewhere is `exists` and is
+  left alone, with the existing redirect in the answer, unless `on_existing: "update"`. So a
+  call that timed out is simply sent again (#31's "a timeout is unknown"), and an agent that
+  runs the same migration list twice adds nothing twice. `dry_run` answers the same and writes
+  nothing — and declares `redirect.write` anyway: a route's permission is not something to
+  compute from its body.
+- **A source is read as an address of the site.** A full URL, one without scheme or `www.`
+  and a path are the same source; on a site in a subdirectory (`breik.dev/vangessel`) the
+  directory comes off, because Rank Math matches the path *below the home URL*. Rank Math's own
+  reading of a full URL depends on the host the request arrived on, so `https://klant.nl/oud`
+  posted to `www.klant.nl` is refused as "external" by it; the plugin normalises first.
+- **Changing where it goes never changes what it catches.** An update that names no `sources`
+  writes the stored ones back byte for byte; `sources` replaces them whole. A 410 or 451 has no
+  destination, and going back to a 301 asks for one.
+- **Two keys of their own**, `wordpress.redirect.read` (member) and `wordpress.redirect.write`
+  (admin), rather than `content.publish`. A redirect is answered before WordPress looks for the
+  page, so one whose source is a live page takes that page offline — as strong as publishing —
+  but it is a different job: an agent that tidies 404s after a migration should be mintable
+  without the right to edit a published page, and the reverse (`google_ads`' four-way write
+  split). Removing rides `write`: a redirect is three fields and is put back by adding it again.
+  The passthrough and `ability.run` need no guard here, unlike the theme's: both are already
+  admin-only supersets of this key.
+- **Three refusals that read alike and have three different fixes.** Rank Math absent, never
+  set up (it loads **no module at all** until its wizard is finished or skipped — found by
+  running it, on a fresh install) or with its Redirections module off: the plugin's 409 with
+  `details.missing` saying which. A plugin older than 1.7.0 answers the route it does not know
+  with the same `rest_no_route` a site *without* the plugin gives, and "not installed" is the
+  wrong sentence about a site that has it: `_bridge_since` asks `/info` on that failure — the
+  call decides, not the stored version — and answers 409 `errors.wordpress_bridge_outdated`
+  with `details.installed` and `details.needs`. Most connected sites are on a manual update,
+  so this is the refusal the first real call is most likely to meet.
+- **A trail line for what changed on the site** (§16): `redirects_added` (the counts, the
+  first twenty rows and how many more), `redirect_updated`, `redirect_deleted`. A dry run, and
+  a list whose every row was already there, leave none.
+
+Proven on the test container against Rank Math 1.0.279: the plugin's own suite
+(`tests/wp/test-redirects.php`, down to what Rank Math answers for each address), a real visit
+answered `301` with `X-Redirect-By: Rank Math`, and schakl's own client and schemas round-tripped
+against it. Not yet met: a client's production site (the plugin has to be at 1.7.0 there), a
+site in a subdirectory with real traffic, and Rank Math PRO, whose extra redirect fields
+(categories, scheduling) the plugin neither reads nor writes.
 
 ### Checklist for the first live site
 

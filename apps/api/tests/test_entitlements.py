@@ -140,6 +140,13 @@ def test_paid_module_set_is_pinned() -> None:
         # spends the tenant's speech and model credits on other people's words, and an agency
         # may want the CRM without it.
         "meetings": "meetings",
+        # Publishing under a client's name on their Facebook Page and Instagram account: a
+        # credential for somebody else's service, licensed like every other outside
+        # connection.
+        "meta": "meta",
+        # Meta advertising sits on top of `meta` the way `google_ads` sits on `google`: an
+        # agency may plan posts without buying the surface that changes what a client spends.
+        "meta_ads": "meta_ads",
         # Microsoft 365 is Google Workspace's twin: a credential for somebody else's service
         # (Outlook calendar, OneDrive, Outlook mail) that enriches the same modules `google`
         # does, licensed on the same terms and for the same reason.

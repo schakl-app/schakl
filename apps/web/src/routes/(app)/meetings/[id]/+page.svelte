@@ -60,6 +60,7 @@
     kindLabel,
     sourceLabel,
   } from "$lib/modules/meetings/format";
+  import { type ClientContact, clientContacts } from "$lib/modules/meetings/contacts";
   import MeetingAIRevise from "$lib/modules/meetings/MeetingAIRevise.svelte";
   import MeetingExportDialog from "$lib/modules/meetings/MeetingExportDialog.svelte";
   import MeetingStatusPill from "$lib/modules/meetings/MeetingStatusPill.svelte";
@@ -316,10 +317,28 @@
   const undiarized = $derived(!meeting.diarized && !!(segments.length || meeting.transcript_text));
 
   /**
+   * The client's people, for the owner picker: a promise is often made *for* somebody at the
+   * client who was not at the table, and offering only the roster made those items impossible
+   * to give to them. Fetched once per client and shared with the roster's own picker.
+   */
+  let clientPeople = $state<ClientContact[]>([]);
+  $effect(() => {
+    const target = meeting.company_id ?? "";
+    if (!editable) return;
+    void clientContacts(target).then((rows) => {
+      if ((meeting.company_id ?? "") === target) clientPeople = rows;
+    });
+  });
+  // A client's person is named with the client, so a list of owners says whose side each is on.
+  const contactHint = $derived(meeting.company_name || t("party.contact"));
+
+  /**
    * "Who took this on" as one control. `u:<id>` is a colleague (a participant or anybody on
-   * staff), `c:<id>` a contact of the client (a participant), `n:<name>` a free-text owner —
-   * and typing an unknown name makes one. Exactly one of the item's three owner fields is set
-   * by a pick; the API refuses a colleague and a contact on the same item anyway.
+   * staff), `c:<id>` a contact of the client (at the table or not), `n:<name>` a free-text
+   * owner — and typing an unknown name makes one. Exactly one of the item's three owner fields
+   * is set by a pick; the API refuses a colleague and a contact on the same item anyway. An
+   * owner already on an item is always offered under the name the API resolved for it
+   * (`owner_names`), or the picker would draw a person it cannot find as nobody.
    */
   const ownerItems = $derived.by(() => {
     const items: { value: string; label: string; hint?: string }[] = [];
@@ -338,15 +357,30 @@
         hint: p.user_id
           ? t("party.employee")
           : p.contact_id
-            ? t("party.contact")
+            ? contactHint
             : t("meetings.participants.other"),
       });
+    }
+    for (const c of clientPeople) {
+      const value = `c:${c.id}`;
+      if (seen.includes(value)) continue;
+      seen.push(value);
+      items.push({ value, label: c.name, hint: contactHint });
     }
     for (const m of members) {
       const value = `u:${m.user_id}`;
       if (seen.includes(value) || m.is_active === false) continue;
       seen.push(value);
       items.push({ value, label: memberLabel(m), hint: t("party.employee") });
+    }
+    for (const [value, name] of Object.entries(meeting.owner_names ?? {})) {
+      if (seen.includes(value)) continue;
+      seen.push(value);
+      items.push({
+        value,
+        label: name,
+        hint: value.startsWith("c:") ? contactHint : t("party.employee"),
+      });
     }
     return items;
   });
@@ -365,7 +399,14 @@
     const value = ownerValue(item);
     if (!value) return "";
     const found = ownerItems.find((o) => o.value === value);
-    return found?.label ?? item.owner_label ?? "";
+    return found?.label ?? meeting.owner_names?.[value] ?? item.owner_label ?? "";
+  }
+  /** The heading over one side's items — the client's list under the client's own name, the
+   *  way the document and the contact moment head it (`service.side_heading`). */
+  function sideLabel(side: Side): string {
+    if (side === "client" && meeting.company_name)
+      return t("meetings.minutes.side_client_named", { client: meeting.company_name });
+    return t(`meetings.minutes.side_${side}`);
   }
 
   type Side = "agency" | "client" | "other";
@@ -1034,7 +1075,7 @@
           {#each draftGroups as block (block.side)}
             <div>
               <p class="mb-1 text-xs font-medium tracking-wide text-text-muted uppercase">
-                {t(`meetings.minutes.side_${block.side}`)}
+                {sideLabel(block.side)}
               </p>
               <div class="space-y-3">
                 {#each block.groups as group (group.key)}
@@ -1489,6 +1530,7 @@
     index={taskSheetIndex}
     item={taskSheetItem}
     participants={meeting.participants ?? []}
+    ownerNames={meeting.owner_names ?? {}}
     {members}
     projects={data.projects}
     aiAvailable={taskDraftAvailable}

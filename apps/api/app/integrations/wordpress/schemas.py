@@ -1247,3 +1247,158 @@ class WordPressCachePurged(_BridgeOpen):
     skipped: list[dict[str, Any]] = Field(default_factory=list)
     requested: list[str] = Field(default_factory=list)
     message: str | None = None
+
+
+# --- redirects (plugin 1.7.0, Rank Math) ---------------------------------------------------- #
+_REDIRECT_SOURCE_DOC = (
+    "The old address: a path below the site's home (`/old-page` — on a site in a subdirectory, "
+    "without that directory) or a full URL of this site. The home page itself cannot be a "
+    "source. Trailing slashes do not matter; a visit's query string is ignored unless the "
+    "source has one."
+)
+_REDIRECT_DESTINATION_DOC = (
+    "Where it goes: a path of this site (`/new-page`) or any URL. With a regex source it may "
+    "hold `$1`, `$2` … Not used for type 410 or 451."
+)
+_REDIRECT_COMPARISONS = '"exact" (default), "contains", "start", "end" or "regex"'
+
+
+class WordPressRedirectSource(BaseModel):
+    """One source of a redirect, where a plain string will not do."""
+
+    pattern: str = Field(..., min_length=1, max_length=2000, description=_REDIRECT_SOURCE_DOC)
+    comparison: str = Field(
+        "exact",
+        max_length=20,
+        description=f"How the pattern is matched: {_REDIRECT_COMPARISONS}. A regex sits "
+        "between `@` delimiters.",
+    )
+    ignore_case: bool = Field(False, description="Match an exact source regardless of case.")
+
+
+class WordPressRedirectRow(BaseModel):
+    """One redirect to add. Loosely typed on purpose: a row the site refuses is reported as
+    that row (`results[n].problems`), never as a refusal of the whole list."""
+
+    source: str | None = Field(None, max_length=2000, description=_REDIRECT_SOURCE_DOC)
+    sources: list[str | WordPressRedirectSource] | None = Field(
+        None,
+        max_length=50,
+        description="Several old addresses that share one destination, instead of `source`. "
+        "Each a string or `{pattern, comparison, ignore_case}`.",
+    )
+    destination: str | None = Field(
+        None, max_length=2000, description=_REDIRECT_DESTINATION_DOC
+    )
+    type: int | None = Field(
+        None,
+        description="301 permanent (default), 302 or 307 temporary, 410 gone, 451 unavailable "
+        "for legal reasons — the last two send the visitor nowhere.",
+    )
+    status: str | None = Field(
+        None, max_length=20, description='"active" (default) or "inactive": kept, not firing.'
+    )
+    comparison: str | None = Field(
+        None,
+        max_length=20,
+        description=f"How a string source is matched: {_REDIRECT_COMPARISONS}.",
+    )
+    ignore_case: bool | None = Field(
+        None, description="Match an exact source regardless of case."
+    )
+
+
+class WordPressRedirectsCreate(BaseModel):
+    redirects: list[WordPressRedirectRow] = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description="The redirects to add: one, or a whole list from a migration.",
+    )
+    on_existing: Literal["skip", "update"] = Field(
+        "skip",
+        description="What to do with a source that already redirects somewhere else: `skip` "
+        "leaves it alone and reports it with the existing redirect; `update` re-points it to "
+        "the new destination and type.",
+    )
+    dry_run: bool = Field(
+        False, description="Check every row and say what would happen; write nothing."
+    )
+
+
+class WordPressRedirect(_BridgeOpen):
+    """One redirect as the site's SEO plugin holds it. `sources[].url` is the address an
+    exact source stands for; `destination` is null for a 410 or 451."""
+
+    id: int
+    provider: str | None = None
+    sources: list[dict[str, Any]] = Field(default_factory=list)
+    destination: str | None = None
+    type: int = 301
+    status: str = "active"
+    hits: int = 0
+    created: str | None = None
+    updated: str | None = None
+    last_accessed: str | None = None
+    message: str | None = None
+
+
+class WordPressRedirectList(_BridgeOpen):
+    provider: str | None = None
+    items: list[WordPressRedirect] = Field(default_factory=list)
+    total: int = 0
+    page: int = 1
+    per_page: int = 50
+    pages: int = 0
+    #: Per status whatever the filter: `{active, inactive, trashed}`.
+    counts: dict[str, int] = Field(default_factory=dict)
+
+
+class WordPressRedirectsCreated(_BridgeOpen):
+    """The answer to a list, row by row. `results[n].outcome` is `created`, `updated`,
+    `unchanged` (exactly this redirect was already there), `exists` (the source already
+    redirects elsewhere; `existing` shows where), `duplicate` (the source was earlier in the
+    call; `of` is that row) or `invalid` (`problems` names the field)."""
+
+    provider: str | None = None
+    dry_run: bool = False
+    created: int = 0
+    updated: int = 0
+    unchanged: int = 0
+    skipped: int = 0
+    invalid: int = 0
+    results: list[dict[str, Any]] = Field(default_factory=list)
+    message: str | None = None
+
+
+class WordPressRedirectUpdate(BaseModel):
+    """What to change on one redirect. What is left out is kept — the sources above all."""
+
+    destination: str | None = Field(None, max_length=2000, description=_REDIRECT_DESTINATION_DOC)
+    type: Literal[301, 302, 307, 410, 451] | None = Field(
+        None, description="A 410 or 451 drops the destination; back to a 301 needs one again."
+    )
+    status: Literal["active", "inactive"] | None = Field(
+        None,
+        description='"inactive" keeps the redirect without it firing; "active" on a trashed '
+        "redirect takes it out of the trash.",
+    )
+    sources: list[str | WordPressRedirectSource] | None = Field(
+        None,
+        min_length=1,
+        max_length=50,
+        description="Replaces every source of the redirect. Leave it out to change where the "
+        "redirect goes without touching what it catches.",
+    )
+
+
+class WordPressRedirectDeleted(_BridgeOpen):
+    id: int
+    provider: str | None = None
+    #: Gone for good (`force`).
+    deleted: bool = False
+    #: In the SEO plugin's trash: no longer firing, restorable.
+    trashed: bool = False
+    #: The redirect as it was.
+    redirect: dict[str, Any] | None = None
+    message: str | None = None

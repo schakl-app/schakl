@@ -14,6 +14,7 @@ and §6 forbids reaching across for it — marketing asks through ``app/core/wor
 from __future__ import annotations
 
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
 
@@ -70,6 +71,12 @@ from app.integrations.wordpress.schemas import (
     WordPressRecordCreate,
     WordPressRecordList,
     WordPressRecordUpdate,
+    WordPressRedirect,
+    WordPressRedirectDeleted,
+    WordPressRedirectList,
+    WordPressRedirectsCreate,
+    WordPressRedirectsCreated,
+    WordPressRedirectUpdate,
     WordPressRestCall,
     WordPressRestResult,
     WordPressSiteCreate,
@@ -1302,3 +1309,128 @@ async def bridge_purge_cache(
     host or a CDN outside WordPress is not reached. Visitors get uncached pages until the
     cache refills, hence `publish`."""
     return await WordPressBridgeService(ctx).cache_purge(site_id, payload)
+
+
+# --- redirects (plugin 1.7.0, Rank Math) ------------------------------------------------------ #
+@router.get(
+    "/sites/{site_id}/bridge/redirects",
+    response_model=WordPressRedirectList,
+    dependencies=[require_permission("wordpress.redirect.read")],
+)
+async def bridge_redirects(
+    site_id: uuid.UUID,
+    search: str | None = Query(
+        None,
+        max_length=200,
+        description="Text in a source or the destination — how to see whether an address "
+        "already redirects, or what points at a page.",
+    ),
+    status: Literal["all", "active", "inactive", "trashed"] = Query(
+        "all", description='"all" is everything outside the trash.'
+    ),
+    redirect_type: int | None = Query(
+        None,
+        alias="type",
+        ge=300,
+        le=499,
+        description="Only redirects of this type: 301, 302, 307, 410 or 451.",
+    ),
+    orderby: Literal["id", "updated", "created", "hits", "last_accessed"] = Query("id"),
+    order: Literal["asc", "desc"] = Query("desc"),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=1, le=200),
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressRedirectList:
+    """The redirects the site's Rank Math serves, newest first: each with its sources (the
+    pattern, how it is matched, and for an exact one the URL it stands for), its destination,
+    its type (301, 302, 307, 410, 451), whether it is active, how often it fired and when
+    last. `counts` gives the totals per status whatever the filter. 409 where Rank Math is not
+    active, was never set up or has its Redirections module off (`details.missing`), and
+    where the bridge plugin is older than 1.7.0 (`details.installed`)."""
+    return await WordPressBridgeService(ctx).redirects(
+        site_id,
+        search=search,
+        status=status,
+        redirect_type=redirect_type,
+        orderby=orderby,
+        order=order,
+        page=page,
+        per_page=per_page,
+    )
+
+
+@router.get(
+    "/sites/{site_id}/bridge/redirects/{redirect_id}",
+    response_model=WordPressRedirect,
+    dependencies=[require_permission("wordpress.redirect.read")],
+)
+async def bridge_redirect(
+    site_id: uuid.UUID,
+    redirect_id: int,
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressRedirect:
+    """One redirect by its id, trashed ones included."""
+    return await WordPressBridgeService(ctx).redirect(site_id, redirect_id)
+
+
+@router.post(
+    "/sites/{site_id}/bridge/redirects",
+    response_model=WordPressRedirectsCreated,
+    dependencies=[require_permission("wordpress.redirect.write")],
+)
+async def bridge_add_redirects(
+    site_id: uuid.UUID,
+    payload: WordPressRedirectsCreate,
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressRedirectsCreated:
+    """Add one redirect or a whole list (up to 500) to the site's Rank Math — live at once.
+    Each row is `{"source": "/old-page", "destination": "/new-page"}`; `type` is 301 unless
+    told. Answered per row in `results`: `created`; `unchanged` when exactly this redirect is
+    already there, so sending a list twice adds nothing twice; `exists` when the source
+    already redirects somewhere else — left alone, with the existing redirect in the answer,
+    unless `on_existing` is `update`; `duplicate` for a source repeated in the call; `invalid`
+    with `problems` naming the field (a source on another domain, a missing destination, a
+    destination that is the source itself). One bad row does not stop the others. `dry_run`
+    checks the list the same way and writes nothing — use it on a list from a migration
+    first. A redirect is answered before WordPress looks for the page, so a source that is a
+    live page takes that page offline."""
+    return await WordPressBridgeService(ctx).redirects_create(site_id, payload)
+
+
+@router.patch(
+    "/sites/{site_id}/bridge/redirects/{redirect_id}",
+    response_model=WordPressRedirect,
+    dependencies=[require_permission("wordpress.redirect.write")],
+)
+async def bridge_update_redirect(
+    site_id: uuid.UUID,
+    redirect_id: int,
+    payload: WordPressRedirectUpdate,
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressRedirect:
+    """Change where a redirect goes, its type or whether it is active — live at once. What
+    you leave out is kept, and the sources stay exactly as they are unless `sources` is sent,
+    which replaces them all. `status: "active"` on a trashed redirect takes it out of the
+    trash. Refused whole (422, `details.problems`) when the result would not be a valid
+    redirect; `was` in the answer is what it said before."""
+    return await WordPressBridgeService(ctx).redirect_update(site_id, redirect_id, payload)
+
+
+@router.delete(
+    "/sites/{site_id}/bridge/redirects/{redirect_id}",
+    response_model=WordPressRedirectDeleted,
+    dependencies=[require_permission("wordpress.redirect.write")],
+)
+async def bridge_delete_redirect(
+    site_id: uuid.UUID,
+    redirect_id: int,
+    force: bool = Query(
+        False, description="Delete permanently instead of moving to Rank Math's trash."
+    ),
+    ctx: RequestContext = Depends(require_context),
+) -> WordPressRedirectDeleted:
+    """Move a redirect to Rank Math's trash: it stops firing at once, `bridge_update_redirect`
+    with `status: "active"` brings it back, and Rank Math deletes it after 30 days. `force`
+    deletes it now. The old address answers whatever the site has there afterwards — usually
+    a 404."""
+    return await WordPressBridgeService(ctx).redirect_delete(site_id, redirect_id, force=force)

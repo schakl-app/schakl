@@ -97,6 +97,8 @@ _BUNDLES: dict[str, tuple[str, ...]] = {
         "google_search_console",
         "google_tag_manager",
         "marketing",
+        "meta",
+        "meta_ads",
         "reporting",
     ),
 }

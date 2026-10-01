@@ -108,6 +108,10 @@ ENTITY_ID_KEY: dict[str, str] = {
     # Emitted by the meetings worker the moment a draft lands on ``review``.
     "meeting.ready": "meeting_id",
     "meeting.lost": "meeting_id",
+    # Emitted by the publishing worker when a planned post did not reach a channel.
+    "meta.post_failed": "meta_post_id",
+    # Ingested directly by the nightly token job; the bus handler exists for completeness.
+    "meta.token_expiring": "credential_id",
 }
 
 SORTABLE: dict[str, Any] = {"created_at": Notification.created_at}

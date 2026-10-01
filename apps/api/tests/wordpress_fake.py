@@ -146,6 +146,26 @@ class FakeWordPress:
         #: `rest_no_route` — the exact answer a site without the plugin gives.
         self.has_bridge = True
         self.bridge_version = "1.0.0"
+        #: The plugin has the `redirects.*` operations (1.7.0+). Off, those routes are core's
+        #: `rest_no_route` while `/info` still answers — an older plugin, not a missing one.
+        self.bridge_redirects = True
+        #: Rank Math's Redirections module. `None` is on; a string is what the plugin names
+        #: as missing (`rank_math`, `rank_math_setup`, `rank_math_redirections_module`).
+        self.redirects_missing: str | None = None
+        self.redirects: list[dict] = [
+            {
+                "id": 7,
+                "sources": [{"pattern": "oud", "comparison": "exact", "ignore_case": False,
+                             "url": "https://klant.nl/oud"}],
+                "destination": "https://klant.nl/nieuw",
+                "type": 301,
+                "status": "active",
+                "hits": 12,
+                "created": "2026-08-01T09:00:00+02:00",
+                "updated": "2026-08-01T09:00:00+02:00",
+                "last_accessed": "2026-09-30T18:12:00+02:00",
+            }
+        ]
         #: `info.updates` (bridge 1.3.1+); `None` is an older plugin that does not send it.
         self.bridge_updates: dict | None = None
         #: The plugin's `info.theme` (1.5.0+), or None for a plugin that does not report it.
@@ -579,6 +599,239 @@ class FakeWordPress:
             })
         return _wp_error("rest_no_route", "No route was found matching the URL.", 404)
 
+    def _bridge_redirects_route(  # noqa: C901
+        self, request: httpx.Request, parts: list[str], body: dict, q
+    ):
+        """The plugin's `redirects.*` with a sliver of its checks: enough for the mapping on
+        this side — the per-row outcomes, the refusals and their details — while the rules
+        themselves are tested in the plugin, against Rank Math."""
+        if self.redirects_missing:
+            return self._bridge_error(
+                "unavailable",
+                "Rank Math's Redirections module is switched off.",
+                409,
+                {"missing": self.redirects_missing, "provider": "rank_math"},
+            )
+        home = "https://klant.nl"
+        method = request.method
+
+        def path_of(source: str) -> str | None:
+            text = source.strip()
+            for prefix in (home, "http://klant.nl", "https://www.klant.nl", "klant.nl"):
+                if text.startswith(prefix):
+                    text = text[len(prefix):]
+                    break
+            else:
+                if "://" in text:
+                    return None
+            return text.strip("/") or None
+
+        def shown(row: dict) -> dict:
+            return {**row, "destination": None if row["type"] in (410, 451) else row["destination"]}
+
+        def live() -> list[dict]:
+            return [r for r in self.redirects if r["status"] != "trashed"]
+
+        def holder(pattern: str, except_id: int = 0) -> dict | None:
+            for row in live():
+                if row["id"] != except_id and any(
+                    s["pattern"].strip("/") == pattern for s in row["sources"]
+                ):
+                    return row
+            return None
+
+        def find(raw: str) -> dict | None:
+            return next((r for r in self.redirects if str(r["id"]) == raw), None)
+
+        if len(parts) == 1 and method == "GET":
+            status = q.get("status") or "all"
+            rows = [
+                r for r in self.redirects
+                if (r["status"] != "trashed" if status == "all" else r["status"] == status)
+            ]
+            if q.get("search"):
+                needle = q["search"].lower()
+                rows = [
+                    r for r in rows
+                    if needle in r["destination"].lower()
+                    or any(needle in s["pattern"].lower() for s in r["sources"])
+                ]
+            if q.get("type"):
+                rows = [r for r in rows if str(r["type"]) == q["type"]]
+            per_page = int(q.get("per_page") or 50)
+            page = int(q.get("page") or 1)
+            counts = {
+                k: sum(1 for r in self.redirects if r["status"] == k)
+                for k in ("active", "inactive", "trashed")
+            }
+            start = (page - 1) * per_page
+            return _json({
+                "provider": "rank_math",
+                "items": [shown(r) for r in rows[start:start + per_page]],
+                "total": len(rows), "page": page, "per_page": per_page,
+                "pages": -(-len(rows) // per_page), "counts": counts,
+            })
+
+        if len(parts) == 1 and method == "POST":
+            rows = body.get("redirects")
+            if not isinstance(rows, list) or not rows:
+                return self._bridge_error(
+                    "invalid_input", "Send the redirects to add.", 400, {"field": "redirects"}
+                )
+            dry = bool(body.get("dry_run"))
+            tally = dict.fromkeys(
+                ("created", "updated", "unchanged", "exists", "duplicate", "invalid"), 0
+            )
+            results, seen = [], {}
+            for index, row in enumerate(rows):
+                given = row.get("sources") or ([row["source"]] if row.get("source") else [])
+                given = [g if isinstance(g, str) else g.get("pattern", "") for g in given]
+                out: dict = {"index": index, "outcome": "invalid",
+                             "source": given[0] if given else ""}
+                kind = row.get("type") or 301
+                problems = []
+                patterns = [path_of(g) for g in given]
+                if not given:
+                    problems.append({"path": "source", "field": "source",
+                                     "code": "source_required", "message": "A source is required.",
+                                     "details": {}})
+                elif None in patterns:
+                    problems.append({"path": "source", "field": "source",
+                                     "code": "source_not_on_site",
+                                     "message": "The source must be a path or URL of this site.",
+                                     "details": {"home": home + "/"}})
+                if kind not in (301, 302, 307, 410, 451):
+                    problems.append({"path": "type", "field": "type", "code": "invalid_type",
+                                     "message": "Unknown redirect type.",
+                                     "details": {"choices": [301, 302, 307, 410, 451]}})
+                destination = row.get("destination") or ""
+                if kind in (301, 302, 307) and not destination:
+                    problems.append({"path": "destination", "field": "destination",
+                                     "code": "destination_required",
+                                     "message": "A destination is required.", "details": {}})
+                if problems:
+                    out["problems"] = problems
+                    out["message"] = problems[0]["message"]
+                else:
+                    if destination.startswith("/"):
+                        destination = home + destination
+                    out["destination"] = destination or None
+                    out["type"] = kind
+                    status = row.get("status") or "active"
+                    taken = next((p for p in patterns if p in seen), None)
+                    existing = next((h for h in (holder(p) for p in patterns) if h), None)
+                    if taken is not None:
+                        out.update(outcome="duplicate", of=seen[taken])
+                    elif existing and (existing["destination"], existing["type"]) == (
+                        destination, kind
+                    ):
+                        out.update(outcome="unchanged", id=existing["id"],
+                                   redirect=shown(existing))
+                    elif existing and body.get("on_existing") != "update":
+                        out.update(outcome="exists", id=existing["id"],
+                                   existing=shown(existing))
+                    elif existing:
+                        out.update(outcome="updated", id=existing["id"],
+                                   was={"destination": existing["destination"],
+                                        "type": existing["type"], "status": existing["status"]})
+                        if not dry:
+                            existing.update(destination=destination, type=kind, status=status)
+                            out["redirect"] = shown(existing)
+                    else:
+                        out["outcome"] = "created"
+                        if not dry:
+                            made = {
+                                "id": max((r["id"] for r in self.redirects), default=0) + 1,
+                                "sources": [{"pattern": p, "comparison": "exact",
+                                             "ignore_case": False, "url": f"{home}/{p}"}
+                                            for p in patterns],
+                                "destination": destination, "type": kind, "status": status,
+                                "hits": 0, "created": "2026-10-01T12:00:00+02:00",
+                                "updated": "2026-10-01T12:00:00+02:00", "last_accessed": None,
+                            }
+                            self.redirects.append(made)
+                            out.update(id=made["id"], redirect=shown(made))
+                    for p in patterns:
+                        seen.setdefault(p, index)
+                tally[out["outcome"]] += 1
+                results.append(out)
+            if not dry:
+                self.writes.append(("/redirects", body))
+            return _json({
+                "provider": "rank_math", "dry_run": dry,
+                "created": tally["created"], "updated": tally["updated"],
+                "unchanged": tally["unchanged"],
+                "skipped": tally["exists"] + tally["duplicate"], "invalid": tally["invalid"],
+                "results": results,
+                "message": ", ".join(f"{n} {k}" for k, n in tally.items() if n) + ".",
+            })
+
+        if len(parts) == 2:
+            row = find(parts[1])
+            if row is None:
+                return self._bridge_error(
+                    "not_found", "The redirect was not found.", 404, {"id": int(parts[1])}
+                )
+            if method == "GET":
+                return _json({"provider": "rank_math", **shown(row)})
+            if method == "PATCH":
+                was = {k: shown(row)[k] for k in ("sources", "destination", "type", "status")}
+                kind = body.get("type", row["type"])
+                destination = body.get("destination", row["destination"])
+                problems = []
+                if kind in (410, 451):
+                    destination = ""
+                elif not destination:
+                    problems.append({"path": "destination", "field": "destination",
+                                     "code": "destination_required",
+                                     "message": "A destination is required.", "details": {}})
+                sources = row["sources"]
+                if "sources" in body:
+                    patterns = [
+                        path_of(g if isinstance(g, str) else g.get("pattern", ""))
+                        for g in body["sources"]
+                    ]
+                    taken = next((h for h in (holder(p, row["id"]) for p in patterns if p) if h),
+                                 None)
+                    if None in patterns:
+                        problems.append({"path": "sources[0]", "field": "sources[0]",
+                                         "code": "source_not_on_site",
+                                         "message": "Not a path of this site.", "details": {}})
+                    elif taken:
+                        problems.append({"path": "sources", "field": "sources",
+                                         "code": "source_taken",
+                                         "message": "Another redirect already catches this.",
+                                         "details": {"existing": shown(taken)}})
+                    else:
+                        sources = [{"pattern": p, "comparison": "exact", "ignore_case": False,
+                                    "url": f"{home}/{p}"} for p in patterns]
+                if problems:
+                    return self._bridge_error(
+                        "validation_failed", "The fields could not be saved.", 422,
+                        {"problems": problems},
+                    )
+                if destination.startswith("/"):
+                    destination = home + destination
+                status = body.get("status") or (
+                    "active" if row["status"] == "trashed" else row["status"]
+                )
+                row.update(sources=sources, destination=destination, type=kind, status=status)
+                self.writes.append((f"/redirects/{row['id']}", body))
+                return _json({"provider": "rank_math", **shown(row), "saved": True,
+                              "was": was, "message": "The redirect was saved."})
+            if method == "DELETE":
+                before = shown(dict(row))
+                force = bool(body.get("force"))
+                if force:
+                    self.redirects.remove(row)
+                else:
+                    row["status"] = "trashed"
+                self.writes.append((f"/redirects/{before['id']}", body))
+                return _json({"provider": "rank_math", "id": before["id"], "deleted": force,
+                              "trashed": not force, "redirect": before,
+                              "message": "Deleted." if force else "Moved to the trash."})
+        return _wp_error("rest_no_route", "No route was found matching the URL.", 404)
+
     def _bridge_menus_route(self, request: httpx.Request, parts: list[str], body: dict):
         """``menus.*`` as plugin 1.3.0 answers them: one theme location (``primary``), menu 1
         with its items, menus made here empty; positions are places among siblings."""
@@ -994,6 +1247,11 @@ class FakeWordPress:
 
         if parts and parts[0] == "cache":
             return self._bridge_cache_route(request, sub, body)
+
+        if parts and parts[0] == "redirects":
+            if not self.bridge_redirects:
+                return _wp_error("rest_no_route", "No route was found matching the URL.", 404)
+            return self._bridge_redirects_route(request, parts, body, q)
 
         if parts and parts[0] == "wpml":
             if not self.multilingual:

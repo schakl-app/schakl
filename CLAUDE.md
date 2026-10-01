@@ -84,6 +84,8 @@ apps/
       uptime/      # Uptime Kuma
       wordpress/
       mollie/      # payments
+      meta/        # Facebook Pages + Instagram: channels, planned posts (docs/META.md)
+      meta_ads/    # Meta ads: read, guarded writes, decisions
       timeon/      # time registration (migration + two-way sync)
     main.py        # discovers enabled modules/integrations and mounts their routers
   web/src/
@@ -92,7 +94,7 @@ apps/
       companies/   # components, CompanyPanel(s), nav items, message namespace
       ...
     lib/integrations/   # mirrors apps/api/app/integrations/ (§6a)
-      google/ cloudflare/ oxxa/ uptime/ wordpress/ google_ads/ mollie/ timeon/
+      google/ cloudflare/ oxxa/ uptime/ wordpress/ google_ads/ mollie/ meta/ meta_ads/ timeon/
     routes/        # thin route files that delegate into modules
     paraglide/     # generated (do not edit by hand)
 messages/          # en.json (SOURCE), nl.json (required, default UI lang) — flat, namespaced keys
@@ -244,7 +246,8 @@ and it is worth having with every third-party account in the world cancelled: `c
 an external account, and what it stores is a *mirror of* — or a *pointer into* — state that lives
 over there: `google` (Workspace), `microsoft` (Microsoft 365), `google_ads`, `google_analytics`,
 `google_search_console`, `cloudflare`, `oxxa`, `uptime` (Uptime Kuma), `wordpress`, `mollie`,
-`timeon` (an outgoing time registration a cutover is still running on).
+`meta` (Facebook Pages and Instagram), `meta_ads`, `timeon` (an outgoing time registration a
+cutover is still running on).
 
 The test is one sentence: **if the vendor went out of business tomorrow, is the thing gone, or is
 it merely poorer?** Gone → integration. Poorer → module. `marketing` is a module by that test even
@@ -268,7 +271,7 @@ It is stated in five places and each one is load-bearing:
 - **Enabling.** `ModuleDescriptor.requires` names the modules an integration has **nowhere to put
   its data** without — `cloudflare`/`oxxa` → `domains`, `wordpress` → `websites`, `mollie` →
   `invoicing`, `google_ads` → `google`, `google_analytics` → `google`, `google_search_console` →
-  `google`, `timeon` → `time`.
+  `google`, `meta_ads` → `meta`, `timeon` → `time`.
   Deliberately *not* "modules this
   is nicer with":
   over-declaring makes a tenant switch on a module they did not want, so `google` and `microsoft`
@@ -1652,6 +1655,29 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   an agent hunting (§9's `details` rule, applied to somebody else's validator). And **deleting
   is its own key** (`wordpress.content.delete`, admin by default): a key an assistant holds
   should be able to say "may edit, never delete", which `write` + `publish` cannot.
+- **A vendor with no way in is written the way its own screen writes, and a list is one call
+  answered per row** (Rank Math redirects, `docs/WORDPRESS.md` §9a). The ask was redirects for
+  Rank Math through the CRM's MCP, and reading Rank Math's source found it offers none: its
+  ability only reads, and its one REST route is the metabox save of the post being edited. That
+  route can be driven off-label and a first design did; it was dropped because it can only write
+  one exact source — so re-saving an inherited redirect would replace *what it catches* while
+  changing where it goes — and because a migration's list was eighty-two round trips. So the
+  bridge plugin (1.7.0) writes through Rank Math's own `Redirection` and `DB` classes, and five
+  routes under `/sites/{id}/bridge/redirects` reach it. Four rules generalise. **A batch's row
+  fields are loosely typed on purpose** (§18): a `Literal` on one row's `type` turns its `999`
+  into a 422 for the other eighty-one, which is the failure a per-row report exists to prevent;
+  only the list itself (empty, over 500) is the call's. **Idempotency by looking, not by a key**:
+  a row that is already there answers `unchanged`, one whose source redirects elsewhere answers
+  `exists` and is left alone unless told, so a call that timed out is simply sent again. **An
+  operation newer than the installed plugin answers exactly as a missing plugin does**
+  (`rest_no_route`), and "not installed" is the wrong sentence about a site that has it — so
+  `_bridge_since` asks `/info` on that failure and names the version found beside the one needed
+  (`errors.wordpress_bridge_outdated`); the call decides, never the stored version. And **a
+  vendor that was never set up is a third state beside absent and switched off**: a Rank Math
+  whose wizard nobody finished loads no module at all, found only by running the plugin's test on
+  a fresh install, and each of the three has a different person's fix. The keys are their own
+  (`wordpress.redirect.read` / `.write`), for the Google Ads reason: an agent that tidies 404s
+  should be mintable without the right to edit a published page.
 - **A client site is a parameter, never a tool** (`wordpress` §7, `docs/WORDPRESS.md`). The ask
   was forty clients' WordPress installs, reachable by agency staff from schakl's MCP, on sites
   that register no abilities at all. The tempting shape — schakl as an MCP *client* proxying each
@@ -2388,6 +2414,42 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   The general lesson is the one from #396 and the time module: **a mechanism that exists is not a
   fix until it is used for the failure it exists for** — the provider had offered voice references
   all along, and "we cannot match voices" was true only of the code that had never asked.
+- **A vendor that gates who may grant a token decides your account model for you, and a vendor
+  with no idempotency key decides your retry** (`meta`, `meta_ads`, `docs/META.md`). The ask was
+  posts and ads on clients' Facebook and Instagram, from MCP, without handing Meta company
+  documents. Meta reviews an app the moment somebody *outside* the business that owns it grants
+  it a token, and not before — so there is no "connect your Facebook" button anywhere and no
+  app shipped by the instance: the tenant brings **its own app** (id and secret per org) and
+  **a system user's token**, and a client shares a Page with the agency's portfolio as they
+  already do for Business Suite. Five rules generalise. **A token with a clock is renewed with
+  weeks to spare, because one that ran out cannot be renewed at all**: twenty days before
+  expiry, nightly and never licence-gated, reported at 14, 7 and 1 day when it keeps failing —
+  and a refused *app secret* is its own sentence, since the token is fine and the fix is a
+  different field (SnelStart's two credentials). **Where the provider keeps no idempotency key,
+  an unanswered write is looked for before it is repeated**: the delivery is claimed by a
+  conditional `UPDATE`, a timeout leaves it `publishing`, and the next sweep reads the channel
+  (the Page's recent posts, the Instagram container's status) before it does anything — a
+  duplicate post on a client's Page is the failure this exists to prevent. **A post is one
+  decision and its deliveries are rows**, so "on Facebook and not on Instagram" is a state
+  (`partial`) rather than a contradiction, a retry repeats only what failed, and a post that
+  failed *everywhere* can be taken back and changed while one that landed anywhere cannot.
+  **Where each answer costs something the other does not, the choice is a setting and says
+  what it costs**: who publishes a planned Facebook post (schakl's worker, or Meta's own
+  scheduler) is the tenant's, the delivery records which it was given, and Instagram is always
+  ours because its API schedules nothing. **The split in the write half is where money moves**:
+  everything in `meta_ads` is created `PAUSED` and the write schemas have no `ACTIVE`, so
+  switching on is `meta_ads.ads.activate` and nothing else — an agent can build a whole
+  campaign that cannot spend a cent. The router prefixes are `/meta-business` and `/meta-ads`
+  because core already serves `/api/v1/meta`, and a section is derived from a prefix (§12).
+  **Written from Meta's documents and exercised only against a fake**: `docs/META.md` §11 is
+  the checklist for the day a real token arrives. Three more came out of the browser. **An
+  autosave never goes through a form action** — a successful one hands focus back to the page,
+  which took the caret out of the box a second and a half after every pause. **A browser
+  submits CRLF**, so text bound for somebody else's platform is normalised in the schema, or a
+  caption two characters under the limit is refused and the carriage returns are published.
+  And **a picture that failed before hydration fired its `error` at nobody** (`Avatar`): the
+  first look asks the element, because a signed remote address that expired is the ordinary
+  case.
 
 ## 11. Working agreement (for Claude Code)
 
