@@ -78,6 +78,12 @@ from app.integrations.wordpress.schemas import (
     WordPressRecordCreate,
     WordPressRecordList,
     WordPressRecordUpdate,
+    WordPressRedirect,
+    WordPressRedirectDeleted,
+    WordPressRedirectList,
+    WordPressRedirectsCreate,
+    WordPressRedirectsCreated,
+    WordPressRedirectUpdate,
     WordPressStringList,
     WordPressStringResult,
     WordPressStringUpdate,
@@ -98,6 +104,12 @@ from app.integrations.wordpress.surface import WordPressSurfaceService
 BRIDGE_PLUGIN = "schakl-wordpress-mcp-bridge"
 
 _MAX_PER_PAGE = 100
+
+#: The plugin version that brought the ``redirects.*`` operations.
+REDIRECTS_SINCE = "1.7.0"
+
+#: How many of a batch's sources one trail line names before it says how many more there were.
+_TRAIL_SOURCES = 20
 
 
 def _clean(data: Any) -> dict[str, Any]:
@@ -195,6 +207,52 @@ class WordPressBridgeService(WordPressSurfaceService):
                     status_code=502,
                     fields={"detail": describe_failure(exc)},
                 ) from exc
+
+    async def _bridge_since(
+        self,
+        needs: str,
+        client: WordPressClient,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        json: Any = None,
+    ) -> Any:
+        """A call to an operation the plugin only has from version ``needs``.
+
+        An older plugin answers a route it does not know with the same ``rest_no_route`` a
+        site without the plugin gives, and "the plugin is not installed" is the wrong sentence
+        about a site that has it: the fix is an update, not an install. So the refusal is
+        decided by a second call, never by the stored version — ``/info`` answering is the
+        plugin being there, and its version is what the 409 names beside the one needed.
+        """
+        try:
+            return await self._bridge(client, method, path, params=params, json=json)
+        except AppError as missing:
+            if missing.message_key != "errors.wordpress_bridge_missing":
+                raise
+            try:
+                info = await self._bridge(client, "GET", "/info")
+            except AppError:
+                raise missing from None
+            plugin = info.get("plugin") if isinstance(info, dict) else None
+            installed = plugin.get("version") if isinstance(plugin, dict) else None
+            if not isinstance(installed, str):
+                raise missing from None
+            updates = bridge_updates(info.get("updates")) or {}
+            raise AppError(
+                "invalid_state",
+                "errors.wordpress_bridge_outdated",
+                status_code=409,
+                fields=missing.fields,
+                details={
+                    "plugin": BRIDGE_PLUGIN,
+                    "installed": installed,
+                    "needs": needs,
+                    "base_url": client.base_url,
+                    "auto_update": bool(updates.get("auto_update")),
+                },
+            ) from missing
 
     async def _trail(self, site: WordPressSite, action: str, payload: dict[str, Any]) -> None:
         await self.activity.record(ENTITY_TYPE, site.id, action, payload)
@@ -932,3 +990,154 @@ class WordPressBridgeService(WordPressSurfaceService):
             {"kinds": emptied, "title": ", ".join(emptied) or "—", "urls": data.urls or []},
         )
         return result
+
+    # --- redirects (plugin 1.7.0, Rank Math) ------------------------------------------------ #
+    async def redirects(
+        self,
+        site_id: uuid.UUID,
+        *,
+        search: str | None,
+        status: str | None,
+        redirect_type: int | None,
+        orderby: str | None,
+        order: str | None,
+        page: int,
+        per_page: int,
+    ) -> WordPressRedirectList:
+        _, client = await self._open(site_id)
+        params: dict[str, Any] = {
+            "page": max(1, page),
+            "per_page": max(1, min(per_page, 200)),
+        }
+        for key, value in (
+            ("search", search),
+            ("status", status),
+            ("type", redirect_type),
+            ("orderby", orderby),
+            ("order", order),
+        ):
+            if value is not None and value != "":
+                params[key] = value
+        body = await self._bridge_since(
+            REDIRECTS_SINCE, client, "GET", "/redirects", params=params
+        )
+        return WordPressRedirectList(**(body if isinstance(body, dict) else {}))
+
+    async def redirect(self, site_id: uuid.UUID, redirect_id: int) -> WordPressRedirect:
+        _, client = await self._open(site_id)
+        body = await self._bridge_since(
+            REDIRECTS_SINCE, client, "GET", f"/redirects/{redirect_id}"
+        )
+        return WordPressRedirect(**(body if isinstance(body, dict) else {"id": redirect_id}))
+
+    async def redirects_create(
+        self, site_id: uuid.UUID, data: WordPressRedirectsCreate
+    ) -> WordPressRedirectsCreated:
+        """A list in one call, answered per row by the plugin (§18: a bad row is the row's).
+
+        The trail line is written for what *changed* on the site — a dry run, or a list
+        whose every row was already there, leaves none."""
+        site, client = await self._open(site_id)
+        body = await self._bridge_since(
+            REDIRECTS_SINCE, client, "POST", "/redirects", json=_clean(data)
+        )
+        result = WordPressRedirectsCreated(**(body if isinstance(body, dict) else {}))
+        written = [
+            row
+            for row in result.results
+            if isinstance(row, dict) and row.get("outcome") in ("created", "updated")
+        ]
+        if written and not result.dry_run:
+            named = [
+                {
+                    "id": row.get("id"),
+                    "source": row.get("source"),
+                    "destination": row.get("destination"),
+                    "type": row.get("type"),
+                    "outcome": row.get("outcome"),
+                }
+                for row in written[:_TRAIL_SOURCES]
+            ]
+            first = written[0]
+            title = f"{first.get('source')} → {first.get('destination') or first.get('type')}"
+            if len(written) > 1:
+                title = f"{title} (+{len(written) - 1})"
+            await self._trail(
+                site,
+                "redirects_added",
+                {
+                    "title": title,
+                    "created": result.created,
+                    "updated": result.updated,
+                    "redirects": named,
+                    "more": max(0, len(written) - len(named)),
+                    "provider": result.provider,
+                    "via": BRIDGE_PLUGIN,
+                },
+            )
+        return result
+
+    async def redirect_update(
+        self, site_id: uuid.UUID, redirect_id: int, data: WordPressRedirectUpdate
+    ) -> WordPressRedirect:
+        payload = _clean(data)
+        if not payload:
+            raise AppError("validation", "errors.nothing_to_update", status_code=422)
+        site, client = await self._open(site_id)
+        body = await self._bridge_since(
+            REDIRECTS_SINCE, client, "PATCH", f"/redirects/{redirect_id}", json=payload
+        )
+        result = WordPressRedirect(**(body if isinstance(body, dict) else {"id": redirect_id}))
+        await self._trail(
+            site,
+            "redirect_updated",
+            {
+                "redirect_id": redirect_id,
+                "title": _redirect_title(result.sources),
+                "destination": result.destination,
+                "type": result.type,
+                "status": result.status,
+                "fields": sorted(payload),
+                "was": getattr(result, "was", None),
+                "via": BRIDGE_PLUGIN,
+            },
+        )
+        return result
+
+    async def redirect_delete(
+        self, site_id: uuid.UUID, redirect_id: int, *, force: bool
+    ) -> WordPressRedirectDeleted:
+        site, client = await self._open(site_id)
+        body = await self._bridge_since(
+            REDIRECTS_SINCE,
+            client,
+            "DELETE",
+            f"/redirects/{redirect_id}",
+            json={"force": force},
+        )
+        result = WordPressRedirectDeleted(
+            **(body if isinstance(body, dict) else {"id": redirect_id})
+        )
+        before = result.redirect or {}
+        await self._trail(
+            site,
+            "redirect_deleted",
+            {
+                "redirect_id": redirect_id,
+                "title": _redirect_title(before.get("sources")),
+                "destination": before.get("destination"),
+                "type": before.get("type"),
+                "permanent": bool(result.deleted),
+                "via": BRIDGE_PLUGIN,
+            },
+        )
+        return result
+
+
+def _redirect_title(sources: Any) -> str:
+    """What a trail line calls a redirect: its first source, and how many more it has."""
+    rows = [s for s in sources if isinstance(s, dict)] if isinstance(sources, list) else []
+    if not rows:
+        return "—"
+    first = str(rows[0].get("pattern") or "—")
+    return first if len(rows) == 1 else f"{first} (+{len(rows) - 1})"

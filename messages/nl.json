@@ -8929,5 +8929,11 @@
   "meta.panel.no_channels": "Voor deze klant zijn nog geen kanalen gekoppeld.",
   "meta.panel.no_posts": "Niets gepland.",
   "meta.panel.view_all": "Alle berichten van deze klant",
-  "meta_ads.panel.title": "Meta Ads"
+  "meta_ads.panel.title": "Meta Ads",
+  "permissions.wordpress.redirect.read": "Redirects van gekoppelde WordPress-sites lezen",
+  "permissions.wordpress.redirect.write": "Redirects toevoegen, wijzigen en verwijderen op gekoppelde WordPress-sites",
+  "errors.wordpress_bridge_outdated": "De schakl WordPress MCP Bridge-plugin op deze WordPress-site is hiervoor te oud; werk de plugin bij.",
+  "activity.action.redirects_added": "voegde redirects toe op de WordPress-site: {title}",
+  "activity.action.redirect_updated": "wijzigde de redirect “{title}” op de WordPress-site",
+  "activity.action.redirect_deleted": "verwijderde de redirect “{title}” van de WordPress-site"
 }

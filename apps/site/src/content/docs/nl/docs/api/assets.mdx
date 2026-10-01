@@ -7,7 +7,7 @@ sidebar:
 
 Wat een bureau voor een klant beheert, en de vier diensten waar dat uit gelezen wordt: de registrar, de DNS-zone, de monitor en de site zelf.
 
-149 endpoints, verdeeld over 7 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
+154 endpoints, verdeeld over 7 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
 
 ## `domains`
 
@@ -1165,6 +1165,11 @@ Antwoord: `204`
 | `DELETE` `/wordpress/sites/{site_id}/bridge/records/{wp_id}` | `wordpress.content.delete` |
 | `GET` `/wordpress/sites/{site_id}/bridge/records/{wp_id}/translations` | `wordpress.content.read` |
 | `POST` `/wordpress/sites/{site_id}/bridge/records/{wp_id}/translations` | `wordpress.content.write` |
+| `GET` `/wordpress/sites/{site_id}/bridge/redirects` | `wordpress.redirect.read` |
+| `POST` `/wordpress/sites/{site_id}/bridge/redirects` | `wordpress.redirect.write` |
+| `GET` `/wordpress/sites/{site_id}/bridge/redirects/{redirect_id}` | `wordpress.redirect.read` |
+| `PATCH` `/wordpress/sites/{site_id}/bridge/redirects/{redirect_id}` | `wordpress.redirect.write` |
+| `DELETE` `/wordpress/sites/{site_id}/bridge/redirects/{redirect_id}` | `wordpress.redirect.write` |
 | `GET` `/wordpress/sites/{site_id}/bridge/schema` | `wordpress.content.read` |
 | `GET` `/wordpress/sites/{site_id}/bridge/strings` | `wordpress.content.read` |
 | `PUT` `/wordpress/sites/{site_id}/bridge/strings` | `wordpress.content.publish` |
@@ -1663,6 +1668,78 @@ Padparameters: `site_id`, `wp_id`
 Request body: `WordPressTranslationCreate`
 
 Antwoord: `201` · `WordPressRecord`
+
+#### `GET /api/v1/wordpress/sites/{site_id}/bridge/redirects`
+
+**Bridge Redirects** — The redirects the site's Rank Math serves, newest first: each with its sources (the pattern, how it is matched, and for an exact one the URL it stands for), its destination, its type (301, 302, 307, 410, 451), whether it is active, how often it fired and when last. `counts` gives the totals per status whatever the filter. 409 where Rank Math is not active, was never set up or has its Redirections module off (`details.missing`), and where the bridge plugin is older than 1.7.0 (`details.installed`).
+
+Recht: `wordpress.redirect.read`
+
+Padparameters: `site_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `search` | string | Text in a source or the destination — how to see whether an address already redirects, or what points at a page. |
+| `status` | `all` · `active` · `inactive` · `trashed` | "all" is everything outside the trash. (default `all`) |
+| `type` | integer | Only redirects of this type: 301, 302, 307, 410 or 451. |
+| `orderby` | `id` · `updated` · `created` · `hits` · `last_accessed` |  (default `id`) |
+| `order` | `asc` · `desc` |  (default `desc`) |
+| `page` | integer |  (default `1`) |
+| `per_page` | integer |  (default `50`) |
+
+Antwoord: `200` · `WordPressRedirectList`
+
+#### `POST /api/v1/wordpress/sites/{site_id}/bridge/redirects`
+
+**Bridge Add Redirects** — Add one redirect or a whole list (up to 500) to the site's Rank Math — live at once. Each row is `&#123;"source": "/old-page", "destination": "/new-page"&#125;`; `type` is 301 unless told. Answered per row in `results`: `created`; `unchanged` when exactly this redirect is already there, so sending a list twice adds nothing twice; `exists` when the source already redirects somewhere else — left alone, with the existing redirect in the answer, unless `on_existing` is `update`; `duplicate` for a source repeated in the call; `invalid` with `problems` naming the field (a source on another domain, a missing destination, a destination that is the source itself). One bad row does not stop the others. `dry_run` checks the list the same way and writes nothing — use it on a list from a migration first. A redirect is answered before WordPress looks for the page, so a source that is a live page takes that page offline.
+
+Recht: `wordpress.redirect.write`
+
+Padparameters: `site_id`
+
+Request body: `WordPressRedirectsCreate`
+
+Antwoord: `200` · `WordPressRedirectsCreated`
+
+#### `GET /api/v1/wordpress/sites/{site_id}/bridge/redirects/{redirect_id}`
+
+**Bridge Redirect** — One redirect by its id, trashed ones included.
+
+Recht: `wordpress.redirect.read`
+
+Padparameters: `site_id`, `redirect_id`
+
+Antwoord: `200` · `WordPressRedirect`
+
+#### `PATCH /api/v1/wordpress/sites/{site_id}/bridge/redirects/{redirect_id}`
+
+**Bridge Update Redirect** — Change where a redirect goes, its type or whether it is active — live at once. What you leave out is kept, and the sources stay exactly as they are unless `sources` is sent, which replaces them all. `status: "active"` on a trashed redirect takes it out of the trash. Refused whole (422, `details.problems`) when the result would not be a valid redirect; `was` in the answer is what it said before.
+
+Recht: `wordpress.redirect.write`
+
+Padparameters: `site_id`, `redirect_id`
+
+Request body: `WordPressRedirectUpdate`
+
+Antwoord: `200` · `WordPressRedirect`
+
+#### `DELETE /api/v1/wordpress/sites/{site_id}/bridge/redirects/{redirect_id}`
+
+**Bridge Delete Redirect** — Move a redirect to Rank Math's trash: it stops firing at once, `bridge_update_redirect` with `status: "active"` brings it back, and Rank Math deletes it after 30 days. `force` deletes it now. The old address answers whatever the site has there afterwards — usually a 404.
+
+Recht: `wordpress.redirect.write`
+
+Padparameters: `site_id`, `redirect_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `force` | boolean | Delete permanently instead of moving to Rank Math's trash. (default `false`) |
+
+Antwoord: `200` · `WordPressRedirectDeleted`
 
 #### `GET /api/v1/wordpress/sites/{site_id}/bridge/schema`
 

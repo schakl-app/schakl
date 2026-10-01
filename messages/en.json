@@ -8929,5 +8929,11 @@
   "meta.panel.no_channels": "No channels linked for this client yet.",
   "meta.panel.no_posts": "Nothing planned.",
   "meta.panel.view_all": "All posts for this client",
-  "meta_ads.panel.title": "Meta Ads"
+  "meta_ads.panel.title": "Meta Ads",
+  "permissions.wordpress.redirect.read": "Read the redirects of connected WordPress sites",
+  "permissions.wordpress.redirect.write": "Add, change and remove redirects on connected WordPress sites",
+  "errors.wordpress_bridge_outdated": "The schakl WordPress MCP Bridge plugin on this WordPress site is too old for this; update the plugin.",
+  "activity.action.redirects_added": "added redirects on the WordPress site: {title}",
+  "activity.action.redirect_updated": "changed the redirect “{title}” on the WordPress site",
+  "activity.action.redirect_deleted": "removed the redirect “{title}” from the WordPress site"
 }

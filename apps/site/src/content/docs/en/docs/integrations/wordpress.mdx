@@ -174,7 +174,7 @@ injection in a page the agent is reading is how that happens. The defence is not
 mint read-only keys by default, and give write access to a key somebody uses deliberately.
 </Aside>
 
-## schakl WordPress MCP Bridge: page builders, hidden post types, uploads, forms, menus and WPML
+## schakl WordPress MCP Bridge: page builders, hidden post types, uploads, forms, menus, redirects and WPML
 
 Many agency sites build a page out of an ACF **repeater** of typed blocks, each block type showing
 a handful of fields out of thirty. That cannot be edited through ACF's REST integration, and none
@@ -194,8 +194,8 @@ the first, edits one block without touching the others, takes an image as a URL 
 handles **WPML**: languages, a linked translation with every reference swapped for its
 translation, and String Translation.
 
-schakl. reaches the plugin through **33 bridge routes** under the same login, and so through the
-same 33 tools in `/mcp/wordpress` however many sites there are:
+schakl. reaches the plugin through **48 bridge routes** under the same login, and so through the
+same 48 tools in `/mcp/wordpress` however many sites there are:
 
 | What | Permission |
 | --- | --- |
@@ -208,6 +208,11 @@ same 33 tools in `/mcp/wordpress` however many sites there are:
 | Read Contact Form 7 forms with the fields parsed from the template and CF7's own configuration errors | `wordpress.forms.read` |
 | Create or edit a form, or make its translation | `wordpress.forms.write` |
 | Delete a form | `wordpress.forms.delete` |
+| Read the theme's files and their kept versions | `wordpress.theme.read` |
+| Change, create, delete and restore theme files, where the site switched that on | `wordpress.theme.write` |
+| See which caches the site runs; empty them | `wordpress.site.read`; `wordpress.content.publish` |
+| Read the redirects Rank Math serves, and search them | `wordpress.redirect.read` |
+| Add one redirect or a whole list, re-point one, switch it off, remove it | `wordpress.redirect.write` |
 
 A record, a term or an options page can also be read **as text** rather than as a field tree:
 the title, the body without markup and the ACF fields in order, with choices by their label. The
@@ -218,6 +223,24 @@ at a fraction of the size.
 page or term, moved under another parent and positioned among its siblings, and a custom link's
 URL can be changed. Deleting a whole menu is permanent and sits under the delete permission, like
 deleting a record.
+
+**Redirects** are Rank Math's, and the plugin (1.7.0 or newer) writes them through Rank Math's own
+classes, so a redirect made here is one its admin screen shows, edits and counts hits for. Rank
+Math itself offers no way in from outside: its abilities only read, and its REST route only saves
+the redirect of the post being edited. A migration's whole list goes in **one call** of up to 500
+rows, each `{"source": "/old-page", "destination": "/new-page"}`, and comes back **answered per
+row**: *created*; *unchanged* when exactly that redirect is already there, so sending a list twice
+adds nothing twice; *exists* when the source already redirects somewhere else, which is left
+alone and shown unless the call says to re-point it; *duplicate*; or *invalid* with the field
+named. One bad row does not stop the others, and a **dry run** checks a list and writes nothing.
+A source may be a path, a full URL or a URL without `www`: they are the same source, and on a
+site in a subdirectory the directory is taken off. Changing where a redirect goes never changes
+what it catches. Removing one moves it to Rank Math's trash, where it stops firing and can be
+brought back. A redirect is live the moment it saves and is answered before WordPress looks for
+the page, so one whose source is a live page takes that page offline: hence a write permission of
+its own, administrator only. Where Rank Math is not active, was never set up, or has its
+Redirections module off, the call says which; where the plugin is older than 1.7.0 it says that
+instead, with the version it found.
 
 **Contact Form 7** is reachable two ways. The plain form routes above go through CF7's own REST
 namespace and keep working on a site without the plugin. The bridge adds what that namespace never
@@ -259,6 +282,8 @@ plan a rehearsal.
 | `wordpress.content.delete` | Trash or delete records, delete menus | Administrator |
 | `wordpress.forms.read` / `wordpress.forms.write` | Read / edit Contact Form 7 | Member / Administrator |
 | `wordpress.forms.delete` | Delete Contact Form 7 forms through the bridge | Administrator |
+| `wordpress.theme.read` / `wordpress.theme.write` | Read / change theme files through the bridge | Administrator / Administrator |
+| `wordpress.redirect.read` / `wordpress.redirect.write` | Read / add, change and remove Rank Math redirects through the bridge | Member / Administrator |
 | `wordpress.ability.read` / `wordpress.ability.run` | Read-only abilities / any ability | Member / Administrator |
 | `wordpress.rest.read` / `wordpress.rest.write` | The REST passthrough: read / write | Member / Administrator |
 

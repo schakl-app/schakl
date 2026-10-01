@@ -7,7 +7,7 @@ sidebar:
 
 Alles wat overal doorheen loopt: de organisatiegegevens die een client als eerste ophaalt, bestanden, meldingen, automatiseringsregels, AI, eigen velden, spreadsheets en bulkbewerkingen.
 
-284 endpoints, verdeeld over 20 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
+344 endpoints, verdeeld over 21 groepen. Een recht geschreven als `module.resource.action:own` heeft een bereik: `:own` dekt rijen die van jou zijn, `:any` die van iedereen, en `:any` voldoet aan een controle op `:own`.
 
 ## `ai`
 
@@ -2552,6 +2552,36 @@ Antwoord: `200` · `MeetingSectionCatalogEntry[]`
 
 | Endpoint | Recht |
 | --- | --- |
+| `GET` `/meta-business/assets` | `meta.asset.read` |
+| `GET` `/meta-business/assets/{asset_id}` | `meta.asset.read` |
+| `PATCH` `/meta-business/assets/{asset_id}` | `meta.settings.manage` |
+| `GET` `/meta-business/assets/{asset_id}/insights` | `meta.asset.read` |
+| `GET` `/meta-business/assets/{asset_id}/published` | `meta.asset.read` |
+| `GET` `/meta-business/credentials` | `meta.settings.manage` |
+| `POST` `/meta-business/credentials` | `meta.settings.manage` |
+| `PATCH` `/meta-business/credentials/{credential_id}` | `meta.settings.manage` |
+| `DELETE` `/meta-business/credentials/{credential_id}` | `meta.settings.manage` |
+| `POST` `/meta-business/credentials/{credential_id}/discover` | `meta.settings.manage` |
+| `POST` `/meta-business/credentials/{credential_id}/refresh` | `meta.settings.manage` |
+| `POST` `/meta-business/credentials/{credential_id}/verify` | `meta.settings.manage` |
+| `GET` `/meta-business/posts` | `meta.asset.read` |
+| `POST` `/meta-business/posts` | `meta.post.write` |
+| `GET` `/meta-business/posts/{post_id}` | `meta.asset.read` |
+| `PATCH` `/meta-business/posts/{post_id}` | `meta.post.write` |
+| `DELETE` `/meta-business/posts/{post_id}` | `meta.post.write` |
+| `POST` `/meta-business/posts/{post_id}/cancel` | `meta.post.write` |
+| `POST` `/meta-business/posts/{post_id}/duplicate` | `meta.post.write` |
+| `POST` `/meta-business/posts/{post_id}/images` | `meta.post.write` |
+| `POST` `/meta-business/posts/{post_id}/offer` | `meta.post.write` |
+| `POST` `/meta-business/posts/{post_id}/publish` | `meta.post.publish` |
+| `POST` `/meta-business/posts/{post_id}/recall` | `meta.post.write` |
+| `POST` `/meta-business/posts/{post_id}/retry` | `meta.post.publish` |
+| `POST` `/meta-business/posts/{post_id}/schedule` | `meta.post.publish` |
+| `POST` `/meta-business/posts/{post_id}/unschedule` | `meta.post.publish` |
+| `GET` `/meta-business/posts/counts` | `meta.asset.read` |
+| `GET` `/meta-business/settings` | `meta.settings.manage` |
+| `PUT` `/meta-business/settings` | `meta.settings.manage` |
+| `GET` `/meta-business/status` | `meta.asset.read` |
 | `GET` `/meta/domain-probe` | _Bewust open_ |
 | `GET` `/meta/instance` | _Bewust open_ |
 | `GET` `/meta/mcp` | _Bewust open_ |
@@ -2569,6 +2599,352 @@ Antwoord: `200` · `MeetingSectionCatalogEntry[]`
 
 <details>
 <summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/meta-business/assets`
+
+**List Meta Assets** — The Pages, Instagram accounts and ad accounts this org works on — **start here**.
+
+Recht: `meta.asset.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `kind` | `page` · `instagram` · `ad_account` |  |
+| `company_id` | string |  |
+| `active_only` | boolean | Only the assets that are linked and worked on. False lists every asset a token has found, which is what the linking screen needs. (default `true`) |
+| `unlinked_only` | boolean | Only what a token has found and nobody has linked yet. (default `false`) |
+| `q` | string | A name, an @handle, or Meta's own id. |
+| `limit` | integer |  (default `200`) |
+| `offset` | integer |  (default `0`) |
+| `count` | boolean |  (default `true`) |
+
+Antwoord: `200` · `MetaAssetPage`
+
+#### `GET /api/v1/meta-business/assets/{asset_id}`
+
+**Get Meta Asset**
+
+Recht: `meta.asset.read`
+
+Padparameters: `asset_id`
+
+Antwoord: `200` · `MetaAssetRead`
+
+#### `PATCH /api/v1/meta-business/assets/{asset_id}`
+
+**Update Meta Asset** — Say whose asset this is, and whether it is worked on here. Naming a client switches the asset on; ``company_id: null`` makes it the agency's own.
+
+Recht: `meta.settings.manage`
+
+Padparameters: `asset_id`
+
+Request body: `MetaAssetUpdate`
+
+Antwoord: `200` · `MetaAssetRead`
+
+#### `GET /api/v1/meta-business/assets/{asset_id}/insights`
+
+**Meta Asset Insights** — Views, reach and engagement for a Page or Instagram account over a span of days.
+
+Recht: `meta.asset.read`
+
+Padparameters: `asset_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `date_from` | string |  |
+| `date_to` | string |  |
+
+Antwoord: `200` · `MetaInsightsRead`
+
+#### `GET /api/v1/meta-business/assets/{asset_id}/published`
+
+**List Meta Published Posts** — What is live on this channel right now, newest first — whoever posted it.
+
+Recht: `meta.asset.read`
+
+Padparameters: `asset_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `limit` | integer |  (default `25`) |
+
+Antwoord: `200` · `MetaPublishedPost[]`
+
+#### `GET /api/v1/meta-business/credentials`
+
+**List Meta Credentials** — The system-user tokens this org holds, with each one's clock: when it expires, when it was last refreshed, and what the last refresh said.
+
+Recht: `meta.settings.manage`
+
+Antwoord: `200` · `MetaCredentialRead[]`
+
+#### `POST /api/v1/meta-business/credentials`
+
+**Add Meta Credential** — Store a system-user token and ask Meta at once what it is.
+
+Recht: `meta.settings.manage`
+
+Request body: `MetaCredentialCreate`
+
+Antwoord: `201` · `MetaCredentialRead`
+
+#### `PATCH /api/v1/meta-business/credentials/{credential_id}`
+
+**Update Meta Credential**
+
+Recht: `meta.settings.manage`
+
+Padparameters: `credential_id`
+
+Request body: `MetaCredentialUpdate`
+
+Antwoord: `200` · `MetaCredentialRead`
+
+#### `DELETE /api/v1/meta-business/credentials/{credential_id}`
+
+**Remove Meta Credential** — Forget the token here. **Nothing is revoked at Meta** — that is done in Business Settings, where the token was made. The assets stay, dormant, with their clients.
+
+Recht: `meta.settings.manage`
+
+Padparameters: `credential_id`
+
+Antwoord: `204`
+
+#### `POST /api/v1/meta-business/credentials/{credential_id}/discover`
+
+**Discover Meta Assets** — Read every Page, Instagram account and ad account this token reaches. Links nothing: a new asset arrives switched off, and a person says whose it is.
+
+Recht: `meta.settings.manage`
+
+Padparameters: `credential_id`
+
+Antwoord: `200` · `MetaDiscoveryRead`
+
+#### `POST /api/v1/meta-business/credentials/{credential_id}/refresh`
+
+**Refresh Meta Credential** — Exchange an expiring token for another sixty days, now.
+
+Recht: `meta.settings.manage`
+
+Padparameters: `credential_id`
+
+Antwoord: `200` · `MetaCredentialRead`
+
+#### `POST /api/v1/meta-business/credentials/{credential_id}/verify`
+
+**Verify Meta Credential** — Ask Meta what this token is — its scopes, its expiry, whose it is — and record it.
+
+Recht: `meta.settings.manage`
+
+Padparameters: `credential_id`
+
+Antwoord: `200` · `MetaCredentialRead`
+
+#### `GET /api/v1/meta-business/posts`
+
+**List Social Posts** — Planned and published posts, with each channel's own outcome.
+
+Recht: `meta.asset.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `status` | string | A comma-separated set of statuses, or 'working' for everything still going on. Absent means every status. |
+| `company_id` | string |  |
+| `asset_id` | string |  |
+| `channel` | string |  |
+| `q` | string |  |
+| `date_from` | string |  |
+| `date_to` | string |  |
+| `sort` | string | when \| created \| status, with a leading - for descending. Absent is soonest first. |
+| `limit` | integer |  (default `50`) |
+| `offset` | integer |  (default `0`) |
+| `count` | boolean |  (default `true`) |
+
+Antwoord: `200` · `SocialPostPage`
+
+#### `POST /api/v1/meta-business/posts`
+
+**Create Social Post** — Write a draft. **Nothing is published and nothing is scheduled.**
+
+Recht: `meta.post.write`
+
+Request body: `SocialPostCreate`
+
+Antwoord: `201` · `SocialPostRead`
+
+#### `GET /api/v1/meta-business/posts/{post_id}`
+
+**Get Social Post**
+
+Recht: `meta.asset.read`
+
+Padparameters: `post_id`
+
+Antwoord: `200` · `SocialPostRead`
+
+#### `PATCH /api/v1/meta-business/posts/{post_id}`
+
+**Update Social Post** — Change a post that has not gone out.
+
+Recht: `meta.post.write`
+
+Padparameters: `post_id`
+
+Request body: `SocialPostUpdate`
+
+Antwoord: `200` · `SocialPostRead`
+
+#### `DELETE /api/v1/meta-business/posts/{post_id}`
+
+**Delete Social Post** — Delete a post that never went out. One that reached a channel is a record of what was said in a client's name, and stays.
+
+Recht: `meta.post.write`
+
+Padparameters: `post_id`
+
+Antwoord: `204`
+
+#### `POST /api/v1/meta-business/posts/{post_id}/cancel`
+
+**Cancel Social Post** — Withdraw a post for good, keeping it as a record of what was planned. Cancelling one that is already scheduled needs the publishing permission.
+
+Recht: `meta.post.write`
+
+Padparameters: `post_id`
+
+Antwoord: `200` · `SocialPostRead`
+
+#### `POST /api/v1/meta-business/posts/{post_id}/duplicate`
+
+**Duplicate Social Post** — A new draft with the same words and channels. The images are not copied.
+
+Recht: `meta.post.write`
+
+Padparameters: `post_id`
+
+Antwoord: `201` · `SocialPostRead`
+
+#### `POST /api/v1/meta-business/posts/{post_id}/images`
+
+**Add Social Post Image** — Add a picture to a post: base64 in, the post with its new picture and its checks out.
+
+Recht: `meta.post.write`
+
+Padparameters: `post_id`
+
+Request body: `SocialPostImage`
+
+Antwoord: `201` · `SocialPostRead`
+
+#### `POST /api/v1/meta-business/posts/{post_id}/offer`
+
+**Offer Social Post** — Hand a draft to whoever may schedule it. Still published nowhere.
+
+Recht: `meta.post.write`
+
+Padparameters: `post_id`
+
+Antwoord: `200` · `SocialPostRead`
+
+#### `POST /api/v1/meta-business/posts/{post_id}/publish`
+
+**Publish Social Post Now** — Publish a post to its channels **now**.
+
+Recht: `meta.post.publish`
+
+Padparameters: `post_id`
+
+Antwoord: `200` · `SocialPostRead`
+
+#### `POST /api/v1/meta-business/posts/{post_id}/recall`
+
+**Recall Social Post** — Take a post back from review to keep writing it.
+
+Recht: `meta.post.write`
+
+Padparameters: `post_id`
+
+Antwoord: `200` · `SocialPostRead`
+
+#### `POST /api/v1/meta-business/posts/{post_id}/retry`
+
+**Retry Social Post** — Try the channels that failed once more. The ones that went out are left alone.
+
+Recht: `meta.post.publish`
+
+Padparameters: `post_id`
+
+Antwoord: `200` · `SocialPostRead`
+
+#### `POST /api/v1/meta-business/posts/{post_id}/schedule`
+
+**Schedule Social Post** — Approve a post and give it a time. **It will be published at that time.**
+
+Recht: `meta.post.publish`
+
+Padparameters: `post_id`
+
+Request body: `SocialPostSchedule`
+
+Antwoord: `200` · `SocialPostRead`
+
+#### `POST /api/v1/meta-business/posts/{post_id}/unschedule`
+
+**Unschedule Social Post** — Take a scheduled post back to a draft. Nothing has gone out and nothing will.
+
+Recht: `meta.post.publish`
+
+Padparameters: `post_id`
+
+Antwoord: `200` · `SocialPostRead`
+
+#### `GET /api/v1/meta-business/posts/counts`
+
+**Social Post Counts** — How many posts stand in each status — what needs approval, what failed.
+
+Recht: `meta.asset.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `company_id` | string |  |
+
+Antwoord: `200` · `SocialPostCounts`
+
+#### `GET /api/v1/meta-business/settings`
+
+**Get Meta Settings** — The org's Meta app, the write switch, and who schedules a Facebook post.
+
+Recht: `meta.settings.manage`
+
+Antwoord: `200` · `MetaSettingsRead`
+
+#### `PUT /api/v1/meta-business/settings`
+
+**Save Meta Settings** — Save the app and the posture. The app secret is write-only: send it to set it, send ``null`` to clear it, leave it out to keep it.
+
+Recht: `meta.settings.manage`
+
+Request body: `MetaSettingsWrite`
+
+Antwoord: `200` · `MetaSettingsRead`
+
+#### `GET /api/v1/meta-business/status`
+
+**Get Meta Status** — Whether Meta is connected, how many channels are linked, and who schedules — the answer to "why is this planner empty", for anyone who may read the channels.
+
+Recht: `meta.asset.read`
+
+Antwoord: `200` · `MetaStatusRead`
 
 #### `GET /api/v1/meta/domain-probe`
 
@@ -2699,6 +3075,417 @@ Antwoord: `200` · `object`
 Recht: _Geen recht vereist_
 
 Antwoord: `200`
+
+</details>
+
+## `meta_ads`
+
+| Endpoint | Recht |
+| --- | --- |
+| `GET` `/meta-ads/accounts` | `meta_ads.account.read` |
+| `GET` `/meta-ads/accounts/{account_id}` | `meta_ads.account.read` |
+| `POST` `/meta-ads/accounts/{account_id}/{kind}/{meta_id}/activate` | `meta_ads.ads.activate` |
+| `POST` `/meta-ads/accounts/{account_id}/{kind}/{meta_id}/pause` | `meta_ads.campaign.write` |
+| `GET` `/meta-ads/accounts/{account_id}/ads` | `meta_ads.account.read` |
+| `POST` `/meta-ads/accounts/{account_id}/ads` | `meta_ads.campaign.write` |
+| `PATCH` `/meta-ads/accounts/{account_id}/ads/{ad_meta_id}` | `meta_ads.campaign.write` |
+| `GET` `/meta-ads/accounts/{account_id}/adsets` | `meta_ads.account.read` |
+| `POST` `/meta-ads/accounts/{account_id}/adsets` | `meta_ads.campaign.write` |
+| `PATCH` `/meta-ads/accounts/{account_id}/adsets/{adset_meta_id}` | `meta_ads.campaign.write` |
+| `PUT` `/meta-ads/accounts/{account_id}/adsets/{adset_meta_id}/budget` | `meta_ads.budget.write` |
+| `POST` `/meta-ads/accounts/{account_id}/boost` | `meta_ads.campaign.write` |
+| `GET` `/meta-ads/accounts/{account_id}/campaigns` | `meta_ads.account.read` |
+| `POST` `/meta-ads/accounts/{account_id}/campaigns` | `meta_ads.campaign.write` |
+| `PATCH` `/meta-ads/accounts/{account_id}/campaigns/{campaign_meta_id}` | `meta_ads.campaign.write` |
+| `PUT` `/meta-ads/accounts/{account_id}/campaigns/{campaign_meta_id}/budget` | `meta_ads.budget.write` |
+| `GET` `/meta-ads/accounts/{account_id}/creatives` | `meta_ads.account.read` |
+| `POST` `/meta-ads/accounts/{account_id}/creatives` | `meta_ads.campaign.write` |
+| `GET` `/meta-ads/accounts/{account_id}/decisions` | `meta_ads.account.read` |
+| `POST` `/meta-ads/accounts/{account_id}/decisions` | `meta_ads.campaign.write` |
+| `POST` `/meta-ads/accounts/{account_id}/images` | `meta_ads.campaign.write` |
+| `GET` `/meta-ads/accounts/{account_id}/insights` | `meta_ads.account.read` |
+| `GET` `/meta-ads/accounts/{account_id}/live` | `meta_ads.account.read` |
+| `GET` `/meta-ads/accounts/{account_id}/policy` | `meta_ads.account.read` |
+| `PUT` `/meta-ads/accounts/{account_id}/policy` | `meta_ads.policy.manage` |
+| `DELETE` `/meta-ads/accounts/{account_id}/policy` | `meta_ads.policy.manage` |
+| `GET` `/meta-ads/policy` | `meta_ads.account.read` |
+| `PUT` `/meta-ads/policy` | `meta_ads.policy.manage` |
+| `GET` `/meta-ads/settings` | `meta_ads.policy.manage` |
+| `PUT` `/meta-ads/settings` | `meta_ads.policy.manage` |
+
+<details>
+<summary>Parameters en schema's per endpoint</summary>
+
+#### `GET /api/v1/meta-ads/accounts`
+
+**List Meta Ads Accounts** — Every linked Meta ad account this caller may see — **start here**.
+
+Recht: `meta_ads.account.read`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `company_id` | string |  |
+| `active_only` | boolean |  (default `true`) |
+
+Antwoord: `200` · `MetaAdsAccountRead[]`
+
+#### `GET /api/v1/meta-ads/accounts/{account_id}`
+
+**Get Meta Ads Account** — One linked ad account, as it is stored here. Costs Meta nothing.
+
+Recht: `meta_ads.account.read`
+
+Padparameters: `account_id`
+
+Antwoord: `200` · `MetaAdsAccountRead`
+
+#### `POST /api/v1/meta-ads/accounts/{account_id}/{kind}/{meta_id}/activate`
+
+**Activate Meta Ads Object** — Switch a campaign, ad set or ad **on**. From here it can spend the client's money.
+
+Recht: `meta_ads.ads.activate`
+
+Padparameters: `account_id`, `kind`, `meta_id`
+
+Request body: `MetaAdsStatusWrite`
+
+Antwoord: `200` · `MetaAdsResult`
+
+#### `POST /api/v1/meta-ads/accounts/{account_id}/{kind}/{meta_id}/pause`
+
+**Pause Meta Ads Object** — Pause a campaign, ad set or ad. It stops spending; nothing is deleted.
+
+Recht: `meta_ads.campaign.write`
+
+Padparameters: `account_id`, `kind`, `meta_id`
+
+Request body: `MetaAdsStatusWrite`
+
+Antwoord: `200` · `MetaAdsResult`
+
+#### `GET /api/v1/meta-ads/accounts/{account_id}/ads`
+
+**List Meta Ads Ads** — The account's ads, with what Meta's review made of each (``effective_status``, ``issues``) — the place a disapproved ad is found.
+
+Recht: `meta_ads.account.read`
+
+Padparameters: `account_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `campaign_meta_id` | string |  |
+| `adset_meta_id` | string |  |
+| `status` | string |  |
+
+Antwoord: `200` · `MetaAdsAdRead[]`
+
+#### `POST /api/v1/meta-ads/accounts/{account_id}/ads`
+
+**Create Meta Ads Ad** — Create an ad from an ad set and a creative. **Created paused**; once switched on it passes Meta's review before it runs.
+
+Recht: `meta_ads.campaign.write`
+
+Padparameters: `account_id`
+
+Request body: `MetaAdsAdCreate`
+
+Antwoord: `201` · `MetaAdsResult`
+
+#### `PATCH /api/v1/meta-ads/accounts/{account_id}/ads/{ad_meta_id}`
+
+**Update Meta Ads Ad**
+
+Recht: `meta_ads.campaign.write`
+
+Padparameters: `account_id`, `ad_meta_id`
+
+Request body: `MetaAdsAdUpdate`
+
+Antwoord: `200` · `MetaAdsResult`
+
+#### `GET /api/v1/meta-ads/accounts/{account_id}/adsets`
+
+**List Meta Ads Adsets** — The account's ad sets: who each one targets, what it may spend, and whose name the EU's transparency rules put on it.
+
+Recht: `meta_ads.account.read`
+
+Padparameters: `account_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `campaign_meta_id` | string |  |
+| `status` | string |  |
+
+Antwoord: `200` · `MetaAdsAdSetRead[]`
+
+#### `POST /api/v1/meta-ads/accounts/{account_id}/adsets`
+
+**Create Meta Ads Adset** — Create an ad set: who sees the ads, and what they may cost. **Created paused.**
+
+Recht: `meta_ads.campaign.write`
+
+Padparameters: `account_id`
+
+Request body: `MetaAdsAdSetCreate`
+
+Antwoord: `201` · `MetaAdsResult`
+
+#### `PATCH /api/v1/meta-ads/accounts/{account_id}/adsets/{adset_meta_id}`
+
+**Update Meta Ads Adset**
+
+Recht: `meta_ads.campaign.write`
+
+Padparameters: `account_id`, `adset_meta_id`
+
+Request body: `MetaAdsAdSetUpdate`
+
+Antwoord: `200` · `MetaAdsResult`
+
+#### `PUT /api/v1/meta-ads/accounts/{account_id}/adsets/{adset_meta_id}/budget`
+
+**Set Meta Ads Adset Budget** — Set an ad set's daily or lifetime budget, in **cents**. Meta allows four changes an hour; the fifth is refused here, with the number.
+
+Recht: `meta_ads.budget.write`
+
+Padparameters: `account_id`, `adset_meta_id`
+
+Request body: `MetaAdsBudgetWrite`
+
+Antwoord: `200` · `MetaAdsResult`
+
+#### `POST /api/v1/meta-ads/accounts/{account_id}/boost`
+
+**Boost Meta Post** — Put a budget behind a post that is already live: a campaign, an ad set, a creative and an ad, made in that order and **all paused**. Needs the budget permission too.
+
+Recht: `meta_ads.campaign.write`
+
+Padparameters: `account_id`
+
+Request body: `MetaAdsBoost`
+
+Antwoord: `201` · `MetaAdsBoostResult`
+
+#### `GET /api/v1/meta-ads/accounts/{account_id}/campaigns`
+
+**List Meta Ads Campaigns** — The account's campaigns, with their budgets in cents.
+
+Recht: `meta_ads.account.read`
+
+Padparameters: `account_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `status` | string | A comma-separated set of Meta's effective statuses, e.g. ACTIVE,PAUSED. |
+
+Antwoord: `200` · `MetaAdsCampaignRead[]`
+
+#### `POST /api/v1/meta-ads/accounts/{account_id}/campaigns`
+
+**Create Meta Ads Campaign** — Create a campaign. **It is created paused and spends nothing** until somebody holding the activate permission switches it on.
+
+Recht: `meta_ads.campaign.write`
+
+Padparameters: `account_id`
+
+Request body: `MetaAdsCampaignCreate`
+
+Antwoord: `201` · `MetaAdsResult`
+
+#### `PATCH /api/v1/meta-ads/accounts/{account_id}/campaigns/{campaign_meta_id}`
+
+**Update Meta Ads Campaign** — Rename, reschedule, pause or archive a campaign. Its budget and switching it on are separate tools with separate permissions.
+
+Recht: `meta_ads.campaign.write`
+
+Padparameters: `account_id`, `campaign_meta_id`
+
+Request body: `MetaAdsCampaignUpdate`
+
+Antwoord: `200` · `MetaAdsResult`
+
+#### `PUT /api/v1/meta-ads/accounts/{account_id}/campaigns/{campaign_meta_id}/budget`
+
+**Set Meta Ads Campaign Budget** — Set a campaign's daily or lifetime budget, in **cents**.
+
+Recht: `meta_ads.budget.write`
+
+Padparameters: `account_id`, `campaign_meta_id`
+
+Request body: `MetaAdsBudgetWrite`
+
+Antwoord: `200` · `MetaAdsResult`
+
+#### `GET /api/v1/meta-ads/accounts/{account_id}/creatives`
+
+**List Meta Ads Creatives**
+
+Recht: `meta_ads.account.read`
+
+Padparameters: `account_id`
+
+Antwoord: `200` · `MetaAdsCreativeRead[]`
+
+#### `POST /api/v1/meta-ads/accounts/{account_id}/creatives`
+
+**Create Meta Ads Creative** — Create what an ad shows: a link with words and a picture, or a post that is already live (``meta_post_id``). The Page it runs as must be the same client's as the ad account.
+
+Recht: `meta_ads.campaign.write`
+
+Padparameters: `account_id`
+
+Request body: `MetaAdsCreativeCreate`
+
+Antwoord: `201` · `MetaAdsResult`
+
+#### `GET /api/v1/meta-ads/accounts/{account_id}/decisions`
+
+**List Meta Ads Decisions** — What was changed in this account from here, by whom, and why — newest first.
+
+Recht: `meta_ads.account.read`
+
+Padparameters: `account_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `subject_meta_id` | string |  |
+| `limit` | integer |  (default `50`) |
+| `offset` | integer |  (default `0`) |
+
+Antwoord: `200` · `MetaAdsDecisionPage`
+
+#### `POST /api/v1/meta-ads/accounts/{account_id}/decisions`
+
+**Record Meta Ads Decision** — Record that something was looked at and **left as it is**, and why. Changes nothing at Meta — which is exactly why it has to be written down here.
+
+Recht: `meta_ads.campaign.write`
+
+Padparameters: `account_id`
+
+Request body: `MetaAdsDecisionCreate`
+
+Antwoord: `201` · `MetaAdsDecisionRead`
+
+#### `POST /api/v1/meta-ads/accounts/{account_id}/images`
+
+**Upload Meta Ads Image** — Upload an image to the ad account, base64 in JSON, and get the ``hash`` a creative names it by.
+
+Recht: `meta_ads.campaign.write`
+
+Padparameters: `account_id`
+
+Request body: `MetaAdsImageUpload`
+
+Antwoord: `201` · `MetaAdsImageRead`
+
+#### `GET /api/v1/meta-ads/accounts/{account_id}/insights`
+
+**Meta Ads Insights** — Spend, reach, clicks and results — per campaign, ad set or ad, over a span.
+
+Recht: `meta_ads.account.read`
+
+Padparameters: `account_id`
+
+Queryparameters:
+
+| Naam | Type | Betekenis |
+| --- | --- | --- |
+| `level` | `account` · `campaign` · `adset` · `ad` |  (default `campaign`) |
+| `period` | string | A period token: 30d, month, last_month, 2026-07, 2026-Q3, or 2026-08-01..2026-08-14. Ignored when both dates are given. |
+| `date_from` | string |  |
+| `date_to` | string |  |
+| `daily` | boolean | One row per day instead of one per span. (default `false`) |
+| `campaign_meta_id` | string |  |
+
+Antwoord: `200` · `MetaAdsInsightsRead`
+
+#### `GET /api/v1/meta-ads/accounts/{account_id}/live`
+
+**Get Meta Ads Account Live** — What Meta says about the account now: its status, what it has spent, its cap — and how much of the hourly API allowance is used.
+
+Recht: `meta_ads.account.read`
+
+Padparameters: `account_id`
+
+Antwoord: `200` · `MetaAdsAccountLive`
+
+#### `GET /api/v1/meta-ads/accounts/{account_id}/policy`
+
+**Get Meta Ads Policy** — The guardrails that apply to this account, and which of them are its own.
+
+Recht: `meta_ads.account.read`
+
+Padparameters: `account_id`
+
+Antwoord: `200` · `MetaAdsPolicyRead`
+
+#### `PUT /api/v1/meta-ads/accounts/{account_id}/policy`
+
+**Save Meta Ads Policy**
+
+Recht: `meta_ads.policy.manage`
+
+Padparameters: `account_id`
+
+Request body: `MetaAdsPolicyWrite`
+
+Antwoord: `200` · `MetaAdsPolicyRead`
+
+#### `DELETE /api/v1/meta-ads/accounts/{account_id}/policy`
+
+**Clear Meta Ads Policy** — Drop this account's own guardrails. The house policy applies again.
+
+Recht: `meta_ads.policy.manage`
+
+Padparameters: `account_id`
+
+Antwoord: `204`
+
+#### `GET /api/v1/meta-ads/policy`
+
+**Get Meta Ads House Policy** — The agency's own guardrails: what applies to every ad account that says nothing else.
+
+Recht: `meta_ads.account.read`
+
+Antwoord: `200` · `MetaAdsPolicyRead`
+
+#### `PUT /api/v1/meta-ads/policy`
+
+**Save Meta Ads House Policy**
+
+Recht: `meta_ads.policy.manage`
+
+Request body: `MetaAdsPolicyWrite`
+
+Antwoord: `200` · `MetaAdsPolicyRead`
+
+#### `GET /api/v1/meta-ads/settings`
+
+**Get Meta Ads Settings** — Whether anything may be changed in an ad account at all.
+
+Recht: `meta_ads.policy.manage`
+
+Antwoord: `200` · `MetaAdsSettingsRead`
+
+#### `PUT /api/v1/meta-ads/settings`
+
+**Save Meta Ads Settings**
+
+Recht: `meta_ads.policy.manage`
+
+Request body: `MetaAdsSettingsWrite`
+
+Antwoord: `200` · `MetaAdsSettingsRead`
 
 </details>
 

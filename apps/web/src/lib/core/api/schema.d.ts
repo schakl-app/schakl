@@ -16891,6 +16891,80 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/wordpress/sites/{site_id}/bridge/redirects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bridge Redirects
+         * @description The redirects the site's Rank Math serves, newest first: each with its sources (the
+         *     pattern, how it is matched, and for an exact one the URL it stands for), its destination,
+         *     its type (301, 302, 307, 410, 451), whether it is active, how often it fired and when
+         *     last. `counts` gives the totals per status whatever the filter. 409 where Rank Math is not
+         *     active, was never set up or has its Redirections module off (`details.missing`), and
+         *     where the bridge plugin is older than 1.7.0 (`details.installed`).
+         */
+        get: operations["bridge_redirects_api_v1_wordpress_sites__site_id__bridge_redirects_get"];
+        put?: never;
+        /**
+         * Bridge Add Redirects
+         * @description Add one redirect or a whole list (up to 500) to the site's Rank Math — live at once.
+         *     Each row is `{"source": "/old-page", "destination": "/new-page"}`; `type` is 301 unless
+         *     told. Answered per row in `results`: `created`; `unchanged` when exactly this redirect is
+         *     already there, so sending a list twice adds nothing twice; `exists` when the source
+         *     already redirects somewhere else — left alone, with the existing redirect in the answer,
+         *     unless `on_existing` is `update`; `duplicate` for a source repeated in the call; `invalid`
+         *     with `problems` naming the field (a source on another domain, a missing destination, a
+         *     destination that is the source itself). One bad row does not stop the others. `dry_run`
+         *     checks the list the same way and writes nothing — use it on a list from a migration
+         *     first. A redirect is answered before WordPress looks for the page, so a source that is a
+         *     live page takes that page offline.
+         */
+        post: operations["bridge_add_redirects_api_v1_wordpress_sites__site_id__bridge_redirects_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/wordpress/sites/{site_id}/bridge/redirects/{redirect_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bridge Redirect
+         * @description One redirect by its id, trashed ones included.
+         */
+        get: operations["bridge_redirect_api_v1_wordpress_sites__site_id__bridge_redirects__redirect_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Bridge Delete Redirect
+         * @description Move a redirect to Rank Math's trash: it stops firing at once, `bridge_update_redirect`
+         *     with `status: "active"` brings it back, and Rank Math deletes it after 30 days. `force`
+         *     deletes it now. The old address answers whatever the site has there afterwards — usually
+         *     a 404.
+         */
+        delete: operations["bridge_delete_redirect_api_v1_wordpress_sites__site_id__bridge_redirects__redirect_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Bridge Update Redirect
+         * @description Change where a redirect goes, its type or whether it is active — live at once. What
+         *     you leave out is kept, and the sources stay exactly as they are unless `sources` is sent,
+         *     which replaces them all. `status: "active"` on a trashed redirect takes it out of the
+         *     trash. Refused whole (422, `details.problems`) when the result would not be a valid
+         *     redirect; `was` in the answer is what it said before.
+         */
+        patch: operations["bridge_update_redirect_api_v1_wordpress_sites__site_id__bridge_redirects__redirect_id__patch"];
+        trace?: never;
+    };
     "/api/v1/wordpress/sites/{site_id}/bridge/schema": {
         parameters: {
             query?: never;
@@ -42949,6 +43023,267 @@ export interface components {
             } | null;
             /** Title */
             title?: string | null;
+        };
+        /**
+         * WordPressRedirect
+         * @description One redirect as the site's SEO plugin holds it. `sources[].url` is the address an
+         *     exact source stands for; `destination` is null for a 410 or 451.
+         */
+        WordPressRedirect: {
+            /** Created */
+            created?: string | null;
+            /** Destination */
+            destination?: string | null;
+            /**
+             * Hits
+             * @default 0
+             */
+            hits: number;
+            /** Id */
+            id: number;
+            /** Last Accessed */
+            last_accessed?: string | null;
+            /** Message */
+            message?: string | null;
+            /** Provider */
+            provider?: string | null;
+            /** Sources */
+            sources?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Status
+             * @default active
+             */
+            status: string;
+            /**
+             * Type
+             * @default 301
+             */
+            type: number;
+            /** Updated */
+            updated?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** WordPressRedirectDeleted */
+        WordPressRedirectDeleted: {
+            /**
+             * Deleted
+             * @default false
+             */
+            deleted: boolean;
+            /** Id */
+            id: number;
+            /** Message */
+            message?: string | null;
+            /** Provider */
+            provider?: string | null;
+            /** Redirect */
+            redirect?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Trashed
+             * @default false
+             */
+            trashed: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        /** WordPressRedirectList */
+        WordPressRedirectList: {
+            /** Counts */
+            counts?: {
+                [key: string]: number;
+            };
+            /** Items */
+            items?: components["schemas"]["WordPressRedirect"][];
+            /**
+             * Page
+             * @default 1
+             */
+            page: number;
+            /**
+             * Pages
+             * @default 0
+             */
+            pages: number;
+            /**
+             * Per Page
+             * @default 50
+             */
+            per_page: number;
+            /** Provider */
+            provider?: string | null;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * WordPressRedirectRow
+         * @description One redirect to add. Loosely typed on purpose: a row the site refuses is reported as
+         *     that row (`results[n].problems`), never as a refusal of the whole list.
+         */
+        WordPressRedirectRow: {
+            /**
+             * Comparison
+             * @description How a string source is matched: "exact" (default), "contains", "start", "end" or "regex".
+             */
+            comparison?: string | null;
+            /**
+             * Destination
+             * @description Where it goes: a path of this site (`/new-page`) or any URL. With a regex source it may hold `$1`, `$2` … Not used for type 410 or 451.
+             */
+            destination?: string | null;
+            /**
+             * Ignore Case
+             * @description Match an exact source regardless of case.
+             */
+            ignore_case?: boolean | null;
+            /**
+             * Source
+             * @description The old address: a path below the site's home (`/old-page` — on a site in a subdirectory, without that directory) or a full URL of this site. The home page itself cannot be a source. Trailing slashes do not matter; a visit's query string is ignored unless the source has one.
+             */
+            source?: string | null;
+            /**
+             * Sources
+             * @description Several old addresses that share one destination, instead of `source`. Each a string or `{pattern, comparison, ignore_case}`.
+             */
+            sources?: (string | components["schemas"]["WordPressRedirectSource"])[] | null;
+            /**
+             * Status
+             * @description "active" (default) or "inactive": kept, not firing.
+             */
+            status?: string | null;
+            /**
+             * Type
+             * @description 301 permanent (default), 302 or 307 temporary, 410 gone, 451 unavailable for legal reasons — the last two send the visitor nowhere.
+             */
+            type?: number | null;
+        };
+        /**
+         * WordPressRedirectSource
+         * @description One source of a redirect, where a plain string will not do.
+         */
+        WordPressRedirectSource: {
+            /**
+             * Comparison
+             * @description How the pattern is matched: "exact" (default), "contains", "start", "end" or "regex". A regex sits between `@` delimiters.
+             * @default exact
+             */
+            comparison: string;
+            /**
+             * Ignore Case
+             * @description Match an exact source regardless of case.
+             * @default false
+             */
+            ignore_case: boolean;
+            /**
+             * Pattern
+             * @description The old address: a path below the site's home (`/old-page` — on a site in a subdirectory, without that directory) or a full URL of this site. The home page itself cannot be a source. Trailing slashes do not matter; a visit's query string is ignored unless the source has one.
+             */
+            pattern: string;
+        };
+        /**
+         * WordPressRedirectUpdate
+         * @description What to change on one redirect. What is left out is kept — the sources above all.
+         */
+        WordPressRedirectUpdate: {
+            /**
+             * Destination
+             * @description Where it goes: a path of this site (`/new-page`) or any URL. With a regex source it may hold `$1`, `$2` … Not used for type 410 or 451.
+             */
+            destination?: string | null;
+            /**
+             * Sources
+             * @description Replaces every source of the redirect. Leave it out to change where the redirect goes without touching what it catches.
+             */
+            sources?: (string | components["schemas"]["WordPressRedirectSource"])[] | null;
+            /**
+             * Status
+             * @description "inactive" keeps the redirect without it firing; "active" on a trashed redirect takes it out of the trash.
+             */
+            status?: ("active" | "inactive") | null;
+            /**
+             * Type
+             * @description A 410 or 451 drops the destination; back to a 301 needs one again.
+             */
+            type?: (301 | 302 | 307 | 410 | 451) | null;
+        };
+        /** WordPressRedirectsCreate */
+        WordPressRedirectsCreate: {
+            /**
+             * Dry Run
+             * @description Check every row and say what would happen; write nothing.
+             * @default false
+             */
+            dry_run: boolean;
+            /**
+             * On Existing
+             * @description What to do with a source that already redirects somewhere else: `skip` leaves it alone and reports it with the existing redirect; `update` re-points it to the new destination and type.
+             * @default skip
+             * @enum {string}
+             */
+            on_existing: "skip" | "update";
+            /**
+             * Redirects
+             * @description The redirects to add: one, or a whole list from a migration.
+             */
+            redirects: components["schemas"]["WordPressRedirectRow"][];
+        };
+        /**
+         * WordPressRedirectsCreated
+         * @description The answer to a list, row by row. `results[n].outcome` is `created`, `updated`,
+         *     `unchanged` (exactly this redirect was already there), `exists` (the source already
+         *     redirects elsewhere; `existing` shows where), `duplicate` (the source was earlier in the
+         *     call; `of` is that row) or `invalid` (`problems` names the field).
+         */
+        WordPressRedirectsCreated: {
+            /**
+             * Created
+             * @default 0
+             */
+            created: number;
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+            /**
+             * Invalid
+             * @default 0
+             */
+            invalid: number;
+            /** Message */
+            message?: string | null;
+            /** Provider */
+            provider?: string | null;
+            /** Results */
+            results?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Skipped
+             * @default 0
+             */
+            skipped: number;
+            /**
+             * Unchanged
+             * @default 0
+             */
+            unchanged: number;
+            /**
+             * Updated
+             * @default 0
+             */
+            updated: number;
+        } & {
+            [key: string]: unknown;
         };
         /**
          * WordPressRestCall
@@ -77310,6 +77645,186 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WordPressRecord"] | components["schemas"]["WordPressTranslations"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_redirects_api_v1_wordpress_sites__site_id__bridge_redirects_get: {
+        parameters: {
+            query?: {
+                /** @description Text in a source or the destination — how to see whether an address already redirects, or what points at a page. */
+                search?: string | null;
+                /** @description "all" is everything outside the trash. */
+                status?: "all" | "active" | "inactive" | "trashed";
+                /** @description Only redirects of this type: 301, 302, 307, 410 or 451. */
+                type?: number | null;
+                orderby?: "id" | "updated" | "created" | "hits" | "last_accessed";
+                order?: "asc" | "desc";
+                page?: number;
+                per_page?: number;
+            };
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressRedirectList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_add_redirects_api_v1_wordpress_sites__site_id__bridge_redirects_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WordPressRedirectsCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressRedirectsCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_redirect_api_v1_wordpress_sites__site_id__bridge_redirects__redirect_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+                redirect_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressRedirect"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_delete_redirect_api_v1_wordpress_sites__site_id__bridge_redirects__redirect_id__delete: {
+        parameters: {
+            query?: {
+                /** @description Delete permanently instead of moving to Rank Math's trash. */
+                force?: boolean;
+            };
+            header?: never;
+            path: {
+                site_id: string;
+                redirect_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressRedirectDeleted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bridge_update_redirect_api_v1_wordpress_sites__site_id__bridge_redirects__redirect_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                site_id: string;
+                redirect_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WordPressRedirectUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WordPressRedirect"];
                 };
             };
             /** @description Validation Error */

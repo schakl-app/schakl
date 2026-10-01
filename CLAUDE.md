@@ -1655,6 +1655,29 @@ tables without RLS — and a claimed domain routes traffic only after DNS TXT ve
   an agent hunting (§9's `details` rule, applied to somebody else's validator). And **deleting
   is its own key** (`wordpress.content.delete`, admin by default): a key an assistant holds
   should be able to say "may edit, never delete", which `write` + `publish` cannot.
+- **A vendor with no way in is written the way its own screen writes, and a list is one call
+  answered per row** (Rank Math redirects, `docs/WORDPRESS.md` §9a). The ask was redirects for
+  Rank Math through the CRM's MCP, and reading Rank Math's source found it offers none: its
+  ability only reads, and its one REST route is the metabox save of the post being edited. That
+  route can be driven off-label and a first design did; it was dropped because it can only write
+  one exact source — so re-saving an inherited redirect would replace *what it catches* while
+  changing where it goes — and because a migration's list was eighty-two round trips. So the
+  bridge plugin (1.7.0) writes through Rank Math's own `Redirection` and `DB` classes, and five
+  routes under `/sites/{id}/bridge/redirects` reach it. Four rules generalise. **A batch's row
+  fields are loosely typed on purpose** (§18): a `Literal` on one row's `type` turns its `999`
+  into a 422 for the other eighty-one, which is the failure a per-row report exists to prevent;
+  only the list itself (empty, over 500) is the call's. **Idempotency by looking, not by a key**:
+  a row that is already there answers `unchanged`, one whose source redirects elsewhere answers
+  `exists` and is left alone unless told, so a call that timed out is simply sent again. **An
+  operation newer than the installed plugin answers exactly as a missing plugin does**
+  (`rest_no_route`), and "not installed" is the wrong sentence about a site that has it — so
+  `_bridge_since` asks `/info` on that failure and names the version found beside the one needed
+  (`errors.wordpress_bridge_outdated`); the call decides, never the stored version. And **a
+  vendor that was never set up is a third state beside absent and switched off**: a Rank Math
+  whose wizard nobody finished loads no module at all, found only by running the plugin's test on
+  a fresh install, and each of the three has a different person's fix. The keys are their own
+  (`wordpress.redirect.read` / `.write`), for the Google Ads reason: an agent that tidies 404s
+  should be mintable without the right to edit a published page.
 - **A client site is a parameter, never a tool** (`wordpress` §7, `docs/WORDPRESS.md`). The ask
   was forty clients' WordPress installs, reachable by agency staff from schakl's MCP, on sites
   that register no abilities at all. The tempting shape — schakl as an MCP *client* proxying each
