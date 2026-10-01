@@ -2,6 +2,116 @@
 
 _Releases v0.25.0 through v0.41.0 are written up on their GitHub Releases; this file resumes at v0.42.0._
 
+## v0.60.0 — 2026-10-01
+
+Agents can now add, change and remove a client site's Rank Math redirects through the WordPress
+bridge, one at a time or as a whole migration list. Facebook and Instagram posts and Meta ads
+arrive as two new integrations, with screens and MCP tools. A client's contact person can own a
+meeting's action item without having been on the roster.
+
+Two migrations, applied in order: `09e5efae92ad` → `c2a35d7a62c8`. The head moves from
+`b4e8d1a6c3f7` to `c2a35d7a62c8`. Both are purely additive: the `meta` and `meta_ads` tables.
+Eleven new permission keys: `wordpress.redirect.read` (member and admin) and
+`wordpress.redirect.write` (admin), four for `meta` (`settings.manage`, `asset.read`,
+`post.write`, `post.publish`) and five for `meta_ads` (`account.read`, `campaign.write`,
+`budget.write`, `ads.activate`, `policy.manage`); none is granted to the client role. Sixty-six
+new routes: five under `/wordpress/sites/{id}/bridge/redirects`, 31 under `/meta-business` and
+30 under `/meta-ads`. Two new environment variables, both with working defaults:
+`SCHAKL_META_GRAPH_URL` and `SCHAKL_META_API_VERSION`. Changed: `MeetingDetail` gains
+`owner_names`. The typed client and the public API reference are regenerated.
+
+### WordPress: Rank Math redirects through the bridge
+
+- **Redirects can be added from MCP.** Five new tools in `/mcp/wordpress`, 48 bridge tools in
+  all: `bridge_redirects`, `bridge_redirect`, `bridge_add_redirects`, `bridge_update_redirect`
+  and `bridge_delete_redirect`. They need bridge plugin 1.7.0 on the site, released alongside
+  this version.
+- **Why the plugin.** Rank Math offers no way in from outside: its ability only reads, and its
+  one REST route saves the redirect of the post being edited. The plugin writes through Rank
+  Math's own classes, so a redirect made here is one Rank Math's screen shows, edits and counts
+  hits for.
+- **A list is one call.** `bridge_add_redirects` takes up to 500 rows of `{"source":
+  "/old-page", "destination": "/new-page"}`. `type` is 301 unless told; 302, 307, 410 and 451
+  are accepted. `sources` gives several old addresses one destination.
+- **Answered per row.** Every row comes back as `created`, `updated`, `unchanged`, `exists`,
+  `duplicate` or `invalid` with the field named. One bad row does not stop the others.
+- **Safe to send twice.** A redirect that is already there answers `unchanged`. A source that
+  already redirects somewhere else answers `exists` and is left alone, with the existing
+  redirect in the answer, unless `on_existing` is `update`.
+- **A dry run.** `dry_run` checks a list the same way and writes nothing.
+- **A source is an address of the site.** A full URL, a URL without `www` and a path are the
+  same source. On a site in a subdirectory the directory is taken off, because Rank Math matches
+  below the home URL.
+- **Changing where a redirect goes does not change what it catches.** An update leaves the
+  stored sources exactly as they are unless `sources` is sent.
+- **Removing is Rank Math's trash.** The redirect stops firing and can be brought back with
+  `status: "active"`. `force` deletes it.
+- **Two keys of their own.** `wordpress.redirect.read` goes to members;
+  `wordpress.redirect.write` is admin only. A redirect is answered before WordPress looks for
+  the page, so one whose source is a live page takes that page offline.
+- **Three refusals, each with its own sentence.** Rank Math absent, never set up, or with its
+  Redirections module off is a 409 with `details.missing`. A plugin older than 1.7.0 is a 409
+  `errors.wordpress_bridge_outdated` with the version found and the version needed. A site
+  without the plugin still answers `errors.wordpress_bridge_missing`.
+- **A trail line for what changed.** `redirects_added`, `redirect_updated` and
+  `redirect_deleted` on the site row. A dry run and an unchanged list leave none.
+
+### Meta: Facebook and Instagram posts, and Meta ads
+
+- **Two new integrations.** `meta` plans and publishes posts to Facebook Pages and Instagram;
+  `meta_ads` reads and manages Meta ad accounts and requires `meta`. Both are licensed (`sku`
+  `meta` and `meta_ads`) and off until enabled under Instellingen → Integraties.
+- **The tenant brings its own Meta app.** The credential is a system user's token from the
+  agency's own Business portfolio, set under Instellingen → Meta. There is no "connect your
+  Facebook" button and no app shipped with the instance, which is what keeps Meta's App Review
+  out of it.
+- **Posts.** Marketing → Social holds the planner: a post goes to one or more channels, each
+  delivery is a row of its own, and "partly published" is a state. Who publishes a planned
+  Facebook post, schakl's worker or Meta's own scheduler, is a tenant setting.
+- **Ads.** Marketing → Meta Ads shows accounts, campaigns and a per-account policy. Everything
+  is created paused, and switching an ad on is a permission of its own
+  (`meta_ads.ads.activate`).
+- **Tokens are renewed before they run out.** A nightly job renews a token from twenty days
+  before it expires and warns at 14, 7 and 1 day when it cannot.
+- **MCP.** `/mcp/meta-business` and `/mcp/meta-ads`, both also in the `growth` bundle.
+- **Not yet run against Meta.** Both integrations are written from Meta's documentation and
+  exercised against a stateful fake, in the suite and in a browser. `docs/META.md` §11 is the
+  checklist for the first real token.
+
+### Meetings
+
+- **A client's person can own an action item.** An item given to one of the client's contacts
+  who was not on the roster printed as "Niemand genoemd" and could not be picked. The owner
+  pickers now offer the client's whole contact list.
+- **Owners are named.** `MeetingDetail.owner_names` names every owner the minutes carry, so an
+  owner on neither list is drawn by name.
+- **The client's items are headed with the client's name.** "Voor Hovenierscentrum De
+  Briellaerd" on the screen, in the document and on the contact moment; "Voor de klant" stays
+  for a meeting filed on nobody.
+
+### Fixed
+
+- The Meta post tests wrote their files to `/data/storage`, which a CI runner cannot create.
+  They use a temp directory now, and the API suite's third shard is green again.
+- The public API reference had not been regenerated since the Meta integrations landed; it lists
+  their endpoints now.
+
+### Upgrade notes
+
+- The redirect tools need bridge plugin 1.7.0 on the site. Sites that update the plugin
+  automatically pick it up by themselves; on the others, update it from the plugin's settings
+  screen. Until then the tools answer `errors.wordpress_bridge_outdated`.
+- Rank Math's Redirections module has to be on (Rank Math → Dashboard → Modules). Where it is
+  off the tools say so.
+- An MCP key that should add redirects needs `wordpress.redirect.write` granted deliberately.
+  Connectors consented with the full or read-only scope follow the catalog and pick the new keys
+  up within their owner's permissions.
+- Rank Math PRO's extra redirect fields (categories, scheduling) are neither read nor written.
+- For Instagram posts with a picture, `/api/v1/meta-business/media/*` has to be reachable
+  without a session, like the payment and calendar callbacks (`docs/DEPLOY.md`).
+- `SCHAKL_META_API_VERSION` defaults to `v26.0`. A Marketing API version lives about a year;
+  this is the line a later release bumps.
+
 ## v0.59.0 — 2026-09-28
 
 Agents can now read a client site's theme files through the WordPress bridge, change them where
