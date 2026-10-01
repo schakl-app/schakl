@@ -20,11 +20,13 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    func,
     select,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.activity import AuditableMixin
@@ -66,6 +68,10 @@ class Contact(
     #: (``core/directory.py``), so a borrowing module can match a participant address to a
     #: person without importing anything here — and gets the horizon above for free.
     __directory_email__ = "email"
+    #: …and the label side: a contact has no ``name`` column, so without this the seam's
+    #: ``labels_for`` found nothing to read and answered every contact id with silence — the
+    #: minutes document printed "Niemand genoemd" over a client's promise made to a named person.
+    __directory_label__ = "directory_label"
 
     __table_args__ = (
         Index("ix_contacts_custom", "custom", postgresql_using="gin"),
@@ -88,6 +94,18 @@ class Contact(
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
+
+    @hybrid_property
+    def directory_label(self) -> str:
+        """``Jan de Vries`` — the name the reference seam prints for this person."""
+        return f"{self.first_name} {self.last_name or ''}".strip()
+
+    @directory_label.inplace.expression
+    @classmethod
+    def _directory_label_expression(cls):  # noqa: ANN206
+        # ``concat_ws`` skips a NULL ``last_name``, so a contact with a first name alone is not
+        # printed with a trailing space.
+        return func.concat_ws(" ", cls.first_name, cls.last_name)
 
     @classmethod
     def __company_horizon_clause__(cls, scope: frozenset[uuid.UUID]):  # noqa: ANN206

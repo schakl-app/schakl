@@ -29043,6 +29043,10 @@ export interface components {
             occurred_at: string;
             /** Owner Name */
             owner_name?: string | null;
+            /** Owner Names */
+            owner_names?: {
+                [key: string]: string;
+            };
             /** Owner User Id */
             owner_user_id?: string | null;
             /** Participants */

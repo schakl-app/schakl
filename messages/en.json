@@ -8217,6 +8217,7 @@
   "meetings.minutes.heading_attendees": "Attendees",
   "meetings.minutes.side_agency": "For us to do",
   "meetings.minutes.side_client": "For the client to do",
+  "meetings.minutes.side_client_named": "For {client} to do",
   "meetings.minutes.side_other": "Others",
   "meetings.minutes.from_meeting": "From the meeting “{title}”.",
   "meetings.error.participants_informed": "Confirm that everyone in the meeting knows it is being recorded.",

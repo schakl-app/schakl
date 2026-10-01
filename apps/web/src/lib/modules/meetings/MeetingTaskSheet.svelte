@@ -34,6 +34,7 @@
   import SlideOver from "$lib/core/ui/SlideOver.svelte";
   import { projectArchivedLabel, splitProjectOptions } from "$lib/modules/projects/picker";
 
+  import { type ClientContact, clientContacts } from "./contacts";
   import { fmtClock } from "./format";
   import type { MeetingParticipant, MinutesActionItem } from "./types";
 
@@ -78,6 +79,7 @@
     index,
     item,
     participants = [],
+    ownerNames = {},
     members = [],
     projects = [],
     aiAvailable = true,
@@ -94,6 +96,8 @@
     index: number;
     item: MinutesActionItem;
     participants?: MeetingParticipant[];
+    /** The API's names for the minutes' owners (`MeetingDetail.owner_names`). */
+    ownerNames?: Record<string, string>;
     members?: Member[];
     projects?: { id: string; name: string; status?: string; company_id?: string | null }[];
     /** Whether the draft may be asked for at all (the AI feature is on and the org can). */
@@ -117,14 +121,37 @@
       companyId: companyId ?? "",
     }),
   );
-  /** Who may hold it: every colleague, plus the client's people at the table (#273). */
+  /**
+   * Who may hold it: every colleague, plus the client's people (#273) — the ones at the table
+   * first, then the rest of the client's contacts, because a promise is often made *for*
+   * somebody at the client who was not in the room. The tasks module refuses a contact the
+   * client is not linked to, so the client's own list is the honest offer.
+   */
+  let clientPeople = $state<ClientContact[]>([]);
+  $effect(() => {
+    const target = companyId ?? "";
+    if (!open) return;
+    void clientContacts(target).then((rows) => {
+      if ((companyId ?? "") === target) clientPeople = rows;
+    });
+  });
+  const contactHint = $derived(companyName || t("party.contact"));
   const ownerItems = $derived.by(() => {
     const out: { value: string; label: string; hint?: string }[] = [];
+    const seen = new Set<string>();
+    const push = (value: string, label: string, hint?: string) => {
+      if (seen.has(value)) return;
+      seen.add(value);
+      out.push({ value, label, hint });
+    };
     for (const p of participants) {
-      if (p.contact_id)
-        out.push({ value: `c:${p.contact_id}`, label: p.name, hint: t("party.contact") });
+      if (p.contact_id) push(`c:${p.contact_id}`, p.name, contactHint);
     }
-    for (const m of memberPicker.live) out.push({ value: `u:${m.value}`, label: m.label });
+    for (const c of clientPeople) push(`c:${c.id}`, c.name, contactHint);
+    // The item's own contact, named even when the client's list does not hold it (any more).
+    if (item.owner_contact_id && ownerNames[`c:${item.owner_contact_id}`])
+      push(`c:${item.owner_contact_id}`, ownerNames[`c:${item.owner_contact_id}`], contactHint);
+    for (const m of memberPicker.live) push(`u:${m.value}`, m.label);
     return out;
   });
   const ownerArchived = $derived(

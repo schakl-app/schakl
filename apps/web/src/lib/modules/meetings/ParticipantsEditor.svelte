@@ -35,6 +35,8 @@
   import MemberPicker from "$lib/core/ui/MemberPicker.svelte";
   import ContactQuickCreate from "$lib/modules/contacts/ContactQuickCreate.svelte";
 
+  import { clientContacts, forgetClientContacts } from "./contacts";
+
   type Kind = "employee" | "contact" | "other";
 
   let {
@@ -75,25 +77,10 @@
   let qcName = $state("");
 
   // The client's contacts, fetched once the row says which client — never shipped on every
-  // render of a page whose picker nobody opened (docs/PERFORMANCE.md).
+  // render of a page whose picker nobody opened (docs/PERFORMANCE.md), and shared with the
+  // page's other pickers (`contacts.ts`).
   let contacts = $state<{ id: string; name: string }[]>([]);
   let contactsFor = $state("");
-  async function loadContacts(target: string): Promise<{ id: string; name: string }[]> {
-    const response = await fetch(`/api/v1/contacts?limit=200&count=false&company_id=${target}`, {
-      headers: { accept: "application/json" },
-    });
-    if (!response.ok) return [];
-    interface ContactRow {
-      id: string;
-      first_name: string;
-      last_name?: string | null;
-    }
-    const rows: ContactRow[] = (await response.json()).items ?? [];
-    return rows.map((c) => ({
-      id: c.id,
-      name: [c.first_name, c.last_name].filter(Boolean).join(" "),
-    }));
-  }
   $effect(() => {
     const target = companyId;
     if (!target) {
@@ -102,7 +89,7 @@
       return;
     }
     if (target === contactsFor) return;
-    void loadContacts(target).then((rows) => {
+    void clientContacts(target).then((rows) => {
       contacts = rows;
       contactsFor = target;
     });
@@ -115,7 +102,8 @@
     const hit = created;
     if (!hit || hit.slot !== PARTICIPANT_SLOT || hit.id === handledCreate) return;
     handledCreate = hit.id;
-    void loadContacts(companyId).then((rows) => {
+    forgetClientContacts();
+    void clientContacts(companyId).then((rows) => {
       contacts = rows;
       contactsFor = companyId;
       const row = rows.find((c) => c.id === hit.id);

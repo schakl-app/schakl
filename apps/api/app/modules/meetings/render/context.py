@@ -197,10 +197,12 @@ def group_by_owner(
     *,
     evidence: bool,
     images: dict[str, str] | None = None,
+    client: str | None = None,
 ) -> list[dict[str, Any]]:
     """Action items by side, each side by person — the shape the minutes print in
-    (``service.group_action_items``), with every owner resolved to a printable person."""
-    from app.modules.meetings.service import group_action_items
+    (``service.group_action_items``), with every owner resolved to a printable person and the
+    client's side headed with the client's name (``service.side_heading``)."""
+    from app.modules.meetings.service import group_action_items, side_heading
 
     blocks: list[dict[str, Any]] = []
     for side, groups in group_action_items(items):
@@ -234,7 +236,7 @@ def group_by_owner(
         blocks.append(
             {
                 "side": side,
-                "side_label": translate(f"meetings.minutes.side_{side}", locale),
+                "side_label": side_heading(side, locale, client=client),
                 "groups": printed_groups,
             }
         )
@@ -357,7 +359,7 @@ def build_context(
             for d in draft.decisions
         ],
         "action_blocks": group_by_owner(
-            draft.action_items, people, locale, evidence=evidence, images=images
+            draft.action_items, people, locale, evidence=evidence, images=images, client=client
         ),
         "action_count": len(draft.action_items),
         "open_questions": [q.strip() for q in draft.open_questions if q.strip()],

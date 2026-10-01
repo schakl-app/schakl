@@ -8217,6 +8217,7 @@
   "meetings.minutes.heading_attendees": "Aanwezig",
   "meetings.minutes.side_agency": "Voor ons",
   "meetings.minutes.side_client": "Voor de klant",
+  "meetings.minutes.side_client_named": "Voor {client}",
   "meetings.minutes.side_other": "Overig",
   "meetings.minutes.from_meeting": "Uit de vergadering “{title}”.",
   "meetings.error.participants_informed": "Bevestig dat iedereen in de vergadering weet dat er wordt opgenomen.",

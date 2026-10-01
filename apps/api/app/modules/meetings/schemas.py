@@ -278,6 +278,11 @@ class MeetingDetail(MeetingRow):
     #: Derived from ``participants``: label → name, for the transcript's lines.
     speakers: dict[str, str] = Field(default_factory=dict)
     minutes: MinutesDraft | None = None
+    #: ``u:<id>`` / ``c:<id>`` → the name of every person the minutes or the roster name, so a
+    #: screen can print an action item's owner who is not at the table — a client's contact
+    #: the item was given to, a colleague who has since left — instead of an empty picker.
+    #: Resolved through the reference seam: a contact this caller may not see is absent.
+    owner_names: dict[str, str] = Field(default_factory=dict)
     interaction_id: uuid.UUID | None = None
     task_ids: list[uuid.UUID] = Field(default_factory=list)
     #: The hours booked for the colleagues at the table, one row each — said on the page,

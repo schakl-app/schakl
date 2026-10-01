@@ -294,6 +294,84 @@ async def test_the_document_prints_pasted_images_names_and_sides(
         assert "Spreker " in page
 
 
+async def test_an_item_given_to_a_client_contact_off_the_roster_is_named_everywhere(
+    client_for, tmp_path, monkeypatch
+) -> None:
+    """The live case: an action item given to one of the client's people who was not at the
+    table. The contact's name comes back on the detail (so the editor's picker can show it),
+    prints over the item on the document instead of "Niemand genoemd", and both the document
+    and the contact moment head the client's list with the client's own name. Before, the
+    reference seam answered every contact id with silence — a contact has no ``name`` column."""
+    from app.core.directory import labels_for
+
+    t, headers, meeting_id, company_id = await _minuted(
+        client_for, tmp_path, monkeypatch, "meet-offroster"
+    )
+    async with client_for(t.host) as c:
+        francis = (
+            await c.post(
+                "/api/v1/contacts",
+                json={"first_name": "Francis", "last_name": "Toonen", "company_ids": [company_id]},
+                headers=headers,
+            )
+        ).json()["id"]
+        solo = (
+            await c.post(
+                "/api/v1/contacts",
+                json={"first_name": "Sjouke", "company_ids": [company_id]},
+                headers=headers,
+            )
+        ).json()["id"]
+        detail = (await c.get(f"/api/v1/meetings/{meeting_id}", headers=headers)).json()
+        assert all(p["contact_id"] != francis for p in detail["participants"])
+        minutes = detail["minutes"]
+        minutes["action_items"][1].update(
+            {"owner_contact_id": francis, "assignee_user_id": None, "owner_label": None}
+        )
+        saved = await c.put(f"/api/v1/meetings/{meeting_id}/minutes", json=minutes, headers=headers)
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["owner_names"][f"c:{francis}"] == "Francis Toonen"
+
+        page = (
+            await c.get(
+                f"/api/v1/meetings/{meeting_id}/preview",
+                params={"sections": "action_items"},
+                headers=headers,
+            )
+        ).text
+        assert "Francis Toonen" in page
+        assert "Niemand genoemd" not in page
+        assert "Voor Nova" in page and "Voor de klant" not in page
+
+        interaction_id = saved.json()["interaction_id"]
+        assert interaction_id
+        moment = await c.get(f"/api/v1/interactions/{interaction_id}", headers=headers)
+        body = moment.json()["body_text"]
+        assert body.index("### Voor Nova") < body.index("**Francis Toonen**")
+
+        # A task of it is theirs: the client's contact, not on the roster, is a legal assignee.
+        made = await c.post(
+            f"/api/v1/meetings/{meeting_id}/action-items/task",
+            json={
+                "index": 1,
+                "title": "Nieuw logo sturen",
+                "due_date": "2026-09-30",
+                "assignee_contact_id": francis,
+            },
+            headers=headers,
+        )
+        assert made.status_code == 201, made.text
+
+    # The seam itself: a first name alone is printed without a trailing space.
+    async with async_session_maker() as session:
+        await set_current_org(session, t.org.id)
+        ctx = RequestContext(
+            user=t.user, org=t.org, session=session, permissions=PermissionSet.of(("*",))
+        )
+        names = await labels_for(ctx, "contact", [uuid.UUID(francis), uuid.UUID(solo)])
+    assert names == {uuid.UUID(francis): "Francis Toonen", uuid.UUID(solo): "Sjouke"}
+
+
 async def test_the_settings_preview_renders_a_sample_and_a_custom_design(client_for) -> None:
     t = await make_tenant("meet-preview")
     headers = await auth_cookie(t.user)
